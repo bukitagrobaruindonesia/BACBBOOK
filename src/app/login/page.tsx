@@ -19,13 +19,18 @@ export default function LoginPage() {
     setError("");
     setIsLoading(true);
 
-    const success = await login(email, password);
-    if (success) {
-      router.push("/dashboard");
-    } else {
-      setError("Email atau password salah. Silakan coba lagi.");
+    try {
+      const success = await login(email, password);
+      if (success) {
+        window.location.href = "/dashboard";
+      } else {
+        setError("Email atau password salah. Silakan coba lagi.");
+      }
+    } catch (err: any) {
+      setError("Terjadi kesalahan. Silakan coba lagi.");
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
@@ -75,10 +80,6 @@ export default function LoginPage() {
               Masuk ke Sistem
             </Button>
           </form>
-
-          <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-100 text-center">
-            <p className="text-xs text-gray-400">Hak Cipta 2026 PT Bukit Agrochemical</p>
-          </div>
         </div>
       </div>
     </div>

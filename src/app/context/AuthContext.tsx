@@ -27,6 +27,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
+    console.log("Login attempt:", email);
     try {
       const q = query(
         collection(db, "karyawan"),
@@ -34,6 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         where("password", "==", password)
       );
       const snapshot = await getDocs(q);
+      console.log("Query result:", snapshot.empty ? "empty" : "found");
 
       if (snapshot.empty) {
         return false;
