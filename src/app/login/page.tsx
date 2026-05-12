@@ -86,6 +86,15 @@ export default function LoginPage() {
               Masuk ke Sistem
             </Button>
           </form>
+
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => router.push("/")}
+              className="text-sm text-green-600 hover:text-green-800 font-medium transition-colors"
+            >
+              Kembali ke Halaman Utama
+            </button>
+          </div>
         </div>
       </div>
     </div>
