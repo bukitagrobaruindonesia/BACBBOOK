@@ -21,7 +21,7 @@ export default function Header(props: HeaderProps) {
       <div className="flex items-center gap-3 w-full sm:w-auto">
         <div className="text-right hidden md:block">
           <p className="text-sm font-semibold text-gray-800">{user?.nama}</p>
-          <p className="text-xs text-gray-500">{user?.idKantor}</p>
+          <p className="text-xs text-gray-500">{user?.email}</p>
         </div>
         <div className="h-10 w-10 rounded-full bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
           {user?.nama ? user.nama.charAt(0).toUpperCase() : "?"}

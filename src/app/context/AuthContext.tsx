@@ -1,22 +1,15 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
-import { auth, db } from "@/app/lib/firebase";
-
-interface UserSession {
-  uid: string;
-  idKantor: string;
-  nama: string;
-  role: string;
-}
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/app/lib/firebase";
+import { UserSession } from "@/app/types";
 
 interface AuthContextType {
   user: UserSession | null;
   loading: boolean;
-  login: (idKantor: string, password: string) => Promise<void>;
-  logout: () => Promise<void>;
+  login: (email: string, password: string) => Promise<boolean>;
+  logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -26,52 +19,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      if (firebaseUser) {
-        try {
-          const docRef = doc(db, "karyawan", firebaseUser.uid);
-          const docSnap = await getDoc(docRef);
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            setUser({
-              uid: firebaseUser.uid,
-              idKantor: data.idKantor,
-              nama: data.nama,
-              role: data.role,
-            });
-          } else {
-            console.error("No karyawan data found for UID:", firebaseUser.uid);
-            setUser(null);
-          }
-        } catch (error) {
-          console.error("Error fetching karyawan data:", error);
-          setUser(null);
-        }
-      } else {
-        setUser(null);
-      }
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
+    const storedUser = localStorage.getItem("userSession");
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+    setLoading(false);
   }, []);
 
-  const login = async (idKantor: string, password: string) => {
-    const email = `${idKantor.toLowerCase()}@bukitagro.local`;
-    console.log("Attempting login with email:", email);
-    
+  const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const result = await signInWithEmailAndPassword(auth, email, password);
-      console.log("Login successful, UID:", result.user.uid);
-    } catch (error: any) {
-      console.error("Login error:", error.code, error.message);
-      throw error;
+      const q = query(
+        collection(db, "karyawan"),
+        where("email", "==", email),
+        where("password", "==", password)
+      );
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        return false;
+      }
+
+      const doc = snapshot.docs[0];
+      const data = doc.data();
+      const userData: UserSession = {
+        id: doc.id,
+        email: data.email,
+        nama: data.nama,
+        role: data.role,
+      };
+
+      setUser(userData);
+      localStorage.setItem("userSession", JSON.stringify(userData));
+      return true;
+    } catch (error) {
+      console.error("Login error:", error);
+      return false;
     }
   };
 
-  const logout = async () => {
-    await signOut(auth);
+  const logout = () => {
     setUser(null);
+    localStorage.removeItem("userSession");
   };
 
   return (

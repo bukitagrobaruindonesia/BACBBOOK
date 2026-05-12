@@ -4,7 +4,6 @@ import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 import Sidebar from "@/app/components/ui/Sidebar";
-import MobileBottomNav from "@/app/components/layout/MobileBottomNav";
 
 export default function DashboardLayout({
   children,
@@ -43,7 +42,6 @@ export default function DashboardLayout({
           {children}
         </div>
       </main>
-      <MobileBottomNav />
     </div>
   );
 }

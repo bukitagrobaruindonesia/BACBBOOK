@@ -1,6 +1,6 @@
 export interface Karyawan {
   id: string;
-  idKantor: string;
+  email: string;
   nama: string;
   password: string;
   role: "admin" | "user";
@@ -44,8 +44,8 @@ export interface StockGudang {
 }
 
 export interface UserSession {
-  uid: string;
-  idKantor: string;
+  id: string;
+  email: string;
   nama: string;
   role: string;
 }
