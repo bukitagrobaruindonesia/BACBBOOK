@@ -22,7 +22,8 @@ export default function LoginPage() {
     try {
       const success = await login(email, password);
       if (success) {
-        window.location.href = "/dashboard";
+        await router.push("/dashboard");
+        await router.refresh();
       } else {
         setError("Email atau password salah. Silakan coba lagi.");
       }
