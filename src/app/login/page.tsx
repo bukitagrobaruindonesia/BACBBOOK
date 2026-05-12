@@ -11,7 +11,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -20,14 +20,19 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      console.log("Submit start");
       const success = await login(email, password);
+      console.log("Login returned:", success);
+      console.log("User after login:", user);
+
       if (success) {
-        await router.push("/dashboard");
-        await router.refresh();
+        console.log("Forcing redirect...");
+        window.location.replace("/dashboard");
       } else {
         setError("Email atau password salah. Silakan coba lagi.");
       }
     } catch (err: any) {
+      console.error("Submit catch:", err);
       setError("Terjadi kesalahan. Silakan coba lagi.");
     } finally {
       setIsLoading(false);

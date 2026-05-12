@@ -19,9 +19,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem("userSession");
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
+    try {
+      const storedUser = localStorage.getItem("userSession");
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser);
+        setUser(parsed);
+      }
+    } catch (e) {
+      localStorage.removeItem("userSession");
     }
     setLoading(false);
   }, []);
@@ -35,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         where("password", "==", password)
       );
       const snapshot = await getDocs(q);
-      console.log("Query result:", snapshot.empty ? "empty" : "found");
+      console.log("Empty:", snapshot.empty, "Size:", snapshot.size);
 
       if (snapshot.empty) {
         return false;
@@ -43,6 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const doc = snapshot.docs[0];
       const data = doc.data();
+      console.log("Doc data:", data);
+
       const userData: UserSession = {
         id: doc.id,
         email: data.email,
@@ -52,6 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(userData);
       localStorage.setItem("userSession", JSON.stringify(userData));
+      console.log("User set, returning true");
       return true;
     } catch (error) {
       console.error("Login error:", error);
