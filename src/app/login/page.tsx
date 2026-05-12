@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 import Input from "@/app/components/ui/Input";
@@ -11,8 +11,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const { login, user } = useAuth();
+  const { login, user, loading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace("/dashboard");
+    }
+  }, [loading, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -20,24 +26,33 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      console.log("Submit start");
       const success = await login(email, password);
-      console.log("Login returned:", success);
-      console.log("User after login:", user);
-
       if (success) {
-        console.log("Forcing redirect...");
-        window.location.replace("/dashboard");
+        window.location.href = "/dashboard";
       } else {
         setError("Email atau password salah. Silakan coba lagi.");
       }
     } catch (err: any) {
-      console.error("Submit catch:", err);
       setError("Terjadi kesalahan. Silakan coba lagi.");
     } finally {
       setIsLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-green-100 to-amber-50">
+        <div className="flex flex-col items-center gap-4">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-green-700"></div>
+          <p className="text-green-800 font-medium animate-pulse">Memuat...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-green-100 to-amber-50 p-4">

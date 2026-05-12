@@ -14,7 +14,6 @@ export default function DashboardLayout({
   const router = useRouter();
 
   useEffect(() => {
-    console.log("DashboardLayout effect - loading:", loading, "user:", user);
     if (!loading && !user) {
       router.replace("/login");
     }

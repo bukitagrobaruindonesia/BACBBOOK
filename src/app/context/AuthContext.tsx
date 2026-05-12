@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         where("password", "==", password)
       );
       const snapshot = await getDocs(q);
-      console.log("Empty:", snapshot.empty, "Size:", snapshot.size);
+      console.log("Query result:", snapshot.empty ? "empty" : "found");
 
       if (snapshot.empty) {
         return false;
@@ -48,8 +48,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const doc = snapshot.docs[0];
       const data = doc.data();
-      console.log("Doc data:", data);
-
       const userData: UserSession = {
         id: doc.id,
         email: data.email,
