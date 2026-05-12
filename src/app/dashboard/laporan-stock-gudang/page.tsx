@@ -24,7 +24,13 @@ export default function LaporanStockGudangPage() {
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [fotList, setFotList] = useState<string[]>([]);
+  const [selectedFot, setSelectedFot] = useState("");
+  const [selectedBulan, setSelectedBulan] = useState("");
+  const [selectedTahun, setSelectedTahun] = useState("");
+
   const [editForm, setEditForm] = useState({
+    fot: "",
     kodeBarang: "",
     namaBarang: "",
     unit: "ZAK" as "ZAK" | "DUS",
@@ -49,6 +55,14 @@ export default function LaporanStockGudangPage() {
         updatedAt: doc.data().updatedAt?.toDate(),
       } as StockGudang));
       setData(items);
+
+      const fotSet = new Set<string>();
+      items.forEach((item) => {
+        if (item.fot && typeof item.fot === "string" && item.fot.trim()) {
+          fotSet.add(item.fot.trim().toUpperCase());
+        }
+      });
+      setFotList(Array.from(fotSet).sort());
     } catch (error) {
       console.error(error);
     } finally {
@@ -56,11 +70,24 @@ export default function LaporanStockGudangPage() {
     }
   };
 
-  const filteredData = data.filter((item) =>
-    item.kodeBarang.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.namaBarang.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.unit.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredData = data.filter((item) => {
+    const matchSearch =
+      item.kodeBarang.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.namaBarang.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.unit.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchFot = selectedFot ? item.fot === selectedFot : true;
+
+    const matchBulanTahun = (() => {
+      if (!selectedBulan && !selectedTahun) return true;
+      const date = item.createdAt instanceof Date ? item.createdAt : new Date(item.createdAt);
+      const matchBulan = selectedBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === selectedBulan : true;
+      const matchTahun = selectedTahun ? date.getFullYear().toString() === selectedTahun : true;
+      return matchBulan && matchTahun;
+    })();
+
+    return matchSearch && matchFot && matchBulanTahun;
+  });
 
   const calculateStock = (
     stokAwalKG: number,
@@ -76,6 +103,7 @@ export default function LaporanStockGudangPage() {
   const handleEdit = (item: StockGudang) => {
     setSelectedItem(item);
     setEditForm({
+      fot: item.fot || "",
       kodeBarang: item.kodeBarang,
       namaBarang: item.namaBarang,
       unit: item.unit,
@@ -104,6 +132,7 @@ export default function LaporanStockGudangPage() {
       const { stokAkhirKG, stokBarangZAK } = calculateStock(stokAwalKG, barangMasuk, barangKeluar, editForm.unit);
 
       await updateDoc(doc(db, "stockGudang", selectedItem.id), {
+        fot: editForm.fot.trim().toUpperCase(),
         kodeBarang: editForm.kodeBarang.trim().toUpperCase(),
         namaBarang: editForm.namaBarang.trim(),
         unit: editForm.unit,
@@ -137,6 +166,7 @@ export default function LaporanStockGudangPage() {
 
   const handleExportExcel = () => {
     const exportData = filteredData.map((item) => ({
+      "FOT": item.fot || "-",
       "Kode Barang": item.kodeBarang,
       "Nama Barang": item.namaBarang,
       "Unit": item.unit,
@@ -158,6 +188,35 @@ export default function LaporanStockGudangPage() {
     { value: "DUS", label: "DUS" },
   ];
 
+  const bulanOptions = [
+    { value: "", label: "Semua Bulan" },
+    { value: "01", label: "Januari" },
+    { value: "02", label: "Februari" },
+    { value: "03", label: "Maret" },
+    { value: "04", label: "April" },
+    { value: "05", label: "Mei" },
+    { value: "06", label: "Juni" },
+    { value: "07", label: "Juli" },
+    { value: "08", label: "Agustus" },
+    { value: "09", label: "September" },
+    { value: "10", label: "Oktober" },
+    { value: "11", label: "November" },
+    { value: "12", label: "Desember" },
+  ];
+
+  const tahunOptions = [
+    { value: "", label: "Semua Tahun" },
+    ...Array.from({ length: 5 }, (_, i) => {
+      const year = (new Date().getFullYear() - 2 + i).toString();
+      return { value: year, label: year };
+    }),
+  ];
+
+  const fotOptions = [
+    { value: "", label: "Semua FOT" },
+    ...fotList.map((f) => ({ value: f, label: f })),
+  ];
+
   const editPreview = calculateStock(
     parseFloat(editForm.stokAwalKG) || 0,
     parseFloat(editForm.barangMasukKG) || 0,
@@ -166,6 +225,16 @@ export default function LaporanStockGudangPage() {
   );
 
   const columns = [
+    {
+      key: "fot",
+      header: "FOT",
+      width: "100px",
+      render: (row: StockGudang) => (
+        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">
+          {row.fot || "-"}
+        </span>
+      ),
+    },
     {
       key: "kodeBarang",
       header: "Kode Barang",
@@ -234,7 +303,7 @@ export default function LaporanStockGudangPage() {
     },
     {
       key: "stokBarang",
-      header: `Stok Barang`,
+      header: "Stok Barang",
       width: "130px",
       render: (row: StockGudang) => (
         <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded">
@@ -294,7 +363,7 @@ export default function LaporanStockGudangPage() {
     <div className="space-y-6">
       <Header
         title="Laporan Stock Gudang"
-        subtitle="Lihat seluruh data stock barang dan kelola persediaan"
+        subtitle="Lihat seluruh data stock barang dan kelola persediaan per FOT"
       />
 
       <Card>
@@ -321,33 +390,57 @@ export default function LaporanStockGudangPage() {
           </div>
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <Select
+            label="Filter FOT"
+            value={selectedFot}
+            onChange={(e) => setSelectedFot(e.target.value)}
+            options={fotOptions}
+          />
+          <Select
+            label="Filter Bulan"
+            value={selectedBulan}
+            onChange={(e) => setSelectedBulan(e.target.value)}
+            options={bulanOptions}
+          />
+          <Select
+            label="Filter Tahun"
+            value={selectedTahun}
+            onChange={(e) => setSelectedTahun(e.target.value)}
+            options={tahunOptions}
+          />
+        </div>
+
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="p-4 bg-green-50 rounded-xl border border-green-100">
             <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Total Jenis Barang</p>
-            <p className="text-2xl font-bold text-green-700 mt-1">{data.length}</p>
+            <p className="text-2xl font-bold text-green-700 mt-1">{filteredData.length}</p>
           </div>
           <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
             <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total Stok ZAK</p>
             <p className="text-2xl font-bold text-blue-700 mt-1">
-              {data.filter((d) => d.unit === "ZAK").reduce((sum, d) => sum + d.stokBarangZAK, 0).toLocaleString()}
+              {filteredData.filter((d) => d.unit === "ZAK").reduce((sum, d) => sum + d.stokBarangZAK, 0).toLocaleString()}
             </p>
           </div>
           <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
             <p className="text-xs text-purple-600 uppercase tracking-wide font-semibold">Total Stok DUS</p>
             <p className="text-2xl font-bold text-purple-700 mt-1">
-              {data.filter((d) => d.unit === "DUS").reduce((sum, d) => sum + d.stokBarangZAK, 0).toLocaleString()}
+              {filteredData.filter((d) => d.unit === "DUS").reduce((sum, d) => sum + d.stokBarangZAK, 0).toLocaleString()}
             </p>
           </div>
           <div className="p-4 bg-red-50 rounded-xl border border-red-100">
             <p className="text-xs text-red-600 uppercase tracking-wide font-semibold">Stock Menipis</p>
             <p className="text-2xl font-bold text-red-700 mt-1">
-              {data.filter((d) => d.stokAkhirKG < 1000).length}
+              {filteredData.filter((d) => d.stokAkhirKG < 1000).length}
             </p>
           </div>
         </div>
 
         <div className="text-sm text-gray-500 mb-4">
           Menampilkan {filteredData.length} dari {data.length} data
+          {selectedFot && ` | FOT: ${selectedFot}`}
+          {selectedBulan && ` | Bulan: ${bulanOptions.find((b) => b.value === selectedBulan)?.label}`}
+          {selectedTahun && ` | Tahun: ${selectedTahun}`}
         </div>
 
         <Table
@@ -377,18 +470,24 @@ export default function LaporanStockGudangPage() {
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-gray-50 rounded-xl">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">FOT</p>
+                <p className="text-lg font-bold text-indigo-700 font-mono">{selectedItem.fot || "-"}</p>
+              </div>
+              <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Kode Barang</p>
                 <p className="text-lg font-bold text-green-700 font-mono">{selectedItem.kodeBarang}</p>
               </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Unit</p>
                 <p className="text-lg font-bold text-gray-800">{selectedItem.unit}</p>
               </div>
-            </div>
-
-            <div className="p-4 bg-gray-50 rounded-xl">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Nama Barang</p>
-              <p className="text-lg font-semibold text-gray-800">{selectedItem.namaBarang}</p>
+              <div className="p-4 bg-gray-50 rounded-xl">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Nama Barang</p>
+                <p className="text-lg font-semibold text-gray-800">{selectedItem.namaBarang}</p>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -457,10 +556,10 @@ export default function LaporanStockGudangPage() {
         <form onSubmit={handleUpdate} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Input
-              label="Kode Barang"
+              label="FOT"
               type="text"
-              value={editForm.kodeBarang}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, kodeBarang: e.target.value }))}
+              value={editForm.fot}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, fot: e.target.value }))}
               required
             />
             <Select
@@ -472,13 +571,22 @@ export default function LaporanStockGudangPage() {
             />
           </div>
 
-          <Input
-            label="Nama Barang"
-            type="text"
-            value={editForm.namaBarang}
-            onChange={(e) => setEditForm((prev) => ({ ...prev, namaBarang: e.target.value }))}
-            required
-          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label="Kode Barang"
+              type="text"
+              value={editForm.kodeBarang}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, kodeBarang: e.target.value }))}
+              required
+            />
+            <Input
+              label="Nama Barang"
+              type="text"
+              value={editForm.namaBarang}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, namaBarang: e.target.value }))}
+              required
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <Input

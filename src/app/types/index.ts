@@ -29,6 +29,7 @@ export interface ProformaInvoice {
 
 export interface StockGudang {
   id: string;
+  fot?: string;
   kodeBarang: string;
   namaBarang: string;
   unit: "ZAK" | "DUS";

@@ -20,6 +20,7 @@ export default function InputStockGudangPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const [formData, setFormData] = useState({
+    fot: "",
     kodeBarang: "",
     namaBarang: "",
     unit: "ZAK" as "ZAK" | "DUS",
@@ -29,6 +30,9 @@ export default function InputStockGudangPage() {
     barangKeluarKG: "",
   });
 
+  const [fotList, setFotList] = useState<string[]>([]);
+  const [isNewFot, setIsNewFot] = useState(false);
+
   const unitOptions = [
     { value: "ZAK", label: "ZAK" },
     { value: "DUS", label: "DUS" },
@@ -36,7 +40,25 @@ export default function InputStockGudangPage() {
 
   useEffect(() => {
     fetchStockGudang();
+    fetchFotList();
   }, []);
+
+  const fetchFotList = async () => {
+    try {
+      const q = query(collection(db, "stockGudang"), orderBy("fot", "asc"));
+      const snapshot = await getDocs(q);
+      const fotSet = new Set<string>();
+      snapshot.docs.forEach((doc) => {
+        const fot = doc.data().fot;
+        if (fot && typeof fot === "string" && fot.trim()) {
+          fotSet.add(fot.trim().toUpperCase());
+        }
+      });
+      setFotList(Array.from(fotSet));
+    } catch (error) {
+      console.error(error);
+    }
+  };
 
   const fetchStockGudang = async () => {
     try {
@@ -67,6 +89,7 @@ export default function InputStockGudangPage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
+    if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
     if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
     if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
     if (!formData.stokAwalZAK || parseFloat(formData.stokAwalZAK) < 0) newErrors.stokAwalZAK = "Stok awal tidak valid";
@@ -99,6 +122,7 @@ export default function InputStockGudangPage() {
       const { stokAkhirKG, stokBarangZAK } = calculateStock(stokAwalKG, barangMasuk, barangKeluar, formData.unit);
 
       await addDoc(collection(db, "stockGudang"), {
+        fot: formData.fot.trim().toUpperCase(),
         kodeBarang: formData.kodeBarang.trim().toUpperCase(),
         namaBarang: formData.namaBarang.trim(),
         unit: formData.unit,
@@ -115,6 +139,7 @@ export default function InputStockGudangPage() {
 
       setSuccessMessage("Stock gudang berhasil disimpan!");
       setFormData({
+        fot: "",
         kodeBarang: "",
         namaBarang: "",
         unit: "ZAK",
@@ -123,8 +148,10 @@ export default function InputStockGudangPage() {
         barangMasukKG: "",
         barangKeluarKG: "",
       });
+      setIsNewFot(false);
 
       fetchStockGudang();
+      fetchFotList();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
       console.error(error);
@@ -155,7 +182,23 @@ export default function InputStockGudangPage() {
 
   const preview = previewCalculation();
 
+  const fotOptions = [
+    { value: "", label: "Pilih atau tambah FOT..." },
+    ...fotList.map((f) => ({ value: f, label: f })),
+    { value: "__new__", label: "+ Tambah FOT Baru" },
+  ];
+
   const columns = [
+    {
+      key: "fot",
+      header: "FOT",
+      width: "100px",
+      render: (row: StockGudang) => (
+        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">
+          {row.fot}
+        </span>
+      ),
+    },
     {
       key: "kodeBarang",
       header: "Kode",
@@ -238,7 +281,7 @@ export default function InputStockGudangPage() {
     <div className="space-y-6 max-w-7xl mx-auto">
       <Header
         title="Input Stock Gudang"
-        subtitle="Tambah dan kelola data stock barang"
+        subtitle="Tambah dan kelola data stock barang per FOT"
       />
 
       {successMessage && (
@@ -269,6 +312,39 @@ export default function InputStockGudangPage() {
                 </svg>
               }>
                 <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">FOT (Tempat Gudang)</label>
+                    <Select
+                      name="fot"
+                      value={isNewFot ? "__new__" : formData.fot}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (value === "__new__") {
+                          setIsNewFot(true);
+                          setFormData((prev) => ({ ...prev, fot: "" }));
+                        } else {
+                          setIsNewFot(false);
+                          setFormData((prev) => ({ ...prev, fot: value }));
+                        }
+                      }}
+                      options={fotOptions}
+                    />
+                    {isNewFot && (
+                      <Input
+                        type="text"
+                        name="fot"
+                        value={formData.fot}
+                        onChange={handleChange}
+                        placeholder="Masukkan nama FOT baru"
+                        error={errors.fot}
+                        className="mt-2"
+                      />
+                    )}
+                    {!isNewFot && errors.fot && (
+                      <p className="mt-1 text-sm text-red-600">{errors.fot}</p>
+                    )}
+                  </div>
+
                   <Input
                     label="Kode Barang"
                     type="text"
@@ -392,6 +468,7 @@ export default function InputStockGudangPage() {
                 variant="outline"
                 onClick={() => {
                   setFormData({
+                    fot: "",
                     kodeBarang: "",
                     namaBarang: "",
                     unit: "ZAK",
@@ -400,6 +477,7 @@ export default function InputStockGudangPage() {
                     barangMasukKG: "",
                     barangKeluarKG: "",
                   });
+                  setIsNewFot(false);
                   setErrors({});
                 }}
               >
