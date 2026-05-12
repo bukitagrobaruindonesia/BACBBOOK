@@ -4,7 +4,13 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/app/lib/firebase";
-import { UserSession } from "@/app/types";
+
+interface UserSession {
+  uid: string;
+  idKantor: string;
+  nama: string;
+  role: string;
+}
 
 interface AuthContextType {
   user: UserSession | null;
@@ -22,16 +28,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const docRef = doc(db, "karyawan", firebaseUser.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setUser({
-            uid: firebaseUser.uid,
-            idKantor: data.idKantor,
-            nama: data.nama,
-            role: data.role,
-          });
+        try {
+          const docRef = doc(db, "karyawan", firebaseUser.uid);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            setUser({
+              uid: firebaseUser.uid,
+              idKantor: data.idKantor,
+              nama: data.nama,
+              role: data.role,
+            });
+          } else {
+            console.error("No karyawan data found for UID:", firebaseUser.uid);
+            setUser(null);
+          }
+        } catch (error) {
+          console.error("Error fetching karyawan data:", error);
+          setUser(null);
         }
       } else {
         setUser(null);
@@ -43,8 +57,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const login = async (idKantor: string, password: string) => {
-    const email = `${idKantor}@bukitagro.local`;
-    await signInWithEmailAndPassword(auth, email, password);
+    const email = `${idKantor.toLowerCase()}@bukitagro.local`;
+    console.log("Attempting login with email:", email);
+    
+    try {
+      const result = await signInWithEmailAndPassword(auth, email, password);
+      console.log("Login successful, UID:", result.user.uid);
+    } catch (error: any) {
+      console.error("Login error:", error.code, error.message);
+      throw error;
+    }
   };
 
   const logout = async () => {
