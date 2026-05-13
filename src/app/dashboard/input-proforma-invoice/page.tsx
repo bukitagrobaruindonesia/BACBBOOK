@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { collection, addDoc, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/app/lib/firebase";
+import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
 import Input from "@/app/components/ui/Input";
@@ -38,6 +37,11 @@ export default function InputProformaInvoicePage() {
     fileInvoice: null as File | null,
   });
 
+  const [filePreviews, setFilePreviews] = useState({
+    fileBeritaAcara: "",
+    fileInvoice: "",
+  });
+
   useEffect(() => {
     fetchStockGudang();
   }, []);
@@ -60,6 +64,15 @@ export default function InputProformaInvoicePage() {
     }
   };
 
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
@@ -78,28 +91,26 @@ export default function InputProformaInvoicePage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>, field: "fileBeritaAcara" | "fileInvoice") => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>, field: "fileBeritaAcara" | "fileInvoice") => {
     const file = e.target.files?.[0] || null;
     if (file && file.type !== "application/pdf") {
       setErrors((prev) => ({ ...prev, [field]: "File harus berformat PDF" }));
       return;
     }
-    if (file && file.size > 5 * 1024 * 1024) {
-      setErrors((prev) => ({ ...prev, [field]: "Ukuran file maksimal 5MB" }));
+    if (file && file.size > 2 * 1024 * 1024) {
+      setErrors((prev) => ({ ...prev, [field]: "Ukuran file maksimal 2MB untuk penyimpanan Firestore" }));
       return;
     }
     setFiles((prev) => ({ ...prev, [field]: file }));
+    if (file) {
+      const base64 = await fileToBase64(file);
+      setFilePreviews((prev) => ({ ...prev, [field]: base64 }));
+    }
     setErrors((prev) => {
       const newErrors = { ...prev };
       delete newErrors[field];
       return newErrors;
     });
-  };
-
-  const uploadFile = async (file: File, path: string): Promise<string> => {
-    const storageRef = ref(storage, `${path}/${Date.now()}_${file.name}`);
-    await uploadBytes(storageRef, file);
-    return getDownloadURL(storageRef);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -110,14 +121,14 @@ export default function InputProformaInvoicePage() {
     setSuccessMessage("");
 
     try {
-      let fileBeritaAcaraURL = "";
-      let fileInvoiceURL = "";
+      let fileBeritaAcaraBase64 = "";
+      let fileInvoiceBase64 = "";
 
       if (files.fileBeritaAcara) {
-        fileBeritaAcaraURL = await uploadFile(files.fileBeritaAcara, "berita-acara");
+        fileBeritaAcaraBase64 = await fileToBase64(files.fileBeritaAcara);
       }
       if (files.fileInvoice) {
-        fileInvoiceURL = await uploadFile(files.fileInvoice, "invoice");
+        fileInvoiceBase64 = await fileToBase64(files.fileInvoice);
       }
 
       await addDoc(collection(db, "proformaInvoice"), {
@@ -130,9 +141,11 @@ export default function InputProformaInvoicePage() {
         barangDiambil: parseFloat(formData.barangDiambil),
         sisaBarang: parseFloat(formData.sisaBarang),
         kodeBeritaAcara: formData.kodeBeritaAcara.trim(),
-        fileBeritaAcaraURL,
+        fileBeritaAcara: fileBeritaAcaraBase64,
+        fileBeritaAcaraName: files.fileBeritaAcara?.name || "",
         kodeInvoice: formData.kodeInvoice.trim(),
-        fileInvoiceURL,
+        fileInvoice: fileInvoiceBase64,
+        fileInvoiceName: files.fileInvoice?.name || "",
         keterangan: formData.keterangan.trim(),
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
@@ -154,6 +167,7 @@ export default function InputProformaInvoicePage() {
         keterangan: "",
       });
       setFiles({ fileBeritaAcara: null, fileInvoice: null });
+      setFilePreviews({ fileBeritaAcara: "", fileInvoice: "" });
 
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
@@ -176,10 +190,13 @@ export default function InputProformaInvoicePage() {
     }
   };
 
-  const stockOptions = stockList.map((stock) => ({
-    value: stock.namaBarang,
-    label: `${stock.namaBarang} (${stock.kodeBarang}) - Stok: ${stock.stokAkhirKG.toLocaleString()} KG`,
-  }));
+  const stockOptions = [
+    { value: "", label: "Pilih produk dari stock gudang..." },
+    ...stockList.map((stock) => ({
+      value: stock.namaBarang,
+      label: `${stock.namaBarang} (${stock.kodeBarang}) - Stok: ${stock.stokAkhirKG.toLocaleString()} KG`,
+    })),
+  ];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -228,17 +245,22 @@ export default function InputProformaInvoicePage() {
               <Input label="Kode Berita Acara" type="text" name="kodeBeritaAcara" value={formData.kodeBeritaAcara} onChange={handleChange} placeholder="Masukkan kode berita acara" error={errors.kodeBeritaAcara} required />
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Upload File Berita Acara (PDF)
+                  Upload File Berita Acara (PDF, max 2MB)
                   <span className="text-red-500 ml-1">*</span>
                 </label>
                 <input type="file" accept=".pdf" onChange={(e) => handleFileChange(e, "fileBeritaAcara")} className="hidden" id="file-berita-acara" />
                 <label htmlFor="file-berita-acara" className={`flex items-center justify-center w-full px-4 py-6 border-2 border-dashed rounded-xl cursor-pointer transition-all ${files.fileBeritaAcara ? "border-green-500 bg-green-50" : "border-gray-300 hover:border-green-400"}`}>
                   <div className="text-center">
                     <p className="text-sm text-gray-600">{files.fileBeritaAcara ? files.fileBeritaAcara.name : "Klik untuk upload PDF"}</p>
-                    <p className="text-xs text-gray-400 mt-1">Maksimal 5MB</p>
+                    <p className="text-xs text-gray-400 mt-1">Maksimal 2MB (disimpan di Firestore)</p>
                   </div>
                 </label>
                 {errors.fileBeritaAcara && <p className="mt-1 text-sm text-red-600">{errors.fileBeritaAcara}</p>}
+                {filePreviews.fileBeritaAcara && (
+                  <div className="mt-2 p-2 bg-blue-50 rounded-lg">
+                    <p className="text-xs text-blue-600">File siap disimpan ke Firestore</p>
+                  </div>
+                )}
               </div>
             </div>
           </Card>
@@ -248,17 +270,22 @@ export default function InputProformaInvoicePage() {
               <Input label="Kode Invoice" type="text" name="kodeInvoice" value={formData.kodeInvoice} onChange={handleChange} placeholder="Masukkan kode invoice" error={errors.kodeInvoice} required />
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Upload File Invoice (PDF)
+                  Upload File Invoice (PDF, max 2MB)
                   <span className="text-red-500 ml-1">*</span>
                 </label>
                 <input type="file" accept=".pdf" onChange={(e) => handleFileChange(e, "fileInvoice")} className="hidden" id="file-invoice" />
                 <label htmlFor="file-invoice" className={`flex items-center justify-center w-full px-4 py-6 border-2 border-dashed rounded-xl cursor-pointer transition-all ${files.fileInvoice ? "border-green-500 bg-green-50" : "border-gray-300 hover:border-green-400"}`}>
                   <div className="text-center">
                     <p className="text-sm text-gray-600">{files.fileInvoice ? files.fileInvoice.name : "Klik untuk upload PDF"}</p>
-                    <p className="text-xs text-gray-400 mt-1">Maksimal 5MB</p>
+                    <p className="text-xs text-gray-400 mt-1">Maksimal 2MB (disimpan di Firestore)</p>
                   </div>
                 </label>
                 {errors.fileInvoice && <p className="mt-1 text-sm text-red-600">{errors.fileInvoice}</p>}
+                {filePreviews.fileInvoice && (
+                  <div className="mt-2 p-2 bg-blue-50 rounded-lg">
+                    <p className="text-xs text-blue-600">File siap disimpan ke Firestore</p>
+                  </div>
+                )}
               </div>
             </div>
           </Card>
@@ -275,6 +302,7 @@ export default function InputProformaInvoicePage() {
           <Button type="button" variant="outline" onClick={() => {
             setFormData({ tanggal: new Date().toISOString().split("T")[0], nomorPI: "", namaCustomer: "", namaProduk: "", fot: "", kuantitasKG: "", barangDiambil: "", sisaBarang: "", kodeBeritaAcara: "", kodeInvoice: "", keterangan: "" });
             setFiles({ fileBeritaAcara: null, fileInvoice: null });
+            setFilePreviews({ fileBeritaAcara: "", fileInvoice: "" });
             setErrors({});
           }}>
             Reset Form

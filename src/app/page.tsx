@@ -60,7 +60,7 @@ export default function PublicPage() {
 
     const matchBulanTahun = (() => {
       if (!selectedBulan && !selectedTahun) return true;
-      const date = item.createdAt instanceof Date ? item.createdAt : new Date(item.createdAt);
+      const date = item.createdAt instanceof Date ? item.createdAt : new Date();
       const matchBulan = selectedBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === selectedBulan : true;
       const matchTahun = selectedTahun ? date.getFullYear().toString() === selectedTahun : true;
       return matchBulan && matchTahun;
@@ -98,6 +98,13 @@ export default function PublicPage() {
     ...fotList.map((f) => ({ value: f, label: f })),
   ];
 
+  const getUnitBadgeClass = (unit: string) => {
+    if (unit === "ZAK") return "bg-blue-100 text-blue-700";
+    if (unit === "DUS") return "bg-purple-100 text-purple-700";
+    if (unit === "BOTOL") return "bg-pink-100 text-pink-700";
+    return "bg-gray-100 text-gray-700";
+  };
+
   const columns = [
     {
       key: "fot",
@@ -131,20 +138,33 @@ export default function PublicPage() {
       header: "Unit",
       width: "80px",
       render: (row: StockGudang) => (
-        <span className={`px-2 py-1 rounded-md text-xs font-bold ${
-          row.unit === "ZAK" ? "bg-blue-100 text-blue-700" : "bg-purple-100 text-purple-700"
-        }`}>
+        <span className={`px-2 py-1 rounded-md text-xs font-bold ${getUnitBadgeClass(row.unit)}`}>
           {row.unit}
+        </span>
+      ),
+    },
+    {
+      key: "bobot",
+      header: "Bobot",
+      width: "100px",
+      render: (row: StockGudang) => (
+        <span className="font-mono text-gray-600">
+          {row.unit === "KG" ? "-" : `${row.bobotPerUnit?.toLocaleString()} KG`}
         </span>
       ),
     },
     {
       key: "stokAwal",
       header: "Stok Awal",
-      width: "140px",
+      width: "160px",
       render: (row: StockGudang) => (
         <div className="text-sm">
-          <p className="font-mono">{row.stokAwalZAK.toLocaleString()} {row.unit}</p>
+          {(row.unit === "ZAK" || row.unit === "DUS") && (
+            <p className="font-mono">{row.stokAwalUnit?.toLocaleString()} {row.unit}</p>
+          )}
+          {row.unit === "BOTOL" && (
+            <p className="font-mono">{row.stokAwalBotol?.toLocaleString()} BOTOL</p>
+          )}
           <p className="text-gray-500 text-xs">{row.stokAwalKG.toLocaleString()} KG</p>
         </div>
       ),
@@ -152,40 +172,61 @@ export default function PublicPage() {
     {
       key: "masuk",
       header: "Masuk",
-      width: "120px",
+      width: "140px",
       render: (row: StockGudang) => (
-        <span className="text-green-600 font-mono">+{row.barangMasukKG.toLocaleString()} KG</span>
+        <div className="text-sm">
+          <span className="text-green-600 font-mono">+{row.barangMasukKG.toLocaleString()} KG</span>
+          {row.unit === "BOTOL" && (
+            <p className="text-green-500 font-mono text-xs">+{row.barangMasukBotol?.toLocaleString()} BOTOL</p>
+          )}
+        </div>
       ),
     },
     {
       key: "keluar",
       header: "Keluar",
-      width: "120px",
+      width: "140px",
       render: (row: StockGudang) => (
-        <span className="text-red-600 font-mono">-{row.barangKeluarKG.toLocaleString()} KG</span>
+        <div className="text-sm">
+          <span className="text-red-600 font-mono">-{row.barangKeluarKG.toLocaleString()} KG</span>
+          {row.unit === "BOTOL" && (
+            <p className="text-red-500 font-mono text-xs">-{row.barangKeluarBotol?.toLocaleString()} BOTOL</p>
+          )}
+        </div>
       ),
     },
     {
       key: "stokAkhir",
       header: "Stok Akhir",
-      width: "140px",
+      width: "160px",
       render: (row: StockGudang) => (
         <div className="text-sm">
-          <p className="font-mono font-bold text-green-700">{row.stokAkhirKG.toLocaleString()} KG</p>
+          {(row.unit === "ZAK" || row.unit === "DUS") && (
+            <p className="font-mono font-bold text-green-700">{row.stokAkhirUnit?.toLocaleString()} {row.unit}</p>
+          )}
+          {row.unit === "BOTOL" && (
+            <p className="font-mono font-bold text-pink-700">{row.stokAkhirBotol?.toLocaleString()} BOTOL</p>
+          )}
+          {row.unit === "KG" && (
+            <p className="font-mono font-bold text-green-700">{row.stokAkhirKG.toLocaleString()} KG</p>
+          )}
+          <p className="text-gray-500 text-xs">{row.stokAkhirKG.toLocaleString()} KG</p>
         </div>
       ),
     },
-    {
-      key: "stokZAK",
-      header: "Stok Barang",
-      width: "120px",
-      render: (row: StockGudang) => (
-        <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded">
-          {row.stokBarangZAK.toLocaleString()} {row.unit}
-        </span>
-      ),
-    },
   ];
+
+  const getTotalUnit = (unitType: string) => {
+    return filteredData
+      .filter((d) => d.unit === unitType)
+      .reduce((sum, d) => sum + (d.stokAkhirUnit || 0), 0);
+  };
+
+  const getTotalBotol = () => {
+    return filteredData
+      .filter((d) => d.unit === "BOTOL")
+      .reduce((sum, d) => sum + (d.stokAkhirBotol || 0), 0);
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-green-100 to-amber-50">
@@ -223,7 +264,7 @@ export default function PublicPage() {
           <h2 className="text-3xl sm:text-4xl font-bold text-green-900 mb-3">PT Bukit Agrochemical</h2>
           <p className="text-lg text-green-700 mb-2">Sistem Administrasi Distributor Pupuk</p>
           <p className="text-sm text-gray-500 max-w-2xl mx-auto">
-            Platform digital untuk monitoring stock gudang pupuk secara real-time. 
+            Platform digital untuk monitoring stock gudang pupuk secara real-time.
             Lihat laporan persediaan barang per FOT dengan filter dinamis.
           </p>
         </section>
@@ -278,28 +319,26 @@ export default function PublicPage() {
               />
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
               <div className="p-4 bg-green-50 rounded-xl border border-green-100">
-                <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Total Jenis Barang</p>
+                <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Total Jenis</p>
                 <p className="text-2xl font-bold text-green-700 mt-1">{filteredData.length}</p>
               </div>
               <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-                <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total Stok ZAK</p>
-                <p className="text-2xl font-bold text-blue-700 mt-1">
-                  {filteredData.filter((d) => d.unit === "ZAK").reduce((sum, d) => sum + d.stokBarangZAK, 0).toLocaleString()}
-                </p>
+                <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total ZAK</p>
+                <p className="text-2xl font-bold text-blue-700 mt-1">{getTotalUnit("ZAK").toLocaleString()}</p>
               </div>
               <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-                <p className="text-xs text-purple-600 uppercase tracking-wide font-semibold">Total Stok DUS</p>
-                <p className="text-2xl font-bold text-purple-700 mt-1">
-                  {filteredData.filter((d) => d.unit === "DUS").reduce((sum, d) => sum + d.stokBarangZAK, 0).toLocaleString()}
-                </p>
+                <p className="text-xs text-purple-600 uppercase tracking-wide font-semibold">Total DUS</p>
+                <p className="text-2xl font-bold text-purple-700 mt-1">{getTotalUnit("DUS").toLocaleString()}</p>
+              </div>
+              <div className="p-4 bg-pink-50 rounded-xl border border-pink-100">
+                <p className="text-xs text-pink-600 uppercase tracking-wide font-semibold">Total BOTOL</p>
+                <p className="text-2xl font-bold text-pink-700 mt-1">{getTotalBotol().toLocaleString()}</p>
               </div>
               <div className="p-4 bg-red-50 rounded-xl border border-red-100">
                 <p className="text-xs text-red-600 uppercase tracking-wide font-semibold">Stock Menipis</p>
-                <p className="text-2xl font-bold text-red-700 mt-1">
-                  {filteredData.filter((d) => d.stokAkhirKG < 1000).length}
-                </p>
+                <p className="text-2xl font-bold text-red-700 mt-1">{filteredData.filter((d) => d.stokAkhirKG < 1000).length}</p>
               </div>
             </div>
 

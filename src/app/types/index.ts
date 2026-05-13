@@ -29,20 +29,24 @@ export interface ProformaInvoice {
 
 export interface StockGudang {
   id: string;
-  fot?: string;
+  fot: string;
   kodeBarang: string;
   namaBarang: string;
-  unit: "ZAK" | "DUS";
-  bobotPerUnit?: number;
-  stokAwalZAK: number;
+  unit: "ZAK" | "DUS" | "KG" | "BOTOL";
+  bobotPerUnit: number;
+  stokAwalUnit?: number;
   stokAwalKG: number;
+  stokAwalBotol?: number;
   barangMasukKG: number;
+  barangMasukBotol?: number;
   barangKeluarKG: number;
+  barangKeluarBotol?: number;
   stokAkhirKG: number;
-  stokBarangZAK: number;
+  stokAkhirUnit?: number;
+  stokAkhirBotol?: number;
   createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface UserSession {
