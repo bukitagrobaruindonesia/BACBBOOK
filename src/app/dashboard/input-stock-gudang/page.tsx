@@ -95,18 +95,10 @@ export default function InputStockGudangPage() {
     barangKeluarUnit: number,
     barangKeluarKG: number,
     bobotPerUnit: number,
-    unit: string,
-    botolPerDus?: number,
-    dusPerZak?: number
+    unit: string
   ) => {
     let stokAkhirUnit = stokAwalUnit + barangMasukUnit - barangKeluarUnit;
     let stokAkhirKG = stokAwalKG + barangMasukKG - barangKeluarKG;
-
-    if (unit === "BOTOL" && botolPerDus && dusPerZak) {
-      const totalBotolPerZak = botolPerDus * dusPerZak;
-      stokAkhirUnit = stokAkhirUnit / totalBotolPerZak;
-    }
-
     return { stokAkhirUnit, stokAkhirKG };
   };
 
@@ -146,8 +138,7 @@ export default function InputStockGudangPage() {
 
     const { stokAkhirUnit, stokAkhirKG } = calculateStock(
       stokAwalUnit, stokAwalKG, barangMasukUnit, barangMasukKG,
-      barangKeluarUnit, barangKeluarKG, parseFloat(formData.bobotPerUnit) || 50, formData.unit,
-      parseFloat(formData.botolPerDus) || 20, 10
+      barangKeluarUnit, barangKeluarKG, parseFloat(formData.bobotPerUnit) || 50, formData.unit
     );
 
     if (stokAkhirUnit < 0) newErrors.barangKeluarUnit = "Barang keluar melebihi total stok unit";
@@ -178,8 +169,7 @@ export default function InputStockGudangPage() {
 
       const { stokAkhirUnit, stokAkhirKG } = calculateStock(
         stokAwalUnit, stokAwalKG, barangMasukUnit, barangMasukKG,
-        barangKeluarUnit, barangKeluarKG, bobotPerUnit, formData.unit,
-        botolPerDus || undefined, 10
+        barangKeluarUnit, barangKeluarKG, bobotPerUnit, formData.unit
       );
 
       const docData: any = {
@@ -203,7 +193,6 @@ export default function InputStockGudangPage() {
 
       if (isBotol) {
         docData.botolPerDus = botolPerDus;
-        docData.dusPerZak = 10;
         docData.displayUnit = "ZAK";
       }
 
@@ -259,12 +248,10 @@ export default function InputStockGudangPage() {
     const barangKeluarUnit = isUnitBased ? parseFloat(formData.barangKeluarUnit) || 0 : 0;
     const barangKeluarKG = isBotol ? 0 : parseFloat(formData.barangKeluarKG) || 0;
     const bobotPerUnit = parseFloat(formData.bobotPerUnit) || 50;
-    const botolPerDus = isBotol ? parseFloat(formData.botolPerDus) || 20 : undefined;
 
     return calculateStock(
       stokAwalUnit, stokAwalKG, barangMasukUnit, barangMasukKG,
-      barangKeluarUnit, barangKeluarKG, bobotPerUnit, formData.unit,
-      botolPerDus, 10
+      barangKeluarUnit, barangKeluarKG, bobotPerUnit, formData.unit
     );
   };
 
@@ -669,7 +656,7 @@ export default function InputStockGudangPage() {
                       <p className="text-3xl font-bold text-amber-700 font-mono">{preview.stokAkhirUnit.toLocaleString()}</p>
                       {isBotol && (
                         <p className="text-xs text-amber-500 mt-1">
-                          {formData.botolPerDus || 20} botol = 1 DUS, 10 DUS = 1 ZAK
+                          {formData.botolPerDus || 20} botol = 1 DUS
                         </p>
                       )}
                       {!isBotol && (
