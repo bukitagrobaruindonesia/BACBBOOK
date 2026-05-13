@@ -113,7 +113,7 @@ export default function InputStockGudangPage() {
     const isBottle = formData.unit === "BOTOL";
     const isKG = formData.unit === "KG";
 
-    if (isUnitBased) {
+    if (isUnitBased || isBottle) {
       if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0) newErrors.bobotPerUnit = "Bobot per unit tidak valid";
       if (!formData.stokAwalUnit || parseFloat(formData.stokAwalUnit) < 0) newErrors.stokAwalUnit = "Stok awal tidak valid";
     }
@@ -125,7 +125,6 @@ export default function InputStockGudangPage() {
     }
 
     if (isBottle) {
-      if (!formData.stokAwalBotol || parseFloat(formData.stokAwalBotol) < 0) newErrors.stokAwalBotol = "Stok awal botol tidak valid";
       if (!formData.barangMasukBotol || parseFloat(formData.barangMasukBotol) < 0) newErrors.barangMasukBotol = "Barang masuk botol tidak valid";
       if (!formData.barangKeluarBotol || parseFloat(formData.barangKeluarBotol) < 0) newErrors.barangKeluarBotol = "Barang keluar botol tidak valid";
     }
@@ -160,12 +159,12 @@ export default function InputStockGudangPage() {
     try {
       const isBottle = formData.unit === "BOTOL";
       const stokAwalKG = isBottle ? 0 : parseFloat(formData.stokAwalKG);
-      const stokAwalBotol = isBottle ? parseFloat(formData.stokAwalBotol) : 0;
+      const stokAwalBotol = isBottle ? parseFloat(formData.stokAwalUnit) : 0;
       const barangMasukKG = isBottle ? 0 : parseFloat(formData.barangMasukKG);
       const barangMasukBotol = isBottle ? parseFloat(formData.barangMasukBotol) : 0;
       const barangKeluarKG = isBottle ? 0 : parseFloat(formData.barangKeluarKG);
       const barangKeluarBotol = isBottle ? parseFloat(formData.barangKeluarBotol) : 0;
-      const bobotPerUnit = isBottle ? 0 : parseFloat(formData.bobotPerUnit) || 50;
+      const bobotPerUnit = parseFloat(formData.bobotPerUnit) || 50;
 
       const { stokAkhirKG, stokAkhirBotol, stokAkhirUnit } = calculateStock(
         stokAwalKG, stokAwalBotol, barangMasukKG, barangMasukBotol,
@@ -236,12 +235,12 @@ export default function InputStockGudangPage() {
   const previewCalculation = () => {
     const isBottle = formData.unit === "BOTOL";
     const stokAwalKG = isBottle ? 0 : parseFloat(formData.stokAwalKG) || 0;
-    const stokAwalBotol = isBottle ? parseFloat(formData.stokAwalBotol) || 0 : 0;
+    const stokAwalBotol = isBottle ? parseFloat(formData.stokAwalUnit) || 0 : 0;
     const barangMasukKG = isBottle ? 0 : parseFloat(formData.barangMasukKG) || 0;
     const barangMasukBotol = isBottle ? parseFloat(formData.barangMasukBotol) || 0 : 0;
     const barangKeluarKG = isBottle ? 0 : parseFloat(formData.barangKeluarKG) || 0;
     const barangKeluarBotol = isBottle ? parseFloat(formData.barangKeluarBotol) || 0 : 0;
-    const bobotPerUnit = isBottle ? 0 : parseFloat(formData.bobotPerUnit) || 50;
+    const bobotPerUnit = parseFloat(formData.bobotPerUnit) || 50;
     return calculateStock(
       stokAwalKG, stokAwalBotol, barangMasukKG, barangMasukBotol,
       barangKeluarKG, barangKeluarBotol, bobotPerUnit, formData.unit
@@ -309,7 +308,7 @@ export default function InputStockGudangPage() {
       width: "100px",
       render: (row: StockGudang) => (
         <span className="font-mono text-gray-600">
-          {row.unit === "KG" || row.unit === "BOTOL" ? "-" : `${row.bobotPerUnit?.toLocaleString()} KG`}
+          {row.unit === "KG" ? "-" : `${row.bobotPerUnit?.toLocaleString()} KG`}
         </span>
       ),
     },
@@ -319,11 +318,8 @@ export default function InputStockGudangPage() {
       width: "160px",
       render: (row: StockGudang) => (
         <div className="text-sm">
-          {(row.unit === "ZAK" || row.unit === "DUS") && (
+          {(row.unit === "ZAK" || row.unit === "DUS" || row.unit === "BOTOL") && (
             <p className="font-mono">{row.stokAwalUnit?.toLocaleString()} {row.unit}</p>
-          )}
-          {row.unit === "BOTOL" && (
-            <p className="font-mono">{row.stokAwalBotol?.toLocaleString()} BOTOL</p>
           )}
           {row.unit !== "BOTOL" && (
             <p className="text-gray-500 text-xs">{row.stokAwalKG.toLocaleString()} KG</p>
@@ -483,7 +479,7 @@ export default function InputStockGudangPage() {
                     required
                   />
 
-                  {isUnitBased && (
+                  {(isUnitBased || isBottle) && (
                     <Input
                       label="Bobot Per Unit (KG)"
                       type="number"
@@ -504,7 +500,7 @@ export default function InputStockGudangPage() {
                 </svg>
               }>
                 <div className="space-y-4">
-                  {isUnitBased && (
+                  {(isUnitBased || isBottle) && (
                     <Input
                       label={`Stok Awal (${formData.unit})`}
                       type="number"
@@ -526,19 +522,6 @@ export default function InputStockGudangPage() {
                       onChange={handleChange}
                       placeholder="Masukkan stok awal dalam KG"
                       error={errors.stokAwalKG}
-                      required
-                    />
-                  )}
-
-                  {isBottle && (
-                    <Input
-                      label="Stok Awal (BOTOL)"
-                      type="number"
-                      name="stokAwalBotol"
-                      value={formData.stokAwalBotol}
-                      onChange={handleChange}
-                      placeholder="Masukkan stok awal dalam BOTOL"
-                      error={errors.stokAwalBotol}
                       required
                     />
                   )}
@@ -634,6 +617,9 @@ export default function InputStockGudangPage() {
                     <div className="p-4 bg-gradient-to-br from-pink-50 to-pink-100 rounded-xl border border-pink-200">
                       <p className="text-xs text-pink-600 uppercase tracking-wide font-semibold mb-1">Stok Akhir (BOTOL)</p>
                       <p className="text-3xl font-bold text-pink-700 font-mono">{preview.stokAkhirBotol.toLocaleString()}</p>
+                      <p className="text-xs text-pink-500 mt-1">
+                        Perhitungan: 1 BOTOL = {formData.bobotPerUnit || 50} KG
+                      </p>
                     </div>
                   )}
 
