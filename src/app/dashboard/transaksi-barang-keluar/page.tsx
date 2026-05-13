@@ -32,7 +32,6 @@ export default function TransaksiBarangKeluarPage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockOption[]>([]);
   const [fotList, setFotList] = useState<string[]>([]);
-  const [piList, setPiList] = useState<{ nomorPI: string; namaCustomer: string }[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -57,7 +56,6 @@ export default function TransaksiBarangKeluarPage() {
 
   useEffect(() => {
     fetchStockGudang();
-    fetchProformaInvoice();
   }, []);
 
   const fetchStockGudang = async () => {
@@ -84,20 +82,6 @@ export default function TransaksiBarangKeluarPage() {
         }
       });
       setFotList(Array.from(fotSet).sort());
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const fetchProformaInvoice = async () => {
-    try {
-      const q = query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        nomorPI: doc.data().nomorPI,
-        namaCustomer: doc.data().namaCustomer,
-      }));
-      setPiList(data);
     } catch (error) {
       console.error(error);
     }
@@ -343,14 +327,6 @@ export default function TransaksiBarangKeluarPage() {
     ...fotList.map((f) => ({ value: f, label: f })),
   ];
 
-  const piOptions = [
-    { value: "", label: "Pilih atau masukkan No PI..." },
-    ...piList.map((pi) => ({
-      value: pi.nomorPI,
-      label: `${pi.nomorPI} - ${pi.namaCustomer}`,
-    })),
-  ];
-
   const isBotol = formData.unit === "BOTOL";
 
   return (
@@ -490,12 +466,13 @@ export default function TransaksiBarangKeluarPage() {
               required
             />
 
-            <Select
+            <Input
               label="No PI / Proforma Invoice"
+              type="text"
               name="nomorPI"
               value={formData.nomorPI}
               onChange={handleChange}
-              options={piOptions}
+              placeholder="Contoh: PI-0675"
               error={errors.nomorPI}
               required
             />
