@@ -24,6 +24,7 @@ export default function InputStockGudangPage() {
     kodeBarang: "",
     namaBarang: "",
     unit: "ZAK" as "ZAK" | "DUS",
+    bobotPerUnit: "50",
     stokAwalZAK: "",
     stokAwalKG: "",
     barangMasukKG: "",
@@ -80,10 +81,10 @@ export default function InputStockGudangPage() {
     stokAwalKG: number,
     barangMasukKG: number,
     barangKeluarKG: number,
-    unit: string
+    bobotPerUnit: number
   ) => {
     const stokAkhirKG = stokAwalKG + barangMasukKG - barangKeluarKG;
-    const stokBarangZAK = unit === "ZAK" ? Math.floor(stokAkhirKG / 50) : Math.floor(stokAkhirKG / 25);
+    const stokBarangZAK = Math.floor(stokAkhirKG / bobotPerUnit);
     return { stokAkhirKG, stokBarangZAK };
   };
 
@@ -92,6 +93,7 @@ export default function InputStockGudangPage() {
     if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
     if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
     if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
+    if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0) newErrors.bobotPerUnit = "Bobot per unit tidak valid";
     if (!formData.stokAwalZAK || parseFloat(formData.stokAwalZAK) < 0) newErrors.stokAwalZAK = "Stok awal tidak valid";
     if (!formData.stokAwalKG || parseFloat(formData.stokAwalKG) < 0) newErrors.stokAwalKG = "Stok awal KG tidak valid";
     if (!formData.barangMasukKG || parseFloat(formData.barangMasukKG) < 0) newErrors.barangMasukKG = "Barang masuk tidak valid";
@@ -100,7 +102,8 @@ export default function InputStockGudangPage() {
     const stokAwalKG = parseFloat(formData.stokAwalKG) || 0;
     const barangMasuk = parseFloat(formData.barangMasukKG) || 0;
     const barangKeluar = parseFloat(formData.barangKeluarKG) || 0;
-    const { stokAkhirKG } = calculateStock(stokAwalKG, barangMasuk, barangKeluar, formData.unit);
+    const bobotPerUnit = parseFloat(formData.bobotPerUnit) || 50;
+    const { stokAkhirKG } = calculateStock(stokAwalKG, barangMasuk, barangKeluar, bobotPerUnit);
 
     if (stokAkhirKG < 0) newErrors.barangKeluarKG = "Barang keluar melebihi total stok";
 
@@ -119,13 +122,15 @@ export default function InputStockGudangPage() {
       const stokAwalKG = parseFloat(formData.stokAwalKG);
       const barangMasuk = parseFloat(formData.barangMasukKG);
       const barangKeluar = parseFloat(formData.barangKeluarKG);
-      const { stokAkhirKG, stokBarangZAK } = calculateStock(stokAwalKG, barangMasuk, barangKeluar, formData.unit);
+      const bobotPerUnit = parseFloat(formData.bobotPerUnit);
+      const { stokAkhirKG, stokBarangZAK } = calculateStock(stokAwalKG, barangMasuk, barangKeluar, bobotPerUnit);
 
       await addDoc(collection(db, "stockGudang"), {
         fot: formData.fot.trim().toUpperCase(),
         kodeBarang: formData.kodeBarang.trim().toUpperCase(),
         namaBarang: formData.namaBarang.trim(),
         unit: formData.unit,
+        bobotPerUnit: bobotPerUnit,
         stokAwalZAK: parseFloat(formData.stokAwalZAK),
         stokAwalKG: stokAwalKG,
         barangMasukKG: barangMasuk,
@@ -143,6 +148,7 @@ export default function InputStockGudangPage() {
         kodeBarang: "",
         namaBarang: "",
         unit: "ZAK",
+        bobotPerUnit: "50",
         stokAwalZAK: "",
         stokAwalKG: "",
         barangMasukKG: "",
@@ -177,7 +183,8 @@ export default function InputStockGudangPage() {
     const stokAwalKG = parseFloat(formData.stokAwalKG) || 0;
     const barangMasuk = parseFloat(formData.barangMasukKG) || 0;
     const barangKeluar = parseFloat(formData.barangKeluarKG) || 0;
-    return calculateStock(stokAwalKG, barangMasuk, barangKeluar, formData.unit);
+    const bobotPerUnit = parseFloat(formData.bobotPerUnit) || 50;
+    return calculateStock(stokAwalKG, barangMasuk, barangKeluar, bobotPerUnit);
   };
 
   const preview = previewCalculation();
@@ -226,6 +233,14 @@ export default function InputStockGudangPage() {
         }`}>
           {row.unit}
         </span>
+      ),
+    },
+    {
+      key: "bobot",
+      header: "Bobot/Unit",
+      width: "100px",
+      render: (row: StockGudang) => (
+        <span className="font-mono text-gray-600">{row.bobotPerUnit?.toLocaleString()} KG</span>
       ),
     },
     {
@@ -375,6 +390,17 @@ export default function InputStockGudangPage() {
                     options={unitOptions}
                     required
                   />
+
+                  <Input
+                    label="Bobot Per Unit (KG)"
+                    type="number"
+                    name="bobotPerUnit"
+                    value={formData.bobotPerUnit}
+                    onChange={handleChange}
+                    placeholder="Contoh: 50"
+                    error={errors.bobotPerUnit}
+                    required
+                  />
                 </div>
               </Card>
 
@@ -455,7 +481,7 @@ export default function InputStockGudangPage() {
                     <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">Stok Barang ({formData.unit})</p>
                     <p className="text-3xl font-bold text-amber-700 font-mono">{preview.stokBarangZAK.toLocaleString()}</p>
                     <p className="text-xs text-amber-500 mt-1">
-                      {formData.unit === "ZAK" ? "Perhitungan: 1 ZAK = 50 KG" : "Perhitungan: 1 DUS = 25 KG"}
+                      Perhitungan: 1 {formData.unit} = {formData.bobotPerUnit || 50} KG
                     </p>
                   </div>
                 </div>
@@ -472,6 +498,7 @@ export default function InputStockGudangPage() {
                     kodeBarang: "",
                     namaBarang: "",
                     unit: "ZAK",
+                    bobotPerUnit: "50",
                     stokAwalZAK: "",
                     stokAwalKG: "",
                     barangMasukKG: "",

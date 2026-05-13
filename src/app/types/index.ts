@@ -33,6 +33,7 @@ export interface StockGudang {
   kodeBarang: string;
   namaBarang: string;
   unit: "ZAK" | "DUS";
+  bobotPerUnit?: number;
   stokAwalZAK: number;
   stokAwalKG: number;
   barangMasukKG: number;
