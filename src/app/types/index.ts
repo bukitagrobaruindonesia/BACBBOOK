@@ -44,6 +44,10 @@ export interface StockGudang {
   barangKeluarKG: number;
   stokAkhirUnit?: number;
   stokAkhirKG: number;
+  botolPerDus?: number;
+  dusPerZak?: number;
+  displayUnit?: string;
+  secondaryUnit?: string;
   createdBy: string;
   createdAt?: Date;
   updatedAt?: Date;
