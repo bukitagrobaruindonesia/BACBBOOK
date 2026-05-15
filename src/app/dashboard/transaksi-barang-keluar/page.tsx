@@ -9,7 +9,7 @@ import Input from "@/app/components/ui/Input";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 
-interface StockOption {
+interface StockItem {
   id: string;
   kodeBarang: string;
   namaBarang: string;
@@ -30,6 +30,7 @@ interface SopirNopolItem {
 
 export default function TransaksiBarangKeluarPage() {
   const { user } = useAuth();
+  const [stockList, setStockList] = useState<StockItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -41,7 +42,6 @@ export default function TransaksiBarangKeluarPage() {
     unit: "ZAK" as "ZAK" | "DUS" | "KG" | "BOTOL",
     jumlahZAK: "",
     botolPerDus: "",
-    bobotPerBotol: "",
     namaCustomer: "",
     nomorPI: "",
     nomorInvoice: "",
@@ -53,9 +53,67 @@ export default function TransaksiBarangKeluarPage() {
     { id: 1, namaSopir: "", nopol: "", nomorSIM: "" },
   ]);
 
+  const [matchedStock, setMatchedStock] = useState<StockItem | null>(null);
+
+  useEffect(() => {
+    fetchStockGudang();
+  }, []);
+
+  const fetchStockGudang = async () => {
+    try {
+      const q = query(collection(db, "stockGudang"), orderBy("namaBarang", "asc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        kodeBarang: doc.data().kodeBarang || "",
+        namaBarang: doc.data().namaBarang || "",
+        unit: doc.data().unit || "ZAK",
+        fot: doc.data().fot || "",
+        bobotPerUnit: doc.data().bobotPerUnit || 50,
+        botolPerDus: doc.data().botolPerDus,
+        stokAkhirUnit: doc.data().stokAkhirUnit || 0,
+        stokAkhirKG: doc.data().stokAkhirKG || 0,
+      } as StockItem));
+      setStockList(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const findMatchingStock = (kode: string, nama: string) => {
+    if (!kode.trim() || !nama.trim()) {
+      setMatchedStock(null);
+      return;
+    }
+    const kodeNormalized = kode.trim().toUpperCase();
+    const namaNormalized = nama.trim().toUpperCase();
+    const match = stockList.find(
+      (s) =>
+        s.kodeBarang.toUpperCase() === kodeNormalized &&
+        s.namaBarang.toUpperCase() === namaNormalized
+    );
+    if (match) {
+      setMatchedStock(match);
+      setFormData((prev) => ({
+        ...prev,
+        unit: match.unit,
+        fot: match.fot,
+        botolPerDus: match.botolPerDus ? match.botolPerDus.toString() : "",
+      }));
+    } else {
+      setMatchedStock(null);
+    }
+  };
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => {
+      const updated = { ...prev, [name]: value };
+      if (name === "kodeBarang" || name === "namaBarang") {
+        setTimeout(() => findMatchingStock(updated.kodeBarang, updated.namaBarang), 0);
+      }
+      return updated;
+    });
     if (errors[name]) {
       setErrors((prev) => {
         const newErrors = { ...prev };
@@ -86,7 +144,7 @@ export default function TransaksiBarangKeluarPage() {
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
     if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
     if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
-    if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah ZAK harus lebih dari 0";
+    if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah harus lebih dari 0";
     if (!formData.namaCustomer.trim()) newErrors.namaCustomer = "Nama customer wajib diisi";
     if (!formData.nomorPI.trim()) newErrors.nomorPI = "No PI wajib diisi";
     if (!formData.nomorInvoice.trim()) newErrors.nomorInvoice = "No Invoice wajib diisi";
@@ -95,7 +153,29 @@ export default function TransaksiBarangKeluarPage() {
 
     if (formData.unit === "BOTOL") {
       if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Botol per DUS tidak valid";
-      if (!formData.bobotPerBotol || parseFloat(formData.bobotPerBotol) <= 0) newErrors.bobotPerBotol = "Bobot per botol tidak valid";
+    }
+
+    if (matchedStock) {
+      const jumlahZAK = parseFloat(formData.jumlahZAK) || 0;
+      let totalKG = 0;
+      if (formData.unit === "BOTOL") {
+        const dusPerZak = 10;
+        const botolPerDus = parseFloat(formData.botolPerDus) || 1;
+        const bobotPerBotol = 50;
+        const totalBotol = jumlahZAK * dusPerZak * botolPerDus;
+        totalKG = (totalBotol * bobotPerBotol) / 1000;
+      } else if (formData.unit === "KG") {
+        totalKG = jumlahZAK;
+      } else {
+        totalKG = jumlahZAK * matchedStock.bobotPerUnit;
+      }
+
+      if (formData.unit !== "KG" && jumlahZAK > (matchedStock.stokAkhirUnit || 0)) {
+        newErrors.jumlahZAK = `Stok tidak mencukupi. Tersedia: ${matchedStock.stokAkhirUnit?.toLocaleString()} ${formData.unit}`;
+      }
+      if (totalKG > matchedStock.stokAkhirKG) {
+        newErrors.jumlahZAK = `Stok KG tidak mencukupi. Tersedia: ${matchedStock.stokAkhirKG.toLocaleString()} KG`;
+      }
     }
 
     setErrors(newErrors);
@@ -112,7 +192,8 @@ export default function TransaksiBarangKeluarPage() {
     try {
       const jumlahZAK = parseFloat(formData.jumlahZAK) || 0;
       const botolPerDus = formData.unit === "BOTOL" ? parseFloat(formData.botolPerDus) || 0 : null;
-      const bobotPerBotol = formData.unit === "BOTOL" ? parseFloat(formData.bobotPerBotol) || 0 : null;
+      const bobotPerUnit = matchedStock ? matchedStock.bobotPerUnit : 50;
+      const bobotPerBotol = formData.unit === "BOTOL" ? 50 : null;
 
       let totalKG = 0;
       if (formData.unit === "BOTOL") {
@@ -122,7 +203,7 @@ export default function TransaksiBarangKeluarPage() {
       } else if (formData.unit === "KG") {
         totalKG = jumlahZAK;
       } else {
-        totalKG = jumlahZAK * 50;
+        totalKG = jumlahZAK * bobotPerUnit;
       }
 
       const sopirNopolValues = sopirNopolList
@@ -158,6 +239,34 @@ export default function TransaksiBarangKeluarPage() {
 
       await addDoc(collection(db, "transaksiBarangKeluar"), transaksiData);
 
+      if (matchedStock) {
+        const stockRef = doc(db, "stockGudang", matchedStock.id);
+        const stockSnap = await getDoc(stockRef);
+        if (stockSnap.exists()) {
+          const currentData = stockSnap.data();
+          const currentKeluarUnit = currentData.barangKeluarUnit || 0;
+          const currentKeluarKG = currentData.barangKeluarKG || 0;
+          const currentStokUnit = currentData.stokAkhirUnit || 0;
+          const currentStokKG = currentData.stokAkhirKG || 0;
+
+          let minusUnit = jumlahZAK;
+          let minusKG = totalKG;
+
+          if (formData.unit === "KG") {
+            minusUnit = 0;
+            minusKG = jumlahZAK;
+          }
+
+          await updateDoc(stockRef, {
+            barangKeluarUnit: currentKeluarUnit + minusUnit,
+            barangKeluarKG: currentKeluarKG + minusKG,
+            stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
+            stokAkhirKG: Math.max(0, currentStokKG - minusKG),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
       setSuccessMessage("Transaksi barang keluar berhasil disimpan!");
       setFormData({
         tanggal: new Date().toISOString().split("T")[0],
@@ -166,7 +275,6 @@ export default function TransaksiBarangKeluarPage() {
         unit: "ZAK",
         jumlahZAK: "",
         botolPerDus: "",
-        bobotPerBotol: "",
         namaCustomer: "",
         nomorPI: "",
         nomorInvoice: "",
@@ -174,7 +282,9 @@ export default function TransaksiBarangKeluarPage() {
         fot: "",
       });
       setSopirNopolList([{ id: 1, namaSopir: "", nopol: "", nomorSIM: "" }]);
+      setMatchedStock(null);
 
+      fetchStockGudang();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
       console.error(error);
@@ -268,6 +378,17 @@ export default function TransaksiBarangKeluarPage() {
               required
             />
           </div>
+
+          {matchedStock && (
+            <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
+              <p className="text-sm text-blue-700 font-medium">
+                Barang ditemukan di database: Stok tersedia {matchedStock.stokAkhirUnit?.toLocaleString()} {matchedStock.unit} ({matchedStock.stokAkhirKG.toLocaleString()} KG)
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                Unit, FOT, dan bobot otomatis disesuaikan dari data gudang. Stok akan berkurang setelah disimpan.
+              </p>
+            </div>
+          )}
         </Card>
 
         <Card title="Detail Barang Keluar">
@@ -284,29 +405,16 @@ export default function TransaksiBarangKeluarPage() {
             />
 
             {isBotol && (
-              <>
-                <Input
-                  label="Botol per DUS"
-                  type="number"
-                  name="botolPerDus"
-                  value={formData.botolPerDus}
-                  onChange={handleChange}
-                  placeholder="Contoh: 20"
-                  error={errors.botolPerDus}
-                  required
-                />
-
-                <Input
-                  label="Bobot Per Botol (ml)"
-                  type="number"
-                  name="bobotPerBotol"
-                  value={formData.bobotPerBotol}
-                  onChange={handleChange}
-                  placeholder="Contoh: 500"
-                  error={errors.bobotPerBotol}
-                  required
-                />
-              </>
+              <Input
+                label="Botol per DUS"
+                type="number"
+                name="botolPerDus"
+                value={formData.botolPerDus}
+                onChange={handleChange}
+                placeholder="Contoh: 20"
+                error={errors.botolPerDus}
+                required
+              />
             )}
 
             <Input
@@ -414,6 +522,42 @@ export default function TransaksiBarangKeluarPage() {
           </div>
         </Card>
 
+        {matchedStock && formData.jumlahZAK && (
+          <Card title="Preview & Validasi Stok">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                <p className="text-xs text-green-600 uppercase tracking-wide font-semibold mb-1">Stok Tersedia</p>
+                <p className="text-xl font-bold text-green-700 font-mono">
+                  {matchedStock.stokAkhirUnit?.toLocaleString()} {formData.unit === "KG" ? "KG" : formData.unit}
+                </p>
+                <p className="text-sm text-green-600">{matchedStock.stokAkhirKG.toLocaleString()} KG</p>
+              </div>
+              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">Jumlah Keluar</p>
+                <p className="text-xl font-bold text-amber-700 font-mono">
+                  {parseFloat(formData.jumlahZAK).toLocaleString()} {formData.unit === "KG" ? "KG" : "ZAK"}
+                </p>
+                <p className="text-sm text-amber-600">
+                  {formData.unit === "BOTOL"
+                    ? `${((parseFloat(formData.jumlahZAK) || 0) * 10 * (parseFloat(formData.botolPerDus) || 1) * 50 / 1000).toLocaleString()} KG`
+                    : `${((parseFloat(formData.jumlahZAK) || 0) * matchedStock.bobotPerUnit).toLocaleString()} KG`
+                  }
+                </p>
+              </div>
+            </div>
+            {formData.unit === "BOTOL" && (
+              <p className="text-xs text-amber-500 mt-2">
+                Perhitungan: {formData.jumlahZAK} ZAK x 10 DUS/ZAK x {formData.botolPerDus || 0} botol/DUS x 50 ml / 1000 = KG
+              </p>
+            )}
+            {formData.unit !== "BOTOL" && formData.unit !== "KG" && (
+              <p className="text-xs text-amber-500 mt-2">
+                Perhitungan: {formData.jumlahZAK} {formData.unit} x {matchedStock.bobotPerUnit} KG/{formData.unit}
+              </p>
+            )}
+          </Card>
+        )}
+
         <div className="flex items-center justify-end gap-4 pt-4">
           <Button
             type="button"
@@ -426,7 +570,6 @@ export default function TransaksiBarangKeluarPage() {
                 unit: "ZAK",
                 jumlahZAK: "",
                 botolPerDus: "",
-                bobotPerBotol: "",
                 namaCustomer: "",
                 nomorPI: "",
                 nomorInvoice: "",
@@ -434,6 +577,7 @@ export default function TransaksiBarangKeluarPage() {
                 fot: "",
               });
               setSopirNopolList([{ id: 1, namaSopir: "", nopol: "", nomorSIM: "" }]);
+              setMatchedStock(null);
               setErrors({});
             }}
           >

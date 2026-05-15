@@ -11,7 +11,6 @@ import {
   doc,
   updateDoc,
   deleteDoc,
-  where,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -107,7 +106,7 @@ export default function LaporanInputStockGudangPage() {
     const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
     const isBotol = formData.unit === "BOTOL";
 
-    if (isUnitBased) {
+    if (isUnitBased && !isBotol) {
       if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0)
         newErrors.bobotPerUnit = "Bobot per unit tidak valid";
     }
@@ -136,7 +135,7 @@ export default function LaporanInputStockGudangPage() {
       const isBotol = formData.unit === "BOTOL";
       const isKG = formData.unit === "KG";
       const stokTersediaUnit = parseFloat(formData.stokTersediaUnit) || 0;
-      const bobotPerUnit = parseFloat(formData.bobotPerUnit) || 50;
+      const bobotPerUnit = isBotol ? 50 : (parseFloat(formData.bobotPerUnit) || 50);
       const botolPerDus = isBotol ? parseFloat(formData.botolPerDus) || 20 : null;
 
       if (isEditing && editId) {
@@ -332,6 +331,7 @@ export default function LaporanInputStockGudangPage() {
           return (
             <div className="text-xs">
               <p className="font-mono text-pink-600">{row.botolPerDus || 20} botol/DUS</p>
+              <p className="font-mono text-pink-500">50 ml/botol</p>
             </div>
           );
         }
@@ -541,14 +541,14 @@ export default function LaporanInputStockGudangPage() {
                   required
                 />
 
-                {isUnitBased && (
+                {isUnitBased && !isBotol && (
                   <Input
-                    label={isBotol ? "Bobot Per Botol (ml)" : "Bobot Per Unit (KG)"}
+                    label="Bobot Per Unit (KG)"
                     type="number"
                     name="bobotPerUnit"
                     value={formData.bobotPerUnit}
                     onChange={handleChange}
-                    placeholder={isBotol ? "Contoh: 500" : "Contoh: 50"}
+                    placeholder="Contoh: 50"
                     error={errors.bobotPerUnit}
                     required
                   />
