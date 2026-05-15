@@ -1,335 +1,52 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+  serverTimestamp,
+  doc,
+  updateDoc,
+  deleteDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
-import Table from "@/app/components/ui/Table";
-import Button from "@/app/components/ui/Button";
-import Modal from "@/app/components/ui/Modal";
 import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
+import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
-import { exportToExcel } from "@/app/utils/exportExcel";
-import { TransaksiBarangMasuk, TransaksiBarangKeluar, JenisTransaksi } from "@/app/types";
+import Table from "@/app/components/ui/Table";
+import { StockGudang } from "@/app/types";
 
-interface UnifiedTransaksi {
-  id: string;
-  jenis: JenisTransaksi;
-  tanggal: string;
-  kodeBarang: string;
-  namaBarang: string;
-  unit: string;
-  jumlahZAK: number;
-  fot: string;
-  createdBy: string;
-  createdAt?: Date;
-  namaCustomer?: string;
-  nomorPI?: string;
-  nomorInvoice?: string;
-  sopirNopol?: string;
-  sopirNopolList?: string[];
-  nomorSuratPengangkutan?: string;
-  botolPerDus?: number;
-  bobotPerBotol?: number;
-}
-
-interface SopirNopolItem {
-  id: number;
-  value: string;
-}
-
-export default function RiwayatTransaksiPage() {
+export default function LaporanInputStockGudangPage() {
   const { user } = useAuth();
-  const [data, setData] = useState<UnifiedTransaksi[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterJenis, setFilterJenis] = useState<"semua" | JenisTransaksi>("semua");
-  const [filterFot, setFilterFot] = useState("");
-  const [filterBulan, setFilterBulan] = useState("");
-  const [filterTahun, setFilterTahun] = useState("");
-  const [selectedItem, setSelectedItem] = useState<UnifiedTransaksi | null>(null);
-  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [stockList, setStockList] = useState<StockGudang[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [fotList, setFotList] = useState<string[]>([]);
+  const [successMessage, setSuccessMessage] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterFot, setFilterFot] = useState("");
 
-  const [editForm, setEditForm] = useState({
-    tanggal: "",
+  const [formData, setFormData] = useState({
+    fot: "",
     kodeBarang: "",
     namaBarang: "",
     unit: "ZAK" as "ZAK" | "DUS" | "KG" | "BOTOL",
-    jumlahZAK: "",
-    botolPerDus: "",
-    bobotPerBotol: "",
-    namaCustomer: "",
-    nomorPI: "",
-    nomorInvoice: "",
-    nomorSuratPengangkutan: "",
-    fot: "",
-    sopirNopol: "",
+    bobotPerUnit: "50",
+    stokTersediaUnit: "",
+    botolPerDus: "20",
   });
 
-  const [editSopirNopolList, setEditSopirNopolList] = useState<SopirNopolItem[]>([{ id: 1, value: "" }]);
-
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    setIsLoading(true);
-    try {
-      const masukQuery = query(collection(db, "transaksiBarangMasuk"), orderBy("createdAt", "desc"));
-      const masukSnapshot = await getDocs(masukQuery);
-      const masukData = masukSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        jenis: "barangMasuk" as JenisTransaksi,
-        tanggal: doc.data().tanggal,
-        kodeBarang: doc.data().kodeBarang,
-        namaBarang: doc.data().namaBarang,
-        unit: doc.data().unit,
-        jumlahZAK: doc.data().jumlahZAK,
-        fot: doc.data().fot,
-        createdBy: doc.data().createdBy,
-        createdAt: doc.data().createdAt?.toDate(),
-        sopirNopol: doc.data().sopirNopol,
-        botolPerDus: doc.data().botolPerDus,
-        bobotPerBotol: doc.data().bobotPerBotol,
-      } as UnifiedTransaksi));
-
-      const keluarQuery = query(collection(db, "transaksiBarangKeluar"), orderBy("createdAt", "desc"));
-      const keluarSnapshot = await getDocs(keluarQuery);
-      const keluarData = keluarSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        jenis: "barangKeluar" as JenisTransaksi,
-        tanggal: doc.data().tanggal,
-        kodeBarang: doc.data().kodeBarang,
-        namaBarang: doc.data().namaBarang,
-        unit: doc.data().unit,
-        jumlahZAK: doc.data().jumlahZAK,
-        fot: doc.data().fot,
-        createdBy: doc.data().createdBy,
-        createdAt: doc.data().createdAt?.toDate(),
-        namaCustomer: doc.data().namaCustomer,
-        nomorPI: doc.data().nomorPI,
-        nomorInvoice: doc.data().nomorInvoice,
-        sopirNopolList: doc.data().sopirNopolList,
-        nomorSuratPengangkutan: doc.data().nomorSuratPengangkutan,
-        botolPerDus: doc.data().botolPerDus,
-        bobotPerBotol: doc.data().bobotPerBotol,
-      } as UnifiedTransaksi));
-
-      const allData = [...masukData, ...keluarData].sort((a, b) => {
-        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-        return dateB - dateA;
-      });
-
-      setData(allData);
-
-      const fotSet = new Set<string>();
-      allData.forEach((item) => {
-        if (item.fot && item.fot.trim()) {
-          fotSet.add(item.fot.trim().toUpperCase());
-        }
-      });
-      setFotList(Array.from(fotSet).sort());
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const filteredData = data.filter((item) => {
-    const matchSearch =
-      item.kodeBarang.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.namaBarang.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.fot.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.namaCustomer && item.namaCustomer.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.nomorPI && item.nomorPI.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchJenis = filterJenis === "semua" ? true : item.jenis === filterJenis;
-    const matchFot = filterFot ? item.fot === filterFot : true;
-
-    const matchBulanTahun = (() => {
-      if (!filterBulan && !filterTahun) return true;
-      const date = item.tanggal ? new Date(item.tanggal) : new Date();
-      const matchBulan = filterBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === filterBulan : true;
-      const matchTahun = filterTahun ? date.getFullYear().toString() === filterTahun : true;
-      return matchBulan && matchTahun;
-    })();
-
-    return matchSearch && matchJenis && matchFot && matchBulanTahun;
-  });
-
-  const handleDetail = (item: UnifiedTransaksi) => {
-    setSelectedItem(item);
-    setIsDetailModalOpen(true);
-  };
-
-  const handleEdit = (item: UnifiedTransaksi) => {
-    setSelectedItem(item);
-    setEditForm({
-      tanggal: item.tanggal,
-      kodeBarang: item.kodeBarang,
-      namaBarang: item.namaBarang,
-      unit: item.unit as "ZAK" | "DUS" | "KG" | "BOTOL",
-      jumlahZAK: item.jumlahZAK.toString(),
-      botolPerDus: item.botolPerDus ? item.botolPerDus.toString() : "",
-      bobotPerBotol: item.bobotPerBotol ? item.bobotPerBotol.toString() : "",
-      namaCustomer: item.namaCustomer || "",
-      nomorPI: item.nomorPI || "",
-      nomorInvoice: item.nomorInvoice || "",
-      nomorSuratPengangkutan: item.nomorSuratPengangkutan || "",
-      fot: item.fot,
-      sopirNopol: item.sopirNopol || "",
-    });
-
-    if (item.sopirNopolList && item.sopirNopolList.length > 0) {
-      setEditSopirNopolList(item.sopirNopolList.map((v, i) => ({ id: i + 1, value: v })));
-    } else {
-      setEditSopirNopolList([{ id: 1, value: item.sopirNopol || "" }]);
-    }
-
-    setIsEditModalOpen(true);
-  };
-
-  const handleEditSopirNopolChange = (id: number, value: string) => {
-    setEditSopirNopolList((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, value } : item))
-    );
-  };
-
-  const addEditSopirNopol = () => {
-    const newId = editSopirNopolList.length > 0 ? Math.max(...editSopirNopolList.map((s) => s.id)) + 1 : 1;
-    setEditSopirNopolList((prev) => [...prev, { id: newId, value: "" }]);
-  };
-
-  const removeEditSopirNopol = (id: number) => {
-    if (editSopirNopolList.length <= 1) return;
-    setEditSopirNopolList((prev) => prev.filter((item) => item.id !== id));
-  };
-
-  const handleUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedItem) return;
-
-    setIsSubmitting(true);
-    try {
-      const collectionName = selectedItem.jenis === "barangMasuk" ? "transaksiBarangMasuk" : "transaksiBarangKeluar";
-      const jumlahZAK = parseFloat(editForm.jumlahZAK) || 0;
-      const botolPerDus = editForm.unit === "BOTOL" ? parseFloat(editForm.botolPerDus) || 0 : null;
-      const bobotPerBotol = editForm.unit === "BOTOL" ? parseFloat(editForm.bobotPerBotol) || 0 : null;
-
-      const updateData: any = {
-        tanggal: editForm.tanggal,
-        kodeBarang: editForm.kodeBarang,
-        namaBarang: editForm.namaBarang,
-        unit: editForm.unit,
-        jumlahZAK: jumlahZAK,
-        fot: editForm.fot.trim().toUpperCase(),
-        updatedAt: serverTimestamp(),
-      };
-
-      if (editForm.unit === "BOTOL") {
-        updateData.botolPerDus = botolPerDus;
-        updateData.bobotPerBotol = bobotPerBotol;
-      }
-
-      if (selectedItem.jenis === "barangMasuk") {
-        updateData.sopirNopol = editForm.sopirNopol.trim();
-      } else {
-        updateData.namaCustomer = editForm.namaCustomer.trim();
-        updateData.nomorPI = editForm.nomorPI.trim();
-        updateData.nomorInvoice = editForm.nomorInvoice.trim();
-        updateData.nomorSuratPengangkutan = editForm.nomorSuratPengangkutan.trim();
-        const sopirNopolValues = editSopirNopolList
-          .filter((s) => s.value.trim())
-          .map((s) => s.value.trim());
-        updateData.sopirNopolList = sopirNopolValues;
-      }
-
-      await updateDoc(doc(db, collectionName, selectedItem.id), updateData);
-
-      setIsEditModalOpen(false);
-      fetchData();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleDelete = async (item: UnifiedTransaksi) => {
-    const collectionName = item.jenis === "barangMasuk" ? "transaksiBarangMasuk" : "transaksiBarangKeluar";
-    const jenisLabel = item.jenis === "barangMasuk" ? "Barang Masuk" : "Barang Keluar";
-    if (!confirm(`Apakah Anda yakin ingin menghapus data ${jenisLabel} ini?`)) return;
-
-    try {
-      await deleteDoc(doc(db, collectionName, item.id));
-      fetchData();
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleExportExcel = () => {
-    const exportData = filteredData.map((item) => ({
-      "Jenis Transaksi": item.jenis === "barangMasuk" ? "Barang Masuk" : "Barang Keluar",
-      "Tanggal": item.tanggal,
-      "Kode Barang": item.kodeBarang,
-      "Nama Barang": item.namaBarang,
-      "Unit": item.unit,
-      "Jumlah": item.jumlahZAK,
-      "FOT": item.fot,
-      "Customer": item.namaCustomer || "-",
-      "No PI": item.nomorPI || "-",
-      "No Invoice": item.nomorInvoice || "-",
-      "Sopir/Nopol": item.sopirNopol || (item.sopirNopolList ? item.sopirNopolList.join("; ") : "-"),
-      "No Surat Pengangkutan": item.nomorSuratPengangkutan || "-",
-      "Dibuat Oleh": item.createdBy,
-      "Tanggal Dibuat": item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-",
-    }));
-
-    exportToExcel(exportData, `Riwayat_Transaksi_${new Date().toISOString().split("T")[0]}`, "Riwayat Transaksi");
-  };
-
-  const jenisOptions = [
-    { value: "semua", label: "Semua Transaksi" },
-    { value: "barangMasuk", label: "Barang Masuk" },
-    { value: "barangKeluar", label: "Barang Keluar" },
-  ];
-
-  const bulanOptions = [
-    { value: "", label: "Semua Bulan" },
-    { value: "01", label: "Januari" },
-    { value: "02", label: "Februari" },
-    { value: "03", label: "Maret" },
-    { value: "04", label: "April" },
-    { value: "05", label: "Mei" },
-    { value: "06", label: "Juni" },
-    { value: "07", label: "Juli" },
-    { value: "08", label: "Agustus" },
-    { value: "09", label: "September" },
-    { value: "10", label: "Oktober" },
-    { value: "11", label: "November" },
-    { value: "12", label: "Desember" },
-  ];
-
-  const tahunOptions = [
-    { value: "", label: "Semua Tahun" },
-    ...Array.from({ length: 5 }, (_, i) => {
-      const year = (new Date().getFullYear() - 2 + i).toString();
-      return { value: year, label: year };
-    }),
-  ];
-
-  const fotOptions = [
-    { value: "", label: "Semua FOT" },
-    ...fotList.map((f) => ({ value: f, label: f })),
-  ];
+  const [fotList, setFotList] = useState<string[]>([]);
+  const [isNewFot, setIsNewFot] = useState(false);
 
   const unitOptions = [
     { value: "ZAK", label: "ZAK" },
@@ -338,41 +55,243 @@ export default function RiwayatTransaksiPage() {
     { value: "BOTOL", label: "BOTOL" },
   ];
 
-  const getJenisBadgeClass = (jenis: JenisTransaksi) => {
-    if (jenis === "barangMasuk") return "bg-blue-100 text-blue-700";
-    return "bg-orange-100 text-orange-700";
+  useEffect(() => {
+    fetchStockGudang();
+    fetchFotList();
+  }, []);
+
+  const fetchFotList = async () => {
+    try {
+      const q = query(collection(db, "stockGudang"), orderBy("fot", "asc"));
+      const snapshot = await getDocs(q);
+      const fotSet = new Set<string>();
+      snapshot.docs.forEach((doc) => {
+        const fot = doc.data().fot;
+        if (fot && typeof fot === "string" && fot.trim()) {
+          fotSet.add(fot.trim().toUpperCase());
+        }
+      });
+      setFotList(Array.from(fotSet));
+    } catch (error) {
+      console.error(error);
+    }
   };
 
-  const getJenisLabel = (jenis: JenisTransaksi) => {
-    if (jenis === "barangMasuk") return "MASUK";
-    return "KELUAR";
+  const fetchStockGudang = async () => {
+    try {
+      const q = query(collection(db, "stockGudang"), orderBy("namaBarang", "asc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate(),
+        updatedAt: doc.data().updatedAt?.toDate(),
+      } as StockGudang));
+      setStockList(data);
+    } catch (error) {
+      console.error(error);
+    }
   };
+
+  const getDisplayUnit = () => {
+    if (formData.unit === "BOTOL") return "ZAK";
+    return formData.unit;
+  };
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
+    if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
+    if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
+
+    const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
+    const isBotol = formData.unit === "BOTOL";
+
+    if (isUnitBased) {
+      if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0)
+        newErrors.bobotPerUnit = "Bobot per unit tidak valid";
+    }
+
+    if (!formData.stokTersediaUnit || parseFloat(formData.stokTersediaUnit) < 0)
+      newErrors.stokTersediaUnit = "Stok tersedia tidak valid";
+
+    if (isBotol) {
+      if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0)
+        newErrors.botolPerDus = "Jumlah botol per dus tidak valid";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    setIsSubmitting(true);
+    setSuccessMessage("");
+
+    try {
+      const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
+      const isBotol = formData.unit === "BOTOL";
+      const isKG = formData.unit === "KG";
+      const stokTersediaUnit = parseFloat(formData.stokTersediaUnit) || 0;
+      const bobotPerUnit = parseFloat(formData.bobotPerUnit) || 50;
+      const botolPerDus = isBotol ? parseFloat(formData.botolPerDus) || 20 : null;
+
+      if (isEditing && editId) {
+        const docData: any = {
+          fot: formData.fot.trim().toUpperCase(),
+          kodeBarang: formData.kodeBarang.trim().toUpperCase(),
+          namaBarang: formData.namaBarang.trim(),
+          unit: formData.unit,
+          bobotPerUnit: bobotPerUnit,
+          updatedAt: serverTimestamp(),
+        };
+
+        if (isBotol) {
+          docData.botolPerDus = botolPerDus;
+          docData.displayUnit = "ZAK";
+        }
+
+        await updateDoc(doc(db, "stockGudang", editId), docData);
+        setSuccessMessage("Data stock gudang berhasil diperbarui!");
+      } else {
+        const docData: any = {
+          fot: formData.fot.trim().toUpperCase(),
+          kodeBarang: formData.kodeBarang.trim().toUpperCase(),
+          namaBarang: formData.namaBarang.trim(),
+          unit: formData.unit,
+          bobotPerUnit: bobotPerUnit,
+          stokAwalUnit: isKG ? 0 : stokTersediaUnit,
+          stokAwalKG: 0,
+          barangMasukUnit: 0,
+          barangMasukKG: 0,
+          barangKeluarUnit: 0,
+          barangKeluarKG: 0,
+          stokAkhirUnit: isKG ? 0 : stokTersediaUnit,
+          stokAkhirKG: 0,
+          createdBy: user?.nama || "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        if (isBotol) {
+          docData.botolPerDus = botolPerDus;
+          docData.displayUnit = "ZAK";
+        }
+
+        await addDoc(collection(db, "stockGudang"), docData);
+        setSuccessMessage("Stock gudang berhasil disimpan!");
+      }
+
+      resetForm();
+      fetchStockGudang();
+      fetchFotList();
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (error) {
+      console.error(error);
+      setErrors({ submit: "Gagal menyimpan data. Silakan coba lagi." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (stock: StockGudang) => {
+    setIsEditing(true);
+    setEditId(stock.id);
+    setFormData({
+      fot: stock.fot,
+      kodeBarang: stock.kodeBarang,
+      namaBarang: stock.namaBarang,
+      unit: stock.unit,
+      bobotPerUnit: stock.bobotPerUnit?.toString() || "50",
+      stokTersediaUnit: stock.stokAkhirUnit?.toString() || "",
+      botolPerDus: stock.botolPerDus?.toString() || "20",
+    });
+    setIsNewFot(!fotList.includes(stock.fot));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "stockGudang", id));
+      setSuccessMessage("Data stock gudang berhasil dihapus!");
+      setShowDeleteConfirm(null);
+      fetchStockGudang();
+      fetchFotList();
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (error) {
+      console.error(error);
+      setErrors({ submit: "Gagal menghapus data. Silakan coba lagi." });
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      fot: "",
+      kodeBarang: "",
+      namaBarang: "",
+      unit: "ZAK",
+      bobotPerUnit: "50",
+      stokTersediaUnit: "",
+      botolPerDus: "20",
+    });
+    setIsNewFot(false);
+    setIsEditing(false);
+    setEditId(null);
+    setErrors({});
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+    if (errors[name]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
+  };
+
+  const fotOptions = [
+    { value: "", label: "Pilih atau tambah FOT..." },
+    ...fotList.map((f) => ({ value: f, label: f })),
+    { value: "__new__", label: "+ Tambah FOT Baru" },
+  ];
+
+  const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
+  const isBotol = formData.unit === "BOTOL";
+
+  const filteredStockList = stockList.filter((stock) => {
+    const matchesSearch =
+      stock.namaBarang.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      stock.kodeBarang.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      stock.fot.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFot = filterFot ? stock.fot === filterFot : true;
+    return matchesSearch && matchesFot;
+  });
+
+  const uniqueFotList = Array.from(new Set(stockList.map((s) => s.fot))).sort();
 
   const columns = [
     {
-      key: "jenis",
-      header: "Jenis",
+      key: "fot",
+      header: "FOT",
       width: "100px",
-      render: (row: UnifiedTransaksi) => (
-        <span className={`px-2 py-1 rounded-md text-xs font-bold ${getJenisBadgeClass(row.jenis)}`}>
-          {getJenisLabel(row.jenis)}
+      render: (row: StockGudang) => (
+        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">
+          {row.fot}
         </span>
-      ),
-    },
-    {
-      key: "tanggal",
-      header: "Tanggal",
-      width: "120px",
-      render: (row: UnifiedTransaksi) => (
-        <span className="font-medium text-gray-800">{row.tanggal}</span>
       ),
     },
     {
       key: "kodeBarang",
       header: "Kode",
       width: "120px",
-      render: (row: UnifiedTransaksi) => (
-        <span className="font-mono font-bold text-green-700 bg-green-50 px-2 py-1 rounded">
+      render: (row: StockGudang) => (
+        <span className="font-mono font-semibold text-green-700 bg-green-50 px-2 py-1 rounded">
           {row.kodeBarang}
         </span>
       ),
@@ -380,87 +299,120 @@ export default function RiwayatTransaksiPage() {
     {
       key: "namaBarang",
       header: "Nama Barang",
-      render: (row: UnifiedTransaksi) => (
-        <span className="font-semibold text-gray-800">{row.namaBarang}</span>
+      render: (row: StockGudang) => (
+        <span className="font-medium text-gray-800">{row.namaBarang}</span>
       ),
     },
     {
       key: "unit",
       header: "Unit",
       width: "80px",
-      render: (row: UnifiedTransaksi) => (
-        <span className={`px-2 py-1 rounded-md text-xs font-bold ${
-          row.unit === "ZAK" ? "bg-blue-100 text-blue-700" :
-          row.unit === "DUS" ? "bg-purple-100 text-purple-700" :
-          row.unit === "BOTOL" ? "bg-pink-100 text-pink-700" :
-          "bg-gray-100 text-gray-700"
-        }`}>
+      render: (row: StockGudang) => (
+        <span
+          className={`px-2 py-1 rounded-md text-xs font-bold ${
+            row.unit === "ZAK"
+              ? "bg-blue-100 text-blue-700"
+              : row.unit === "DUS"
+              ? "bg-purple-100 text-purple-700"
+              : row.unit === "BOTOL"
+              ? "bg-pink-100 text-pink-700"
+              : "bg-gray-100 text-gray-700"
+          }`}
+        >
           {row.unit}
         </span>
       ),
     },
     {
-      key: "jumlah",
-      header: "Jumlah",
+      key: "konversi",
+      header: "Konversi",
+      width: "140px",
+      render: (row: StockGudang) => {
+        if (row.unit === "BOTOL") {
+          return (
+            <div className="text-xs">
+              <p className="font-mono text-pink-600">{row.botolPerDus || 20} botol/DUS</p>
+            </div>
+          );
+        }
+        return (
+          <span className="font-mono text-gray-600">
+            {row.unit === "KG" ? "-" : `${row.bobotPerUnit?.toLocaleString()} KG`}
+          </span>
+        );
+      },
+    },
+    {
+      key: "stokAwal",
+      header: "Stok Awal",
       width: "120px",
-      render: (row: UnifiedTransaksi) => (
-        <span className="font-mono font-bold text-gray-700">
-          {row.jumlahZAK.toLocaleString()} {row.unit === "KG" ? "KG" : "ZAK"}
-        </span>
+      render: (row: StockGudang) => (
+        <div className="text-xs">
+          {row.unit !== "KG" && (
+            <p className="font-mono text-gray-600">
+              {row.stokAwalUnit?.toLocaleString()} {row.unit === "BOTOL" ? "ZAK" : row.unit}
+            </p>
+          )}
+          <p className="font-mono text-gray-500">{row.stokAwalKG?.toLocaleString()} KG</p>
+        </div>
       ),
     },
     {
-      key: "fot",
-      header: "FOT",
+      key: "barangMasuk",
+      header: "Masuk",
       width: "100px",
-      render: (row: UnifiedTransaksi) => (
-        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">
-          {row.fot}
-        </span>
+      render: (row: StockGudang) => (
+        <div className="text-xs">
+          {row.unit !== "KG" && (
+            <p className="font-mono text-green-600">
+              +{row.barangMasukUnit?.toLocaleString()} {row.unit === "BOTOL" ? "ZAK" : row.unit}
+            </p>
+          )}
+          <p className="font-mono text-green-500">+{row.barangMasukKG?.toLocaleString()} KG</p>
+        </div>
       ),
     },
     {
-      key: "info",
-      header: "Info Tambahan",
-      render: (row: UnifiedTransaksi) => (
+      key: "barangKeluar",
+      header: "Keluar",
+      width: "100px",
+      render: (row: StockGudang) => (
+        <div className="text-xs">
+          {row.unit !== "KG" && (
+            <p className="font-mono text-red-600">
+              -{row.barangKeluarUnit?.toLocaleString()} {row.unit === "BOTOL" ? "ZAK" : row.unit}
+            </p>
+          )}
+          <p className="font-mono text-red-500">-{row.barangKeluarKG?.toLocaleString()} KG</p>
+        </div>
+      ),
+    },
+    {
+      key: "stokAkhir",
+      header: "Stok Akhir",
+      width: "140px",
+      render: (row: StockGudang) => (
         <div className="text-sm">
-          {row.jenis === "barangKeluar" && row.namaCustomer && (
-            <p className="text-gray-600">{row.namaCustomer}</p>
+          {row.unit !== "KG" && (
+            <p className="font-mono font-bold text-green-700">
+              {row.unit === "BOTOL"
+                ? `${row.stokAkhirUnit?.toLocaleString()} ZAK`
+                : `${row.stokAkhirUnit?.toLocaleString()} ${row.unit}`}
+            </p>
           )}
-          {row.jenis === "barangKeluar" && row.nomorPI && (
-            <p className="text-xs text-gray-400">{row.nomorPI}</p>
-          )}
-          {row.jenis === "barangMasuk" && row.sopirNopol && (
-            <p className="text-gray-600">{row.sopirNopol}</p>
-          )}
+          <p className="font-mono font-bold text-green-600">{row.stokAkhirKG?.toLocaleString()} KG</p>
         </div>
       ),
     },
     {
       key: "aksi",
       header: "Aksi",
-      width: "150px",
-      render: (row: UnifiedTransaksi) => (
+      width: "120px",
+      render: (row: StockGudang) => (
         <div className="flex items-center gap-2">
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDetail(row);
-            }}
+            onClick={() => handleEdit(row)}
             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            title="Detail"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-            </svg>
-          </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleEdit(row);
-            }}
-            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
             title="Edit"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -468,10 +420,7 @@ export default function RiwayatTransaksiPage() {
             </svg>
           </button>
           <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDelete(row);
-            }}
+            onClick={() => setShowDeleteConfirm(row.id)}
             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             title="Hapus"
           >
@@ -484,408 +433,265 @@ export default function RiwayatTransaksiPage() {
     },
   ];
 
-  const getTotalMasuk = () => {
-    return filteredData.filter((d) => d.jenis === "barangMasuk").length;
-  };
-
-  const getTotalKeluar = () => {
-    return filteredData.filter((d) => d.jenis === "barangKeluar").length;
-  };
-
-  const isBotol = editForm.unit === "BOTOL";
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-7xl mx-auto">
       <Header
-        title="Riwayat Transaksi"
-        subtitle="Lihat dan kelola riwayat transaksi barang masuk dan keluar"
+        title="Laporan & Input Stock Gudang"
+        subtitle="Kelola data stock barang per FOT"
       />
 
-      <Card>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-          <div className="relative w-full sm:w-96">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              placeholder="Cari kode, nama barang, FOT, customer..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
-            />
-          </div>
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={handleExportExcel}>
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-              Export Excel
-            </Button>
-          </div>
+      {successMessage && (
+        <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3 text-green-700">
+          <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="font-medium">{successMessage}</span>
         </div>
+      )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <Select
-            label="Filter Jenis Transaksi"
-            value={filterJenis}
-            onChange={(e) => setFilterJenis(e.target.value as "semua" | JenisTransaksi)}
-            options={jenisOptions}
-          />
-          <Select
-            label="Filter FOT"
-            value={filterFot}
-            onChange={(e) => setFilterFot(e.target.value)}
-            options={fotOptions}
-          />
-          <Select
-            label="Filter Bulan"
-            value={filterBulan}
-            onChange={(e) => setFilterBulan(e.target.value)}
-            options={bulanOptions}
-          />
-          <Select
-            label="Filter Tahun"
-            value={filterTahun}
-            onChange={(e) => setFilterTahun(e.target.value)}
-            options={tahunOptions}
-          />
+      {errors.submit && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+          <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="font-medium">{errors.submit}</span>
         </div>
+      )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
-            <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total Transaksi</p>
-            <p className="text-2xl font-bold text-blue-700 mt-1">{filteredData.length}</p>
-          </div>
-          <div className="p-4 bg-green-50 rounded-xl border border-green-100">
-            <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Barang Masuk</p>
-            <p className="text-2xl font-bold text-green-700 mt-1">{getTotalMasuk()}</p>
-          </div>
-          <div className="p-4 bg-orange-50 rounded-xl border border-orange-100">
-            <p className="text-xs text-orange-600 uppercase tracking-wide font-semibold">Barang Keluar</p>
-            <p className="text-2xl font-bold text-orange-700 mt-1">{getTotalKeluar()}</p>
-          </div>
-          <div className="p-4 bg-purple-50 rounded-xl border border-purple-100">
-            <p className="text-xs text-purple-600 uppercase tracking-wide font-semibold">Total Jumlah</p>
-            <p className="text-2xl font-bold text-purple-700 mt-1">
-              {filteredData.reduce((sum, d) => sum + d.jumlahZAK, 0).toLocaleString()}
-            </p>
-          </div>
-        </div>
-
-        <div className="text-sm text-gray-500 mb-4">
-          Menampilkan {filteredData.length} dari {data.length} data
-          {filterJenis !== "semua" && ` | Jenis: ${filterJenis === "barangMasuk" ? "Barang Masuk" : "Barang Keluar"}`}
-          {filterFot && ` | FOT: ${filterFot}`}
-          {filterBulan && ` | Bulan: ${bulanOptions.find((b) => b.value === filterBulan)?.label}`}
-          {filterTahun && ` | Tahun: ${filterTahun}`}
-        </div>
-
-        <Table
-          columns={columns}
-          data={filteredData}
-          isLoading={isLoading}
-          emptyMessage="Belum ada data transaksi"
-          keyExtractor={(row) => `${row.jenis}_${row.id}`}
-          onRowClick={handleDetail}
-        />
-      </Card>
-
-      <Modal
-        isOpen={isDetailModalOpen}
-        onClose={() => setIsDetailModalOpen(false)}
-        title="Detail Transaksi"
-        size="lg"
-        footer={
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsDetailModalOpen(false)}>
-              Tutup
-            </Button>
-          </div>
-        }
-      >
-        {selectedItem && (
-          <div className="space-y-6">
-            <div className="flex items-center gap-3 mb-4">
-              <span className={`px-3 py-1.5 rounded-lg text-sm font-bold ${getJenisBadgeClass(selectedItem.jenis)}`}>
-                {selectedItem.jenis === "barangMasuk" ? "TRANSAKSI BARANG MASUK" : "TRANSAKSI BARANG KELUAR"}
-              </span>
-              <span className="text-sm text-gray-500">{selectedItem.tanggal}</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-gray-50 rounded-xl">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Kode Barang</p>
-                <p className="text-lg font-bold text-green-700 font-mono">{selectedItem.kodeBarang}</p>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-xl">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Nama Barang</p>
-                <p className="text-lg font-semibold text-gray-800">{selectedItem.namaBarang}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-gray-50 rounded-xl">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Unit</p>
-                <p className="text-lg font-bold text-gray-800">{selectedItem.unit}</p>
-              </div>
-              <div className="p-4 bg-gray-50 rounded-xl">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">FOT</p>
-                <p className="text-lg font-bold text-indigo-700 font-mono">{selectedItem.fot}</p>
-              </div>
-            </div>
-
-            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-              <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">Jumlah</p>
-              <p className="text-3xl font-bold text-amber-700 font-mono">
-                {selectedItem.jumlahZAK.toLocaleString()} {selectedItem.unit === "KG" ? "KG" : "ZAK"}
-              </p>
-            </div>
-
-            {selectedItem.unit === "BOTOL" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 bg-pink-50 rounded-xl border border-pink-200">
-                  <p className="text-xs text-pink-600 uppercase tracking-wide font-semibold">Botol per DUS</p>
-                  <p className="text-xl font-bold text-pink-700 font-mono">{selectedItem.botolPerDus?.toLocaleString() || "-"}</p>
-                </div>
-                <div className="p-4 bg-pink-50 rounded-xl border border-pink-200">
-                  <p className="text-xs text-pink-600 uppercase tracking-wide font-semibold">Bobot per Botol</p>
-                  <p className="text-xl font-bold text-pink-700 font-mono">{selectedItem.bobotPerBotol?.toLocaleString() || "-"} ml</p>
-                </div>
-              </div>
-            )}
-
-            {selectedItem.jenis === "barangMasuk" && selectedItem.sopirNopol && (
-              <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold mb-1">Sopir / Nopol</p>
-                <p className="text-lg font-semibold text-blue-700">{selectedItem.sopirNopol}</p>
-              </div>
-            )}
-
-            {selectedItem.jenis === "barangKeluar" && (
-              <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Nama Customer</p>
-                    <p className="text-lg font-semibold text-blue-700">{selectedItem.namaCustomer}</p>
-                  </div>
-                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">No PI</p>
-                    <p className="text-lg font-semibold text-blue-700 font-mono">{selectedItem.nomorPI}</p>
-                  </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <Card
+              title={isEditing ? "Edit Stock Gudang" : "Input Stock Gudang"}
+              icon={
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                  />
+                </svg>
+              }
+            >
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    FOT (Tempat Gudang)
+                  </label>
+                  <Select
+                    name="fot"
+                    value={isNewFot ? "__new__" : formData.fot}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "__new__") {
+                        setIsNewFot(true);
+                        setFormData((prev) => ({ ...prev, fot: "" }));
+                      } else {
+                        setIsNewFot(false);
+                        setFormData((prev) => ({ ...prev, fot: value }));
+                      }
+                    }}
+                    options={fotOptions}
+                  />
+                  {isNewFot && (
+                    <Input
+                      type="text"
+                      name="fot"
+                      value={formData.fot}
+                      onChange={handleChange}
+                      placeholder="Masukkan nama FOT baru"
+                      error={errors.fot}
+                      className="mt-2"
+                    />
+                  )}
+                  {!isNewFot && errors.fot && (
+                    <p className="mt-1 text-sm text-red-600">{errors.fot}</p>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">No Invoice</p>
-                    <p className="text-lg font-semibold text-blue-700 font-mono">{selectedItem.nomorInvoice}</p>
-                  </div>
-                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">No Surat Pengangkutan</p>
-                    <p className="text-lg font-semibold text-blue-700 font-mono">{selectedItem.nomorSuratPengangkutan}</p>
-                  </div>
-                </div>
+                <Input
+                  label="Kode Barang"
+                  type="text"
+                  name="kodeBarang"
+                  value={formData.kodeBarang}
+                  onChange={handleChange}
+                  placeholder="Contoh: PUP-001"
+                  error={errors.kodeBarang}
+                  required
+                />
 
-                {selectedItem.sopirNopolList && selectedItem.sopirNopolList.length > 0 && (
-                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold mb-2">Sopir / Nopol</p>
-                    <div className="space-y-2">
-                      {selectedItem.sopirNopolList.map((sn, idx) => (
-                        <p key={idx} className="text-sm font-medium text-blue-700">
-                          {idx + 1}. {sn}
-                        </p>
-                      ))}
-                    </div>
+                <Input
+                  label="Nama Barang"
+                  type="text"
+                  name="namaBarang"
+                  value={formData.namaBarang}
+                  onChange={handleChange}
+                  placeholder="Contoh: Pupuk Urea"
+                  error={errors.namaBarang}
+                  required
+                />
+
+                <Select
+                  label="Unit"
+                  name="unit"
+                  value={formData.unit}
+                  onChange={handleChange}
+                  options={unitOptions}
+                  required
+                />
+
+                {isUnitBased && (
+                  <Input
+                    label={isBotol ? "Bobot Per Botol (ml)" : "Bobot Per Unit (KG)"}
+                    type="number"
+                    name="bobotPerUnit"
+                    value={formData.bobotPerUnit}
+                    onChange={handleChange}
+                    placeholder={isBotol ? "Contoh: 500" : "Contoh: 50"}
+                    error={errors.bobotPerUnit}
+                    required
+                  />
+                )}
+
+                {isBotol && (
+                  <Input
+                    label="Botol Per DUS"
+                    type="number"
+                    name="botolPerDus"
+                    value={formData.botolPerDus}
+                    onChange={handleChange}
+                    placeholder="Contoh: 20"
+                    error={errors.botolPerDus}
+                    required
+                  />
+                )}
+
+                {!isEditing && (
+                  <Input
+                    label={`Stok Tersedia (${getDisplayUnit()})`}
+                    type="number"
+                    name="stokTersediaUnit"
+                    value={formData.stokTersediaUnit}
+                    onChange={handleChange}
+                    placeholder={`Masukkan stok tersedia dalam ${getDisplayUnit()}`}
+                    error={errors.stokTersediaUnit}
+                    required
+                  />
+                )}
+
+                {formData.stokTersediaUnit && !isEditing && (
+                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                    <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">
+                      Preview Stok
+                    </p>
+                    <p className="text-3xl font-bold text-amber-700 font-mono">
+                      {parseFloat(formData.stokTersediaUnit).toLocaleString()} {getDisplayUnit()}
+                    </p>
                   </div>
                 )}
-              </>
-            )}
-
-            <div className="p-4 bg-gray-50 rounded-xl">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Informasi Tambahan</p>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <p><span className="text-gray-500">Dibuat Oleh:</span> <span className="font-medium">{selectedItem.createdBy}</span></p>
-                <p><span className="text-gray-500">Tanggal Dibuat:</span> <span className="font-medium">{selectedItem.createdAt ? new Date(selectedItem.createdAt).toLocaleDateString("id-ID") : "-"}</span></p>
               </div>
+            </Card>
+
+            <div className="flex items-center justify-end gap-4">
+              {isEditing && (
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Batal Edit
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  resetForm();
+                }}
+              >
+                Reset Form
+              </Button>
+              <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting}>
+                {isEditing ? "Update Stock" : "Simpan Stock"}
+              </Button>
             </div>
-          </div>
-        )}
-      </Modal>
+          </form>
+        </div>
 
-      <Modal
-        isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
-        title={`Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : "Transaksi Barang Keluar"}`}
-        size="lg"
-        footer={
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
-              Batal
-            </Button>
-            <Button variant="primary" onClick={handleUpdate} isLoading={isSubmitting}>
-              Simpan Perubahan
-            </Button>
-          </div>
-        }
-      >
-        <form onSubmit={handleUpdate} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <Input
-              label="Tanggal"
-              type="date"
-              value={editForm.tanggal}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, tanggal: e.target.value }))}
-              required
-            />
-
-            <Input
-              label="Kode Barang"
-              type="text"
-              value={editForm.kodeBarang}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, kodeBarang: e.target.value }))}
-              required
-            />
-
-            <Input
-              label="Nama Barang"
-              type="text"
-              value={editForm.namaBarang}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, namaBarang: e.target.value }))}
-              required
-            />
-
-            <Select
-              label="Unit"
-              value={editForm.unit}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, unit: e.target.value as "ZAK" | "DUS" | "KG" | "BOTOL" }))}
-              options={unitOptions}
-              required
-            />
-
-            <Input
-              label={`Jumlah (${editForm.unit === "KG" ? "KG" : "ZAK"})`}
-              type="number"
-              value={editForm.jumlahZAK}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, jumlahZAK: e.target.value }))}
-              required
-            />
-
-            <Input
-              label="FOT"
-              type="text"
-              value={editForm.fot}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, fot: e.target.value }))}
-              required
-            />
-          </div>
-
-          {isBotol && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Input
-                label="Botol per DUS"
-                type="number"
-                value={editForm.botolPerDus}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, botolPerDus: e.target.value }))}
-              />
-              <Input
-                label="Bobot Per Botol (ml)"
-                type="number"
-                value={editForm.bobotPerBotol}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, bobotPerBotol: e.target.value }))}
-              />
-            </div>
-          )}
-
-          {selectedItem?.jenis === "barangMasuk" && (
-            <Input
-              label="Sopir / Nopol"
-              type="text"
-              value={editForm.sopirNopol}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, sopirNopol: e.target.value }))}
-              required
-            />
-          )}
-
-          {selectedItem?.jenis === "barangKeluar" && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Input
-                  label="Nama Customer"
-                  type="text"
-                  value={editForm.namaCustomer}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, namaCustomer: e.target.value }))}
-                  required
+        <div className="lg:col-span-2">
+          <Card
+            title={`Data Stock Gudang (${filteredStockList.length} item)`}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
                 />
-
+              </svg>
+            }
+          >
+            <div className="mb-4 flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
                 <Input
-                  label="No PI / Proforma Invoice"
                   type="text"
-                  value={editForm.nomorPI}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, nomorPI: e.target.value }))}
-                  required
-                />
-
-                <Input
-                  label="No Invoice"
-                  type="text"
-                  value={editForm.nomorInvoice}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, nomorInvoice: e.target.value }))}
-                  required
-                />
-
-                <Input
-                  label="Nomor Surat Pengangkutan"
-                  type="text"
-                  value={editForm.nomorSuratPengangkutan}
-                  onChange={(e) => setEditForm((prev) => ({ ...prev, nomorSuratPengangkutan: e.target.value }))}
-                  required
+                  placeholder="Cari nama barang, kode, atau FOT..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full"
                 />
               </div>
+              <div className="sm:w-48">
+                <Select
+                  value={filterFot}
+                  onChange={(e) => setFilterFot(e.target.value)}
+                  options={[
+                    { value: "", label: "Semua FOT" },
+                    ...uniqueFotList.map((f) => ({ value: f, label: f })),
+                  ]}
+                />
+              </div>
+            </div>
 
-              <Card title="Sopir & Nopol">
-                <div className="space-y-4">
-                  {editSopirNopolList.map((item, index) => (
-                    <div key={item.id} className="flex items-center gap-3">
-                      <div className="flex-1">
-                        <Input
-                          label={index === 0 ? "Sopir / Nopol" : `Sopir / Nopol ${index + 1}`}
-                          type="text"
-                          value={item.value}
-                          onChange={(e) => handleEditSopirNopolChange(item.id, e.target.value)}
-                          placeholder="Contoh: Budi / B 1234 ABC"
-                          required={index === 0}
-                        />
-                      </div>
-                      {editSopirNopolList.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeEditSopirNopol(item.id)}
-                          className="mt-6 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addEditSopirNopol}
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                    </svg>
-                    Tambah Sopir/Nopol
-                  </Button>
-                </div>
-              </Card>
-            </>
-          )}
-        </form>
-      </Modal>
+            <Table
+              columns={columns}
+              data={filteredStockList}
+              isLoading={false}
+              emptyMessage="Belum ada data stock gudang"
+              keyExtractor={(row) => row.id}
+            />
+          </Card>
+        </div>
+      </div>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-red-100 rounded-full">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Konfirmasi Hapus</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Apakah Anda yakin ingin menghapus data stock ini? Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(null)}>
+                Batal
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                className="bg-red-600 hover:bg-red-700"
+                onClick={() => handleDelete(showDeleteConfirm)}
+              >
+                Hapus Data
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
