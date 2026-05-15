@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, where, doc, updateDoc, getDoc } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -23,6 +23,11 @@ interface StockOption {
   stokAkhirKG: number;
 }
 
+interface SopirNopolItem {
+  id: number;
+  value: string;
+}
+
 export default function TransaksiBarangMasukPage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockOption[]>([]);
@@ -39,10 +44,10 @@ export default function TransaksiBarangMasukPage() {
     jumlahZAK: "",
     botolPerDus: "",
     bobotPerBotol: "",
-    sopirNopol: "",
     fot: "",
   });
 
+  const [sopirNopolList, setSopirNopolList] = useState<SopirNopolItem[]>([{ id: 1, value: "" }]);
   const [selectedStock, setSelectedStock] = useState<StockOption | null>(null);
 
   useEffect(() => {
@@ -129,14 +134,39 @@ export default function TransaksiBarangMasukPage() {
     }
   };
 
+  const handleSopirNopolChange = (id: number, value: string) => {
+    setSopirNopolList((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, value } : item))
+    );
+    if (errors.sopirNopol) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors.sopirNopol;
+        return newErrors;
+      });
+    }
+  };
+
+  const addSopirNopol = () => {
+    const newId = sopirNopolList.length > 0 ? Math.max(...sopirNopolList.map((s) => s.id)) + 1 : 1;
+    setSopirNopolList((prev) => [...prev, { id: newId, value: "" }]);
+  };
+
+  const removeSopirNopol = (id: number) => {
+    if (sopirNopolList.length <= 1) return;
+    setSopirNopolList((prev) => prev.filter((item) => item.id !== id));
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
     if (!formData.kodeBarang) newErrors.kodeBarang = "Kode barang wajib dipilih";
     if (!formData.namaBarang) newErrors.namaBarang = "Nama barang wajib diisi";
     if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah ZAK harus lebih dari 0";
-    if (!formData.sopirNopol.trim()) newErrors.sopirNopol = "Sopir/Nopol wajib diisi";
     if (!formData.fot.trim()) newErrors.fot = "FOT wajib dipilih";
+
+    const validSopir = sopirNopolList.filter((s) => s.value.trim());
+    if (validSopir.length === 0) newErrors.sopirNopol = "Minimal satu Sopir/Nopol wajib diisi";
 
     if (formData.unit === "BOTOL") {
       if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Botol per DUS tidak valid";
@@ -169,13 +199,17 @@ export default function TransaksiBarangMasukPage() {
         totalKG = jumlahZAK * selectedStock.bobotPerUnit;
       }
 
+      const sopirNopolValues = sopirNopolList
+        .filter((s) => s.value.trim())
+        .map((s) => s.value.trim());
+
       const transaksiData: any = {
         tanggal: formData.tanggal,
         kodeBarang: formData.kodeBarang,
         namaBarang: formData.namaBarang,
         unit: formData.unit,
         jumlahZAK: jumlahZAK,
-        sopirNopol: formData.sopirNopol.trim(),
+        sopirNopolList: sopirNopolValues,
         fot: formData.fot.trim().toUpperCase(),
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
@@ -224,9 +258,9 @@ export default function TransaksiBarangMasukPage() {
         jumlahZAK: "",
         botolPerDus: "",
         bobotPerBotol: "",
-        sopirNopol: "",
         fot: "",
       });
+      setSopirNopolList([{ id: 1, value: "" }]);
       setSelectedStock(null);
 
       fetchStockGudang();
@@ -379,51 +413,51 @@ export default function TransaksiBarangMasukPage() {
                 />
               </>
             )}
-
-            <Input
-              label="Sopir / Nopol"
-              type="text"
-              name="sopirNopol"
-              value={formData.sopirNopol}
-              onChange={handleChange}
-              placeholder="Contoh: Budi / B 1234 ABC"
-              error={errors.sopirNopol}
-              required
-            />
           </div>
+        </Card>
 
-          {selectedStock && formData.jumlahZAK && (
-            <div className="mt-6 p-4 bg-amber-50 rounded-xl border border-amber-200">
-              <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-2">Preview Perhitungan</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Jumlah Input</p>
-                  <p className="text-lg font-bold text-amber-700 font-mono">
-                    {parseFloat(formData.jumlahZAK).toLocaleString()} {formData.unit === "KG" ? "KG" : "ZAK"}
-                  </p>
+        <Card title="Sopir & Nopol">
+          <div className="space-y-4">
+            {sopirNopolList.map((item, index) => (
+              <div key={item.id} className="flex items-center gap-3">
+                <div className="flex-1">
+                  <Input
+                    label={index === 0 ? "Sopir / Nopol" : `Sopir / Nopol ${index + 1}`}
+                    type="text"
+                    value={item.value}
+                    onChange={(e) => handleSopirNopolChange(item.id, e.target.value)}
+                    placeholder="Contoh: Budi / B 1234 ABC"
+                    required={index === 0}
+                  />
                 </div>
-                <div>
-                  <p className="text-sm text-gray-600">Konversi ke KG</p>
-                  <p className="text-lg font-bold text-green-700 font-mono">
-                    {formData.unit === "BOTOL"
-                      ? `${((parseFloat(formData.jumlahZAK) || 0) * 10 * (parseFloat(formData.botolPerDus) || 1) * (parseFloat(formData.bobotPerBotol) || 0) / 1000).toLocaleString()} KG`
-                      : `${((parseFloat(formData.jumlahZAK) || 0) * selectedStock.bobotPerUnit).toLocaleString()} KG`
-                    }
-                  </p>
-                </div>
+                {sopirNopolList.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => removeSopirNopol(item.id)}
+                    className="mt-6 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                )}
               </div>
-              {formData.unit === "BOTOL" && (
-                <p className="text-xs text-amber-500 mt-2">
-                  Perhitungan: {formData.jumlahZAK} ZAK × 10 DUS/ZAK × {formData.botolPerDus || 0} botol/DUS × {formData.bobotPerBotol || 0} ml ÷ 1000 = KG
-                </p>
-              )}
-              {formData.unit !== "BOTOL" && formData.unit !== "KG" && (
-                <p className="text-xs text-amber-500 mt-2">
-                  Perhitungan: {formData.jumlahZAK} {formData.unit} × {selectedStock.bobotPerUnit} KG/{formData.unit}
-                </p>
-              )}
-            </div>
-          )}
+            ))}
+            {errors.sopirNopol && (
+              <p className="text-sm text-red-600">{errors.sopirNopol}</p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addSopirNopol}
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Tambah Sopir/Nopol
+            </Button>
+          </div>
         </Card>
 
         <div className="flex items-center justify-end gap-4 pt-4">
@@ -439,9 +473,9 @@ export default function TransaksiBarangMasukPage() {
                 jumlahZAK: "",
                 botolPerDus: "",
                 bobotPerBotol: "",
-                sopirNopol: "",
                 fot: "",
               });
+              setSopirNopolList([{ id: 1, value: "" }]);
               setSelectedStock(null);
               setErrors({});
             }}
