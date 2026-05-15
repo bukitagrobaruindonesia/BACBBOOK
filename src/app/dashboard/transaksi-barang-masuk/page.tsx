@@ -6,10 +6,8 @@ import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
 import Input from "@/app/components/ui/Input";
-import Select from "@/app/components/ui/Select";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
-import { StockGudang } from "@/app/types";
 
 interface StockOption {
   id: string;
@@ -32,7 +30,6 @@ interface SopirNopolItem {
 
 export default function TransaksiBarangMasukPage() {
   const { user } = useAuth();
-  const [stockList, setStockList] = useState<StockOption[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -51,71 +48,6 @@ export default function TransaksiBarangMasukPage() {
   const [sopirNopolList, setSopirNopolList] = useState<SopirNopolItem[]>([
     { id: 1, namaSopir: "", nopol: "", nomorSIM: "" },
   ]);
-  const [selectedStock, setSelectedStock] = useState<StockOption | null>(null);
-
-  useEffect(() => {
-    fetchStockGudang();
-  }, []);
-
-  const fetchStockGudang = async () => {
-    try {
-      const q = query(collection(db, "stockGudang"), orderBy("namaBarang", "asc"));
-      const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        kodeBarang: doc.data().kodeBarang,
-        namaBarang: doc.data().namaBarang,
-        unit: doc.data().unit,
-        fot: doc.data().fot,
-        bobotPerUnit: doc.data().bobotPerUnit || 50,
-        botolPerDus: doc.data().botolPerDus,
-        stokAkhirUnit: doc.data().stokAkhirUnit || 0,
-        stokAkhirKG: doc.data().stokAkhirKG || 0,
-      } as StockOption));
-      setStockList(data);
-    } catch (error) {
-      console.error(error);
-    }
-  };
-
-  const handleStockChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const value = e.target.value;
-    if (!value) {
-      setSelectedStock(null);
-      setFormData((prev) => ({
-        ...prev,
-        kodeBarang: "",
-        namaBarang: "",
-        unit: "ZAK",
-        botolPerDus: "",
-        bobotPerBotol: "",
-        fot: "",
-      }));
-      return;
-    }
-
-    const stock = stockList.find((s) => s.id === value);
-    if (stock) {
-      setSelectedStock(stock);
-      setFormData((prev) => ({
-        ...prev,
-        kodeBarang: stock.kodeBarang,
-        namaBarang: stock.namaBarang,
-        unit: stock.unit,
-        fot: stock.fot,
-        botolPerDus: stock.botolPerDus ? stock.botolPerDus.toString() : "",
-        bobotPerBotol: stock.unit === "BOTOL" ? (stock.bobotPerUnit ? stock.bobotPerUnit.toString() : "") : "",
-      }));
-    }
-
-    if (errors.kodeBarang) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.kodeBarang;
-        return newErrors;
-      });
-    }
-  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -148,8 +80,8 @@ export default function TransaksiBarangMasukPage() {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
-    if (!formData.kodeBarang) newErrors.kodeBarang = "Kode barang wajib dipilih";
-    if (!formData.namaBarang) newErrors.namaBarang = "Nama barang wajib diisi";
+    if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
+    if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
     if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah ZAK harus lebih dari 0";
     if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
 
@@ -165,7 +97,6 @@ export default function TransaksiBarangMasukPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
-    if (!selectedStock) return;
 
     setIsSubmitting(true);
     setSuccessMessage("");
@@ -180,8 +111,10 @@ export default function TransaksiBarangMasukPage() {
         const dusPerZak = 10;
         const totalBotol = jumlahZAK * dusPerZak * (botolPerDus || 1);
         totalKG = (totalBotol * (bobotPerBotol || 0)) / 1000;
+      } else if (formData.unit === "KG") {
+        totalKG = jumlahZAK;
       } else {
-        totalKG = jumlahZAK * selectedStock.bobotPerUnit;
+        totalKG = jumlahZAK * 50;
       }
 
       const sopirNopolValues = sopirNopolList
@@ -194,10 +127,11 @@ export default function TransaksiBarangMasukPage() {
 
       const transaksiData: any = {
         tanggal: formData.tanggal,
-        kodeBarang: formData.kodeBarang,
-        namaBarang: formData.namaBarang,
+        kodeBarang: formData.kodeBarang.trim(),
+        namaBarang: formData.namaBarang.trim(),
         unit: formData.unit,
         jumlahZAK: jumlahZAK,
+        totalKG: totalKG,
         sopirNopolList: sopirNopolValues.length > 0 ? sopirNopolValues : null,
         fot: formData.fot.trim().toUpperCase(),
         createdBy: user?.nama || "",
@@ -212,33 +146,7 @@ export default function TransaksiBarangMasukPage() {
 
       await addDoc(collection(db, "transaksiBarangMasuk"), transaksiData);
 
-      const stockRef = doc(db, "stockGudang", selectedStock.id);
-      const stockSnap = await getDoc(stockRef);
-      if (stockSnap.exists()) {
-        const currentData = stockSnap.data();
-        const currentMasukUnit = currentData.barangMasukUnit || 0;
-        const currentMasukKG = currentData.barangMasukKG || 0;
-        const currentStokUnit = currentData.stokAkhirUnit || 0;
-        const currentStokKG = currentData.stokAkhirKG || 0;
-
-        let addUnit = jumlahZAK;
-        let addKG = totalKG;
-
-        if (formData.unit === "KG") {
-          addUnit = 0;
-          addKG = jumlahZAK;
-        }
-
-        await updateDoc(stockRef, {
-          barangMasukUnit: currentMasukUnit + addUnit,
-          barangMasukKG: currentMasukKG + addKG,
-          stokAkhirUnit: currentStokUnit + addUnit,
-          stokAkhirKG: currentStokKG + addKG,
-          updatedAt: serverTimestamp(),
-        });
-      }
-
-      setSuccessMessage("Transaksi barang masuk berhasil disimpan dan stok diperbarui!");
+      setSuccessMessage("Transaksi barang masuk berhasil disimpan!");
       setFormData({
         tanggal: new Date().toISOString().split("T")[0],
         kodeBarang: "",
@@ -250,9 +158,7 @@ export default function TransaksiBarangMasukPage() {
         fot: "",
       });
       setSopirNopolList([{ id: 1, namaSopir: "", nopol: "", nomorSIM: "" }]);
-      setSelectedStock(null);
 
-      fetchStockGudang();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
       console.error(error);
@@ -261,14 +167,6 @@ export default function TransaksiBarangMasukPage() {
       setIsSubmitting(false);
     }
   };
-
-  const stockOptions = [
-    { value: "", label: "Pilih barang dari stock gudang..." },
-    ...stockList.map((stock) => ({
-      value: stock.id,
-      label: `${stock.kodeBarang} - ${stock.namaBarang} - ${stock.fot} - Stok: ${stock.stokAkhirUnit?.toLocaleString()} ZAK`,
-    })),
-  ];
 
   const isBotol = formData.unit === "BOTOL";
 
@@ -310,23 +208,15 @@ export default function TransaksiBarangMasukPage() {
               required
             />
 
-            <Select
-              label="Pilih Barang dari Stock Gudang"
-              name="kodeBarang"
-              value={selectedStock?.id || ""}
-              onChange={handleStockChange}
-              options={stockOptions}
-              error={errors.kodeBarang}
-              required
-            />
-
             <Input
               label="Kode Barang"
               type="text"
-              name="kodeBarangDisplay"
+              name="kodeBarang"
               value={formData.kodeBarang}
-              readOnly
-              className="bg-gray-50"
+              onChange={handleChange}
+              placeholder="Masukkan kode barang"
+              error={errors.kodeBarang}
+              required
             />
 
             <Input
@@ -334,8 +224,10 @@ export default function TransaksiBarangMasukPage() {
               type="text"
               name="namaBarang"
               value={formData.namaBarang}
-              readOnly
-              className="bg-gray-50"
+              onChange={handleChange}
+              placeholder="Masukkan nama barang"
+              error={errors.namaBarang}
+              required
             />
 
             <Input
@@ -343,8 +235,10 @@ export default function TransaksiBarangMasukPage() {
               type="text"
               name="unit"
               value={formData.unit}
-              readOnly
-              className="bg-gray-50"
+              onChange={handleChange}
+              placeholder="Contoh: ZAK, DUS, KG, BOTOL"
+              error={errors.unit}
+              required
             />
 
             <Input
@@ -476,7 +370,6 @@ export default function TransaksiBarangMasukPage() {
                 fot: "",
               });
               setSopirNopolList([{ id: 1, namaSopir: "", nopol: "", nomorSIM: "" }]);
-              setSelectedStock(null);
               setErrors({});
             }}
           >
