@@ -75,7 +75,7 @@ export interface TransaksiBarangMasuk {
   jumlahZAK: number;
   botolPerDus?: number;
   bobotPerBotol?: number;
-  sopirNopol: string;
+  sopirNopolList: SopirNopolData[];
   fot: string;
   createdBy: string;
   createdAt?: Date;
@@ -94,7 +94,7 @@ export interface TransaksiBarangKeluar {
   namaCustomer: string;
   nomorPI: string;
   nomorInvoice: string;
-  sopirNopolList: string[];
+  sopirNopolList: SopirNopolData[];
   nomorSuratPengangkutan: string;
   fot: string;
   createdBy: string;

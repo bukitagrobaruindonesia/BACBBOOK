@@ -1,7 +1,18 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, addDoc, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+  serverTimestamp,
+  doc,
+  updateDoc,
+  deleteDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -12,12 +23,17 @@ import Card from "@/app/components/ui/Card";
 import Table from "@/app/components/ui/Table";
 import { StockGudang } from "@/app/types";
 
-export default function InputStockGudangPage() {
+export default function LaporanInputStockGudangPage() {
   const { user } = useAuth();
-  const [stockList, setStockList] = useState([] as StockGudang[]);
+  const [stockList, setStockList] = useState<StockGudang[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
-  const [errors, setErrors] = useState({} as Record<string, string>);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isEditing, setIsEditing] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filterFot, setFilterFot] = useState("");
 
   const [formData, setFormData] = useState({
     fot: "",
@@ -29,7 +45,7 @@ export default function InputStockGudangPage() {
     botolPerDus: "20",
   });
 
-  const [fotList, setFotList] = useState([] as string[]);
+  const [fotList, setFotList] = useState<string[]>([]);
   const [isNewFot, setIsNewFot] = useState(false);
 
   const unitOptions = [
@@ -92,13 +108,16 @@ export default function InputStockGudangPage() {
     const isBotol = formData.unit === "BOTOL";
 
     if (isUnitBased) {
-      if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0) newErrors.bobotPerUnit = "Bobot per unit tidak valid";
+      if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0)
+        newErrors.bobotPerUnit = "Bobot per unit tidak valid";
     }
 
-    if (!formData.stokTersediaUnit || parseFloat(formData.stokTersediaUnit) < 0) newErrors.stokTersediaUnit = "Stok tersedia tidak valid";
+    if (!formData.stokTersediaUnit || parseFloat(formData.stokTersediaUnit) < 0)
+      newErrors.stokTersediaUnit = "Stok tersedia tidak valid";
 
     if (isBotol) {
-      if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Jumlah botol per dus tidak valid";
+      if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0)
+        newErrors.botolPerDus = "Jumlah botol per dus tidak valid";
     }
 
     setErrors(newErrors);
@@ -120,44 +139,53 @@ export default function InputStockGudangPage() {
       const bobotPerUnit = parseFloat(formData.bobotPerUnit) || 50;
       const botolPerDus = isBotol ? parseFloat(formData.botolPerDus) || 20 : null;
 
-      const docData: any = {
-        fot: formData.fot.trim().toUpperCase(),
-        kodeBarang: formData.kodeBarang.trim().toUpperCase(),
-        namaBarang: formData.namaBarang.trim(),
-        unit: formData.unit,
-        bobotPerUnit: bobotPerUnit,
-        stokAwalUnit: isKG ? 0 : stokTersediaUnit,
-        stokAwalKG: 0,
-        barangMasukUnit: 0,
-        barangMasukKG: 0,
-        barangKeluarUnit: 0,
-        barangKeluarKG: 0,
-        stokAkhirUnit: isKG ? 0 : stokTersediaUnit,
-        stokAkhirKG: 0,
-        createdBy: user?.nama || "",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
+      if (isEditing && editId) {
+        const docData: any = {
+          fot: formData.fot.trim().toUpperCase(),
+          kodeBarang: formData.kodeBarang.trim().toUpperCase(),
+          namaBarang: formData.namaBarang.trim(),
+          unit: formData.unit,
+          bobotPerUnit: bobotPerUnit,
+          updatedAt: serverTimestamp(),
+        };
 
-      if (isBotol) {
-        docData.botolPerDus = botolPerDus;
-        docData.displayUnit = "ZAK";
+        if (isBotol) {
+          docData.botolPerDus = botolPerDus;
+          docData.displayUnit = "ZAK";
+        }
+
+        await updateDoc(doc(db, "stockGudang", editId), docData);
+        setSuccessMessage("Data stock gudang berhasil diperbarui!");
+      } else {
+        const docData: any = {
+          fot: formData.fot.trim().toUpperCase(),
+          kodeBarang: formData.kodeBarang.trim().toUpperCase(),
+          namaBarang: formData.namaBarang.trim(),
+          unit: formData.unit,
+          bobotPerUnit: bobotPerUnit,
+          stokAwalUnit: isKG ? 0 : stokTersediaUnit,
+          stokAwalKG: 0,
+          barangMasukUnit: 0,
+          barangMasukKG: 0,
+          barangKeluarUnit: 0,
+          barangKeluarKG: 0,
+          stokAkhirUnit: isKG ? 0 : stokTersediaUnit,
+          stokAkhirKG: 0,
+          createdBy: user?.nama || "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
+
+        if (isBotol) {
+          docData.botolPerDus = botolPerDus;
+          docData.displayUnit = "ZAK";
+        }
+
+        await addDoc(collection(db, "stockGudang"), docData);
+        setSuccessMessage("Stock gudang berhasil disimpan!");
       }
 
-      await addDoc(collection(db, "stockGudang"), docData);
-
-      setSuccessMessage("Stock gudang berhasil disimpan!");
-      setFormData({
-        fot: "",
-        kodeBarang: "",
-        namaBarang: "",
-        unit: "ZAK",
-        bobotPerUnit: "50",
-        stokTersediaUnit: "",
-        botolPerDus: "20",
-      });
-      setIsNewFot(false);
-
+      resetForm();
       fetchStockGudang();
       fetchFotList();
       setTimeout(() => setSuccessMessage(""), 5000);
@@ -169,7 +197,53 @@ export default function InputStockGudangPage() {
     }
   };
 
-  const handleChange = (e: any) => {
+  const handleEdit = (stock: StockGudang) => {
+    setIsEditing(true);
+    setEditId(stock.id);
+    setFormData({
+      fot: stock.fot,
+      kodeBarang: stock.kodeBarang,
+      namaBarang: stock.namaBarang,
+      unit: stock.unit,
+      bobotPerUnit: stock.bobotPerUnit?.toString() || "50",
+      stokTersediaUnit: stock.stokAkhirUnit?.toString() || "",
+      botolPerDus: stock.botolPerDus?.toString() || "20",
+    });
+    setIsNewFot(!fotList.includes(stock.fot));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, "stockGudang", id));
+      setSuccessMessage("Data stock gudang berhasil dihapus!");
+      setShowDeleteConfirm(null);
+      fetchStockGudang();
+      fetchFotList();
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (error) {
+      console.error(error);
+      setErrors({ submit: "Gagal menghapus data. Silakan coba lagi." });
+    }
+  };
+
+  const resetForm = () => {
+    setFormData({
+      fot: "",
+      kodeBarang: "",
+      namaBarang: "",
+      unit: "ZAK",
+      bobotPerUnit: "50",
+      stokTersediaUnit: "",
+      botolPerDus: "20",
+    });
+    setIsNewFot(false);
+    setIsEditing(false);
+    setEditId(null);
+    setErrors({});
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
@@ -189,6 +263,17 @@ export default function InputStockGudangPage() {
 
   const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
   const isBotol = formData.unit === "BOTOL";
+
+  const filteredStockList = stockList.filter((stock) => {
+    const matchesSearch =
+      stock.namaBarang.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      stock.kodeBarang.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      stock.fot.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesFot = filterFot ? stock.fot === filterFot : true;
+    return matchesSearch && matchesFot;
+  });
+
+  const uniqueFotList = Array.from(new Set(stockList.map((s) => s.fot))).sort();
 
   const columns = [
     {
@@ -223,12 +308,17 @@ export default function InputStockGudangPage() {
       header: "Unit",
       width: "80px",
       render: (row: StockGudang) => (
-        <span className={`px-2 py-1 rounded-md text-xs font-bold ${
-          row.unit === "ZAK" ? "bg-blue-100 text-blue-700" :
-          row.unit === "DUS" ? "bg-purple-100 text-purple-700" :
-          row.unit === "BOTOL" ? "bg-pink-100 text-pink-700" :
-          "bg-gray-100 text-gray-700"
-        }`}>
+        <span
+          className={`px-2 py-1 rounded-md text-xs font-bold ${
+            row.unit === "ZAK"
+              ? "bg-blue-100 text-blue-700"
+              : row.unit === "DUS"
+              ? "bg-purple-100 text-purple-700"
+              : row.unit === "BOTOL"
+              ? "bg-pink-100 text-pink-700"
+              : "bg-gray-100 text-gray-700"
+          }`}
+        >
           {row.unit}
         </span>
       ),
@@ -253,22 +343,91 @@ export default function InputStockGudangPage() {
       },
     },
     {
-      key: "stokTersedia",
-      header: "Stok Tersedia",
-      width: "160px",
+      key: "stokAwal",
+      header: "Stok Awal",
+      width: "120px",
+      render: (row: StockGudang) => (
+        <div className="text-xs">
+          {row.unit !== "KG" && (
+            <p className="font-mono text-gray-600">
+              {row.stokAwalUnit?.toLocaleString()} {row.unit === "BOTOL" ? "ZAK" : row.unit}
+            </p>
+          )}
+          <p className="font-mono text-gray-500">{row.stokAwalKG?.toLocaleString()} KG</p>
+        </div>
+      ),
+    },
+    {
+      key: "barangMasuk",
+      header: "Masuk",
+      width: "100px",
+      render: (row: StockGudang) => (
+        <div className="text-xs">
+          {row.unit !== "KG" && (
+            <p className="font-mono text-green-600">
+              +{row.barangMasukUnit?.toLocaleString()} {row.unit === "BOTOL" ? "ZAK" : row.unit}
+            </p>
+          )}
+          <p className="font-mono text-green-500">+{row.barangMasukKG?.toLocaleString()} KG</p>
+        </div>
+      ),
+    },
+    {
+      key: "barangKeluar",
+      header: "Keluar",
+      width: "100px",
+      render: (row: StockGudang) => (
+        <div className="text-xs">
+          {row.unit !== "KG" && (
+            <p className="font-mono text-red-600">
+              -{row.barangKeluarUnit?.toLocaleString()} {row.unit === "BOTOL" ? "ZAK" : row.unit}
+            </p>
+          )}
+          <p className="font-mono text-red-500">-{row.barangKeluarKG?.toLocaleString()} KG</p>
+        </div>
+      ),
+    },
+    {
+      key: "stokAkhir",
+      header: "Stok Akhir",
+      width: "140px",
       render: (row: StockGudang) => (
         <div className="text-sm">
           {row.unit !== "KG" && (
             <p className="font-mono font-bold text-green-700">
               {row.unit === "BOTOL"
                 ? `${row.stokAkhirUnit?.toLocaleString()} ZAK`
-                : `${row.stokAkhirUnit?.toLocaleString()} ${row.unit}`
-              }
+                : `${row.stokAkhirUnit?.toLocaleString()} ${row.unit}`}
             </p>
           )}
-          {row.unit === "KG" && (
-            <p className="font-mono font-bold text-green-700">{row.stokAkhirKG.toLocaleString()} KG</p>
-          )}
+          <p className="font-mono font-bold text-green-600">{row.stokAkhirKG?.toLocaleString()} KG</p>
+        </div>
+      ),
+    },
+    {
+      key: "aksi",
+      header: "Aksi",
+      width: "120px",
+      render: (row: StockGudang) => (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => handleEdit(row)}
+            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+            title="Edit"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(row.id)}
+            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Hapus"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          </button>
         </div>
       ),
     },
@@ -277,8 +436,8 @@ export default function InputStockGudangPage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <Header
-        title="Input Stock Gudang"
-        subtitle="Tambah dan kelola data stock barang per FOT"
+        title="Laporan & Input Stock Gudang"
+        subtitle="Kelola data stock barang per FOT"
       />
 
       {successMessage && (
@@ -300,113 +459,115 @@ export default function InputStockGudangPage() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-1">
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <Card title="Informasi Barang" icon={
+            <Card
+              title={isEditing ? "Edit Stock Gudang" : "Input Stock Gudang"}
+              icon={
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                  />
                 </svg>
-              }>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">FOT (Tempat Gudang)</label>
-                    <Select
-                      name="fot"
-                      value={isNewFot ? "__new__" : formData.fot}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        if (value === "__new__") {
-                          setIsNewFot(true);
-                          setFormData((prev) => ({ ...prev, fot: "" }));
-                        } else {
-                          setIsNewFot(false);
-                          setFormData((prev) => ({ ...prev, fot: value }));
-                        }
-                      }}
-                      options={fotOptions}
-                    />
-                    {isNewFot && (
-                      <Input
-                        type="text"
-                        name="fot"
-                        value={formData.fot}
-                        onChange={handleChange}
-                        placeholder="Masukkan nama FOT baru"
-                        error={errors.fot}
-                        className="mt-2"
-                      />
-                    )}
-                    {!isNewFot && errors.fot && (
-                      <p className="mt-1 text-sm text-red-600">{errors.fot}</p>
-                    )}
-                  </div>
-
-                  <Input
-                    label="Kode Barang"
-                    type="text"
-                    name="kodeBarang"
-                    value={formData.kodeBarang}
-                    onChange={handleChange}
-                    placeholder="Contoh: PUP-001"
-                    error={errors.kodeBarang}
-                    required
-                  />
-
-                  <Input
-                    label="Nama Barang"
-                    type="text"
-                    name="namaBarang"
-                    value={formData.namaBarang}
-                    onChange={handleChange}
-                    placeholder="Contoh: Pupuk Urea"
-                    error={errors.namaBarang}
-                    required
-                  />
-
+              }
+            >
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    FOT (Tempat Gudang)
+                  </label>
                   <Select
-                    label="Unit"
-                    name="unit"
-                    value={formData.unit}
-                    onChange={handleChange}
-                    options={unitOptions}
-                    required
+                    name="fot"
+                    value={isNewFot ? "__new__" : formData.fot}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "__new__") {
+                        setIsNewFot(true);
+                        setFormData((prev) => ({ ...prev, fot: "" }));
+                      } else {
+                        setIsNewFot(false);
+                        setFormData((prev) => ({ ...prev, fot: value }));
+                      }
+                    }}
+                    options={fotOptions}
                   />
-
-                  {isUnitBased && (
+                  {isNewFot && (
                     <Input
-                      label={isBotol ? "Bobot Per Botol (ml)" : "Bobot Per Unit (KG)"}
-                      type="number"
-                      name="bobotPerUnit"
-                      value={formData.bobotPerUnit}
+                      type="text"
+                      name="fot"
+                      value={formData.fot}
                       onChange={handleChange}
-                      placeholder={isBotol ? "Contoh: 500" : "Contoh: 50"}
-                      error={errors.bobotPerUnit}
-                      required
+                      placeholder="Masukkan nama FOT baru"
+                      error={errors.fot}
+                      className="mt-2"
                     />
                   )}
-
-                  {isBotol && (
-                    <Input
-                      label="Botol Per DUS"
-                      type="number"
-                      name="botolPerDus"
-                      value={formData.botolPerDus}
-                      onChange={handleChange}
-                      placeholder="Contoh: 20"
-                      error={errors.botolPerDus}
-                      required
-                    />
+                  {!isNewFot && errors.fot && (
+                    <p className="mt-1 text-sm text-red-600">{errors.fot}</p>
                   )}
                 </div>
-              </Card>
 
-              <Card title="Stok Tersedia" icon={
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-              }>
-                <div className="space-y-4">
+                <Input
+                  label="Kode Barang"
+                  type="text"
+                  name="kodeBarang"
+                  value={formData.kodeBarang}
+                  onChange={handleChange}
+                  placeholder="Contoh: PUP-001"
+                  error={errors.kodeBarang}
+                  required
+                />
+
+                <Input
+                  label="Nama Barang"
+                  type="text"
+                  name="namaBarang"
+                  value={formData.namaBarang}
+                  onChange={handleChange}
+                  placeholder="Contoh: Pupuk Urea"
+                  error={errors.namaBarang}
+                  required
+                />
+
+                <Select
+                  label="Unit"
+                  name="unit"
+                  value={formData.unit}
+                  onChange={handleChange}
+                  options={unitOptions}
+                  required
+                />
+
+                {isUnitBased && (
+                  <Input
+                    label={isBotol ? "Bobot Per Botol (ml)" : "Bobot Per Unit (KG)"}
+                    type="number"
+                    name="bobotPerUnit"
+                    value={formData.bobotPerUnit}
+                    onChange={handleChange}
+                    placeholder={isBotol ? "Contoh: 500" : "Contoh: 50"}
+                    error={errors.bobotPerUnit}
+                    required
+                  />
+                )}
+
+                {isBotol && (
+                  <Input
+                    label="Botol Per DUS"
+                    type="number"
+                    name="botolPerDus"
+                    value={formData.botolPerDus}
+                    onChange={handleChange}
+                    placeholder="Contoh: 20"
+                    error={errors.botolPerDus}
+                    required
+                  />
+                )}
+
+                {!isEditing && (
                   <Input
                     label={`Stok Tersedia (${getDisplayUnit()})`}
                     type="number"
@@ -417,55 +578,82 @@ export default function InputStockGudangPage() {
                     error={errors.stokTersediaUnit}
                     required
                   />
+                )}
 
-                  {formData.stokTersediaUnit && (
-                    <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                      <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">Preview Stok</p>
-                      <p className="text-3xl font-bold text-amber-700 font-mono">
-                        {parseFloat(formData.stokTersediaUnit).toLocaleString()} {getDisplayUnit()}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </div>
+                {formData.stokTersediaUnit && !isEditing && (
+                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                    <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">
+                      Preview Stok
+                    </p>
+                    <p className="text-3xl font-bold text-amber-700 font-mono">
+                      {parseFloat(formData.stokTersediaUnit).toLocaleString()} {getDisplayUnit()}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </Card>
 
-            <div className="flex items-center justify-end gap-4 pt-4">
+            <div className="flex items-center justify-end gap-4">
+              {isEditing && (
+                <Button type="button" variant="outline" onClick={resetForm}>
+                  Batal Edit
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  setFormData({
-                    fot: "",
-                    kodeBarang: "",
-                    namaBarang: "",
-                    unit: "ZAK",
-                    bobotPerUnit: "50",
-                    stokTersediaUnit: "",
-                    botolPerDus: "20",
-                  });
-                  setIsNewFot(false);
-                  setErrors({});
+                  resetForm();
                 }}
               >
                 Reset Form
               </Button>
               <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting}>
-                Simpan Stock Gudang
+                {isEditing ? "Update Stock" : "Simpan Stock"}
               </Button>
             </div>
           </form>
         </div>
 
-        <div className="lg:col-span-3">
-          <Card title={`Data Stock Gudang (${stockList.length} item)`} icon={
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-            </svg>
-          }>
+        <div className="lg:col-span-2">
+          <Card
+            title={`Data Stock Gudang (${filteredStockList.length} item)`}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
+                />
+              </svg>
+            }
+          >
+            <div className="mb-4 flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  placeholder="Cari nama barang, kode, atau FOT..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <div className="sm:w-48">
+                <Select
+                  value={filterFot}
+                  onChange={(e) => setFilterFot(e.target.value)}
+                  options={[
+                    { value: "", label: "Semua FOT" },
+                    ...uniqueFotList.map((f) => ({ value: f, label: f })),
+                  ]}
+                />
+              </div>
+            </div>
+
             <Table
               columns={columns}
-              data={stockList}
+              data={filteredStockList}
               isLoading={false}
               emptyMessage="Belum ada data stock gudang"
               keyExtractor={(row) => row.id}
@@ -473,6 +661,37 @@ export default function InputStockGudangPage() {
           </Card>
         </div>
       </div>
+
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-red-100 rounded-full">
+                <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-bold text-gray-900">Konfirmasi Hapus</h3>
+            </div>
+            <p className="text-gray-600 mb-6">
+              Apakah Anda yakin ingin menghapus data stock ini? Tindakan ini tidak dapat dibatalkan.
+            </p>
+            <div className="flex items-center justify-end gap-3">
+              <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(null)}>
+                Batal
+              </Button>
+              <Button
+                type="button"
+                variant="primary"
+                className="bg-red-600 hover:bg-red-700"
+                onClick={() => handleDelete(showDeleteConfirm)}
+              >
+                Hapus Data
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
