@@ -285,7 +285,7 @@ export default function TransaksiBarangMasukPage() {
     { value: "", label: "Pilih barang dari stock gudang..." },
     ...stockList.map((stock) => ({
       value: stock.id,
-      label: `${stock.namaBarang} (${stock.kodeBarang}) - ${stock.fot} - Stok: ${stock.stokAkhirKG.toLocaleString()} KG`,
+      label: `${stock.kodeBarang} - ${stock.fot} - Stok: ${stock.stokAkhirUnit?.toLocaleString()} ZAK`,
     })),
   ];
 
