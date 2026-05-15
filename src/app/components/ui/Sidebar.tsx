@@ -34,7 +34,7 @@ const menuItems = [
     ),
   },
   {
-    href: "/dashboard/laporan-input-stock-gudang",
+    href: "/dashboard/laporan-stock-gudang",
     label: "Laporan & Input Stock",
     icon: (
       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,8 +105,8 @@ export default function Sidebar() {
               </svg>
             </div>
             <div>
-              <h2 className="text-lg font-bold leading-tight">REKAP PI</h2>
-              <p className="text-xs text-green-300">PT Bukit Agrochemical</p>
+              <h2 className="text-lg font-bold leading-tight">REKAP ADMIN</h2>
+              <p className="text-xs text-green-300">PT Bukit Agrochemical Baru</p>
             </div>
           </div>
         </div>
