@@ -33,7 +33,6 @@ interface SopirNopolItem {
 export default function TransaksiBarangKeluarPage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockOption[]>([]);
-  const [fotList, setFotList] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -78,14 +77,6 @@ export default function TransaksiBarangKeluarPage() {
         stokAkhirKG: doc.data().stokAkhirKG || 0,
       } as StockOption));
       setStockList(data);
-
-      const fotSet = new Set<string>();
-      data.forEach((item) => {
-        if (item.fot && item.fot.trim()) {
-          fotSet.add(item.fot.trim().toUpperCase());
-        }
-      });
-      setFotList(Array.from(fotSet).sort());
     } catch (error) {
       console.error(error);
     }
@@ -146,13 +137,6 @@ export default function TransaksiBarangKeluarPage() {
     setSopirNopolList((prev) =>
       prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );
-    if (errors.sopirNopol) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.sopirNopol;
-        return newErrors;
-      });
-    }
   };
 
   const addSopirNopol = () => {
@@ -175,10 +159,7 @@ export default function TransaksiBarangKeluarPage() {
     if (!formData.nomorPI.trim()) newErrors.nomorPI = "No PI wajib diisi";
     if (!formData.nomorInvoice.trim()) newErrors.nomorInvoice = "No Invoice wajib diisi";
     if (!formData.nomorSuratPengangkutan.trim()) newErrors.nomorSuratPengangkutan = "Nomor Surat Pengangkutan wajib diisi";
-    if (!formData.fot.trim()) newErrors.fot = "FOT wajib dipilih";
-
-    const validSopir = sopirNopolList.filter((s) => s.namaSopir.trim() && s.nopol.trim());
-    if (validSopir.length === 0) newErrors.sopirNopol = "Minimal satu Sopir dan Nopol wajib diisi";
+    if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
 
     if (formData.unit === "BOTOL") {
       if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Botol per DUS tidak valid";
@@ -237,10 +218,10 @@ export default function TransaksiBarangKeluarPage() {
       }
 
       const sopirNopolValues = sopirNopolList
-        .filter((s) => s.namaSopir.trim() && s.nopol.trim())
+        .filter((s) => s.namaSopir.trim() || s.nopol.trim())
         .map((s) => ({
-          namaSopir: s.namaSopir.trim(),
-          nopol: s.nopol.trim(),
+          namaSopir: s.namaSopir.trim() || null,
+          nopol: s.nopol.trim() || null,
           nomorSIM: s.nomorSIM.trim() || null,
         }));
 
@@ -253,7 +234,7 @@ export default function TransaksiBarangKeluarPage() {
         namaCustomer: formData.namaCustomer.trim(),
         nomorPI: formData.nomorPI.trim(),
         nomorInvoice: formData.nomorInvoice.trim(),
-        sopirNopolList: sopirNopolValues,
+        sopirNopolList: sopirNopolValues.length > 0 ? sopirNopolValues : null,
         nomorSuratPengangkutan: formData.nomorSuratPengangkutan.trim(),
         fot: formData.fot.trim().toUpperCase(),
         createdBy: user?.nama || "",
@@ -328,11 +309,6 @@ export default function TransaksiBarangKeluarPage() {
       value: stock.id,
       label: `${stock.kodeBarang} - ${stock.namaBarang} - ${stock.fot} - Stok: ${stock.stokAkhirUnit?.toLocaleString()} ZAK`,
     })),
-  ];
-
-  const fotOptions = [
-    { value: "", label: "Pilih FOT..." },
-    ...fotList.map((f) => ({ value: f, label: f })),
   ];
 
   const isBotol = formData.unit === "BOTOL";
@@ -412,12 +388,13 @@ export default function TransaksiBarangKeluarPage() {
               className="bg-gray-50"
             />
 
-            <Select
+            <Input
               label="FOT (Tempat Gudang)"
+              type="text"
               name="fot"
               value={formData.fot}
               onChange={handleChange}
-              options={fotOptions}
+              placeholder="Masukkan nama FOT / lokasi gudang"
               error={errors.fot}
               required
             />
@@ -509,7 +486,7 @@ export default function TransaksiBarangKeluarPage() {
           </div>
         </Card>
 
-        <Card title="Sopir & Nopol">
+        <Card title="Sopir & Nopol (Opsional)">
           <div className="space-y-6">
             {sopirNopolList.map((item, index) => (
               <div key={item.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
@@ -536,7 +513,6 @@ export default function TransaksiBarangKeluarPage() {
                     value={item.namaSopir}
                     onChange={(e) => handleSopirChange(item.id, "namaSopir", e.target.value)}
                     placeholder="Contoh: Budi Santoso"
-                    required={index === 0}
                   />
                   <Input
                     label="Nomor Polisi"
@@ -544,10 +520,9 @@ export default function TransaksiBarangKeluarPage() {
                     value={item.nopol}
                     onChange={(e) => handleSopirChange(item.id, "nopol", e.target.value)}
                     placeholder="Contoh: B 1234 ABC"
-                    required={index === 0}
                   />
                   <Input
-                    label="Nomor SIM (Opsional)"
+                    label="Nomor SIM"
                     type="text"
                     value={item.nomorSIM}
                     onChange={(e) => handleSopirChange(item.id, "nomorSIM", e.target.value)}
@@ -556,9 +531,6 @@ export default function TransaksiBarangKeluarPage() {
                 </div>
               </div>
             ))}
-            {errors.sopirNopol && (
-              <p className="text-sm text-red-600">{errors.sopirNopol}</p>
-            )}
             <Button
               type="button"
               variant="outline"

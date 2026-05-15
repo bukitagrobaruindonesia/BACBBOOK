@@ -33,7 +33,6 @@ interface SopirNopolItem {
 export default function TransaksiBarangMasukPage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockOption[]>([]);
-  const [fotList, setFotList] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -74,14 +73,6 @@ export default function TransaksiBarangMasukPage() {
         stokAkhirKG: doc.data().stokAkhirKG || 0,
       } as StockOption));
       setStockList(data);
-
-      const fotSet = new Set<string>();
-      data.forEach((item) => {
-        if (item.fot && item.fot.trim()) {
-          fotSet.add(item.fot.trim().toUpperCase());
-        }
-      });
-      setFotList(Array.from(fotSet).sort());
     } catch (error) {
       console.error(error);
     }
@@ -142,13 +133,6 @@ export default function TransaksiBarangMasukPage() {
     setSopirNopolList((prev) =>
       prev.map((item) => (item.id === id ? { ...item, [field]: value } : item))
     );
-    if (errors.sopirNopol) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.sopirNopol;
-        return newErrors;
-      });
-    }
   };
 
   const addSopirNopol = () => {
@@ -167,10 +151,7 @@ export default function TransaksiBarangMasukPage() {
     if (!formData.kodeBarang) newErrors.kodeBarang = "Kode barang wajib dipilih";
     if (!formData.namaBarang) newErrors.namaBarang = "Nama barang wajib diisi";
     if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah ZAK harus lebih dari 0";
-    if (!formData.fot.trim()) newErrors.fot = "FOT wajib dipilih";
-
-    const validSopir = sopirNopolList.filter((s) => s.namaSopir.trim() && s.nopol.trim());
-    if (validSopir.length === 0) newErrors.sopirNopol = "Minimal satu Sopir dan Nopol wajib diisi";
+    if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
 
     if (formData.unit === "BOTOL") {
       if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Botol per DUS tidak valid";
@@ -204,10 +185,10 @@ export default function TransaksiBarangMasukPage() {
       }
 
       const sopirNopolValues = sopirNopolList
-        .filter((s) => s.namaSopir.trim() && s.nopol.trim())
+        .filter((s) => s.namaSopir.trim() || s.nopol.trim())
         .map((s) => ({
-          namaSopir: s.namaSopir.trim(),
-          nopol: s.nopol.trim(),
+          namaSopir: s.namaSopir.trim() || null,
+          nopol: s.nopol.trim() || null,
           nomorSIM: s.nomorSIM.trim() || null,
         }));
 
@@ -217,7 +198,7 @@ export default function TransaksiBarangMasukPage() {
         namaBarang: formData.namaBarang,
         unit: formData.unit,
         jumlahZAK: jumlahZAK,
-        sopirNopolList: sopirNopolValues,
+        sopirNopolList: sopirNopolValues.length > 0 ? sopirNopolValues : null,
         fot: formData.fot.trim().toUpperCase(),
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
@@ -287,11 +268,6 @@ export default function TransaksiBarangMasukPage() {
       value: stock.id,
       label: `${stock.kodeBarang} - ${stock.namaBarang} - ${stock.fot} - Stok: ${stock.stokAkhirUnit?.toLocaleString()} ZAK`,
     })),
-  ];
-
-  const fotOptions = [
-    { value: "", label: "Pilih FOT..." },
-    ...fotList.map((f) => ({ value: f, label: f })),
   ];
 
   const isBotol = formData.unit === "BOTOL";
@@ -371,12 +347,13 @@ export default function TransaksiBarangMasukPage() {
               className="bg-gray-50"
             />
 
-            <Select
+            <Input
               label="FOT (Tempat Gudang)"
+              type="text"
               name="fot"
               value={formData.fot}
               onChange={handleChange}
-              options={fotOptions}
+              placeholder="Masukkan nama FOT / lokasi gudang"
               error={errors.fot}
               required
             />
@@ -424,7 +401,7 @@ export default function TransaksiBarangMasukPage() {
           </div>
         </Card>
 
-        <Card title="Sopir & Nopol">
+        <Card title="Sopir & Nopol (Opsional)">
           <div className="space-y-6">
             {sopirNopolList.map((item, index) => (
               <div key={item.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
@@ -451,7 +428,6 @@ export default function TransaksiBarangMasukPage() {
                     value={item.namaSopir}
                     onChange={(e) => handleSopirChange(item.id, "namaSopir", e.target.value)}
                     placeholder="Contoh: Budi Santoso"
-                    required={index === 0}
                   />
                   <Input
                     label="Nomor Polisi"
@@ -459,10 +435,9 @@ export default function TransaksiBarangMasukPage() {
                     value={item.nopol}
                     onChange={(e) => handleSopirChange(item.id, "nopol", e.target.value)}
                     placeholder="Contoh: B 1234 ABC"
-                    required={index === 0}
                   />
                   <Input
-                    label="Nomor SIM (Opsional)"
+                    label="Nomor SIM"
                     type="text"
                     value={item.nomorSIM}
                     onChange={(e) => handleSopirChange(item.id, "nomorSIM", e.target.value)}
@@ -471,9 +446,6 @@ export default function TransaksiBarangMasukPage() {
                 </div>
               </div>
             ))}
-            {errors.sopirNopol && (
-              <p className="text-sm text-red-600">{errors.sopirNopol}</p>
-            )}
             <Button
               type="button"
               variant="outline"
