@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { collection, getDocs, query, orderBy, limit } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, limit, where, Timestamp } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -28,13 +28,28 @@ export default function DashboardPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [selectedFot, setSelectedFot] = useState<string>("");
+  const [filterTanggal, setFilterTanggal] = useState<string>(new Date().toISOString().split("T")[0]);
 
   useEffect(() => {
     fetchDashboardData();
-  }, []);
+  }, [filterTanggal]);
+
+  const getDateRange = (dateString: string) => {
+    const startDate = new Date(dateString);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(dateString);
+    endDate.setHours(23, 59, 59, 999);
+    return {
+      start: Timestamp.fromDate(startDate),
+      end: Timestamp.fromDate(endDate),
+    };
+  };
 
   const fetchDashboardData = async () => {
+    setIsLoading(true);
     try {
+      const dateRange = getDateRange(filterTanggal);
+
       const piQuery = query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc"), limit(5));
       const piSnapshot = await getDocs(piQuery);
       const piData = piSnapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as ProformaInvoice));
@@ -62,29 +77,56 @@ export default function DashboardPage() {
         updatedAt: doc.data().updatedAt?.toDate(),
       } as StockGudang));
 
-      const masukQuery = query(collection(db, "transaksiBarangMasuk"), orderBy("createdAt", "desc"), limit(5));
+      const masukQuery = query(
+        collection(db, "transaksiBarangMasuk"),
+        where("createdAt", ">=", dateRange.start),
+        where("createdAt", "<=", dateRange.end),
+        orderBy("createdAt", "desc"),
+        limit(100)
+      );
       const masukSnapshot = await getDocs(masukQuery);
       const masukData = masukSnapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data(),
+        tanggal: doc.data().tanggal || "",
+        kodeBarang: doc.data().kodeBarang || "",
+        namaBarang: doc.data().namaBarang || "",
+        unit: doc.data().unit || "ZAK",
+        jumlahZAK: doc.data().jumlahZAK || 0,
+        totalKG: doc.data().totalKG || 0,
+        fot: doc.data().fot || "",
+        createdBy: doc.data().createdBy || "",
         createdAt: doc.data().createdAt?.toDate(),
       }));
 
-      const keluarQuery = query(collection(db, "transaksiBarangKeluar"), orderBy("createdAt", "desc"), limit(5));
+      const keluarQuery = query(
+        collection(db, "transaksiBarangKeluar"),
+        where("createdAt", ">=", dateRange.start),
+        where("createdAt", "<=", dateRange.end),
+        orderBy("createdAt", "desc"),
+        limit(100)
+      );
       const keluarSnapshot = await getDocs(keluarQuery);
       const keluarData = keluarSnapshot.docs.map((doc) => ({
         id: doc.id,
-        ...doc.data(),
+        tanggal: doc.data().tanggal || "",
+        kodeBarang: doc.data().kodeBarang || "",
+        namaBarang: doc.data().namaBarang || "",
+        unit: doc.data().unit || "ZAK",
+        jumlahZAK: doc.data().jumlahZAK || 0,
+        totalKG: doc.data().totalKG || 0,
+        fot: doc.data().fot || "",
+        namaCustomer: doc.data().namaCustomer || "",
+        createdBy: doc.data().createdBy || "",
         createdAt: doc.data().createdAt?.toDate(),
       }));
 
       const piTotal = (await getDocs(collection(db, "proformaInvoice"))).size;
       const stockTotal = stockSnapshot.size;
 
-      const totalMasukUnit = stockData.reduce((sum, s) => sum + (s.barangMasukUnit || 0), 0);
-      const totalMasukKG = stockData.reduce((sum, s) => sum + (s.barangMasukKG || 0), 0);
-      const totalKeluarUnit = stockData.reduce((sum, s) => sum + (s.barangKeluarUnit || 0), 0);
-      const totalKeluarKG = stockData.reduce((sum, s) => sum + (s.barangKeluarKG || 0), 0);
+      const totalMasukUnit = masukData.reduce((sum, item) => sum + (item.jumlahZAK || 0), 0);
+      const totalMasukKG = masukData.reduce((sum, item) => sum + (item.totalKG || 0), 0);
+      const totalKeluarUnit = keluarData.reduce((sum, item) => sum + (item.jumlahZAK || 0), 0);
+      const totalKeluarKG = keluarData.reduce((sum, item) => sum + (item.totalKG || 0), 0);
       const totalStokUnit = stockData.reduce((sum, s) => sum + (s.stokAkhirUnit || 0), 0);
       const totalStokKG = stockData.reduce((sum, s) => sum + (s.stokAkhirKG || 0), 0);
 
@@ -98,8 +140,8 @@ export default function DashboardPage() {
         recentPI: piData,
         lowStock: stockData.filter((s) => s.stokAkhirKG < 1000).slice(0, 5),
         stockList: stockData,
-        recentMasuk: masukData,
-        recentKeluar: keluarData,
+        recentMasuk: masukData.slice(0, 5),
+        recentKeluar: keluarData.slice(0, 5),
       });
     } catch (error) {
       console.error(error);
@@ -108,7 +150,7 @@ export default function DashboardPage() {
     }
   };
 
-  const getUnitLabel = (unit: string, isBotol: boolean) => {
+  const getUnitLabel = (unit: string) => {
     if (unit === "BOTOL") return "ZAK";
     if (unit === "KG") return "KG";
     return unit;
@@ -126,6 +168,8 @@ export default function DashboardPage() {
   const filteredStock = selectedFot
     ? stats.stockList.filter((s) => s.fot === selectedFot)
     : stats.stockList;
+
+  const isToday = filterTanggal === new Date().toISOString().split("T")[0];
 
   const quickActions = [
     {
@@ -213,6 +257,38 @@ export default function DashboardPage() {
         title={`Selamat Datang, ${user?.nama}`}
         subtitle="Dashboard Administrasi PT Bukit Agrochemical Baru"
       />
+
+      <Card className="bg-gradient-to-r from-slate-50 to-gray-50 border border-gray-200">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+          <div className="flex items-center gap-2">
+            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span className="text-sm font-semibold text-gray-700">Filter Tanggal Transaksi:</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <input
+              type="date"
+              value={filterTanggal}
+              onChange={(e) => setFilterTanggal(e.target.value)}
+              className="px-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+            />
+            <button
+              onClick={() => setFilterTanggal(new Date().toISOString().split("T")[0])}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                isToday
+                  ? "bg-green-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              }`}
+            >
+              Hari Ini
+            </button>
+          </div>
+          <div className="text-xs text-gray-500">
+            {isToday ? "Menampilkan data transaksi hari ini" : `Menampilkan data transaksi tanggal ${new Date(filterTanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}`}
+          </div>
+        </div>
+      </Card>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="bg-gradient-to-br from-green-600 to-green-700 text-white border-none">
@@ -362,7 +438,7 @@ export default function DashboardPage() {
                   <tbody className="divide-y divide-gray-100">
                     {filteredStock.map((stock) => {
                       const status = getStockStatus(stock);
-                      const displayUnit = getUnitLabel(stock.unit, stock.unit === "BOTOL");
+                      const displayUnit = getUnitLabel(stock.unit);
                       return (
                         <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
                           <td className="py-3 px-2">
