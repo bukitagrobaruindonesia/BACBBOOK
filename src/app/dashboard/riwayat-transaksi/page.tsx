@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, query, orderBy, doc, deleteDoc, serverTimestamp, updateDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -35,6 +35,11 @@ interface UnifiedTransaksi {
   bobotPerBotol?: number;
 }
 
+interface SopirNopolItem {
+  id: number;
+  value: string;
+}
+
 export default function RiwayatTransaksiPage() {
   const { user } = useAuth();
   const [data, setData] = useState<UnifiedTransaksi[]>([]);
@@ -46,7 +51,27 @@ export default function RiwayatTransaksiPage() {
   const [filterTahun, setFilterTahun] = useState("");
   const [selectedItem, setSelectedItem] = useState<UnifiedTransaksi | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [fotList, setFotList] = useState<string[]>([]);
+
+  const [editForm, setEditForm] = useState({
+    tanggal: "",
+    kodeBarang: "",
+    namaBarang: "",
+    unit: "ZAK" as "ZAK" | "DUS" | "KG" | "BOTOL",
+    jumlahZAK: "",
+    botolPerDus: "",
+    bobotPerBotol: "",
+    namaCustomer: "",
+    nomorPI: "",
+    nomorInvoice: "",
+    nomorSuratPengangkutan: "",
+    fot: "",
+    sopirNopol: "",
+  });
+
+  const [editSopirNopolList, setEditSopirNopolList] = useState<SopirNopolItem[]>([{ id: 1, value: "" }]);
 
   useEffect(() => {
     fetchData();
@@ -144,6 +169,99 @@ export default function RiwayatTransaksiPage() {
     setIsDetailModalOpen(true);
   };
 
+  const handleEdit = (item: UnifiedTransaksi) => {
+    setSelectedItem(item);
+    setEditForm({
+      tanggal: item.tanggal,
+      kodeBarang: item.kodeBarang,
+      namaBarang: item.namaBarang,
+      unit: item.unit as "ZAK" | "DUS" | "KG" | "BOTOL",
+      jumlahZAK: item.jumlahZAK.toString(),
+      botolPerDus: item.botolPerDus ? item.botolPerDus.toString() : "",
+      bobotPerBotol: item.bobotPerBotol ? item.bobotPerBotol.toString() : "",
+      namaCustomer: item.namaCustomer || "",
+      nomorPI: item.nomorPI || "",
+      nomorInvoice: item.nomorInvoice || "",
+      nomorSuratPengangkutan: item.nomorSuratPengangkutan || "",
+      fot: item.fot,
+      sopirNopol: item.sopirNopol || "",
+    });
+
+    if (item.sopirNopolList && item.sopirNopolList.length > 0) {
+      setEditSopirNopolList(item.sopirNopolList.map((v, i) => ({ id: i + 1, value: v })));
+    } else {
+      setEditSopirNopolList([{ id: 1, value: item.sopirNopol || "" }]);
+    }
+
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSopirNopolChange = (id: number, value: string) => {
+    setEditSopirNopolList((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, value } : item))
+    );
+  };
+
+  const addEditSopirNopol = () => {
+    const newId = editSopirNopolList.length > 0 ? Math.max(...editSopirNopolList.map((s) => s.id)) + 1 : 1;
+    setEditSopirNopolList((prev) => [...prev, { id: newId, value: "" }]);
+  };
+
+  const removeEditSopirNopol = (id: number) => {
+    if (editSopirNopolList.length <= 1) return;
+    setEditSopirNopolList((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedItem) return;
+
+    setIsSubmitting(true);
+    try {
+      const collectionName = selectedItem.jenis === "barangMasuk" ? "transaksiBarangMasuk" : "transaksiBarangKeluar";
+      const jumlahZAK = parseFloat(editForm.jumlahZAK) || 0;
+      const botolPerDus = editForm.unit === "BOTOL" ? parseFloat(editForm.botolPerDus) || 0 : null;
+      const bobotPerBotol = editForm.unit === "BOTOL" ? parseFloat(editForm.bobotPerBotol) || 0 : null;
+
+      const updateData: any = {
+        tanggal: editForm.tanggal,
+        kodeBarang: editForm.kodeBarang,
+        namaBarang: editForm.namaBarang,
+        unit: editForm.unit,
+        jumlahZAK: jumlahZAK,
+        fot: editForm.fot.trim().toUpperCase(),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (editForm.unit === "BOTOL") {
+        updateData.botolPerDus = botolPerDus;
+        updateData.bobotPerBotol = bobotPerBotol;
+      }
+
+      if (selectedItem.jenis === "barangMasuk") {
+        updateData.sopirNopol = editForm.sopirNopol.trim();
+      } else {
+        updateData.namaCustomer = editForm.namaCustomer.trim();
+        updateData.nomorPI = editForm.nomorPI.trim();
+        updateData.nomorInvoice = editForm.nomorInvoice.trim();
+        updateData.nomorSuratPengangkutan = editForm.nomorSuratPengangkutan.trim();
+        const sopirNopolValues = editSopirNopolList
+          .filter((s) => s.value.trim())
+          .map((s) => s.value.trim());
+        updateData.sopirNopolList = sopirNopolValues;
+      }
+
+      await updateDoc(doc(db, collectionName, selectedItem.id), updateData);
+
+      setIsEditModalOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDelete = async (item: UnifiedTransaksi) => {
     const collectionName = item.jenis === "barangMasuk" ? "transaksiBarangMasuk" : "transaksiBarangKeluar";
     const jenisLabel = item.jenis === "barangMasuk" ? "Barang Masuk" : "Barang Keluar";
@@ -211,6 +329,13 @@ export default function RiwayatTransaksiPage() {
   const fotOptions = [
     { value: "", label: "Semua FOT" },
     ...fotList.map((f) => ({ value: f, label: f })),
+  ];
+
+  const unitOptions = [
+    { value: "ZAK", label: "ZAK" },
+    { value: "DUS", label: "DUS" },
+    { value: "KG", label: "KG" },
+    { value: "BOTOL", label: "BOTOL" },
   ];
 
   const getJenisBadgeClass = (jenis: JenisTransaksi) => {
@@ -314,7 +439,7 @@ export default function RiwayatTransaksiPage() {
     {
       key: "aksi",
       header: "Aksi",
-      width: "120px",
+      width: "150px",
       render: (row: UnifiedTransaksi) => (
         <div className="flex items-center gap-2">
           <button
@@ -328,6 +453,18 @@ export default function RiwayatTransaksiPage() {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+            </svg>
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              handleEdit(row);
+            }}
+            className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+            title="Edit"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
           <button
@@ -355,11 +492,13 @@ export default function RiwayatTransaksiPage() {
     return filteredData.filter((d) => d.jenis === "barangKeluar").length;
   };
 
+  const isBotol = editForm.unit === "BOTOL";
+
   return (
     <div className="space-y-6">
       <Header
         title="Riwayat Transaksi"
-        subtitle="Lihat riwayat transaksi barang masuk dan keluar"
+        subtitle="Lihat dan kelola riwayat transaksi barang masuk dan keluar"
       />
 
       <Card>
@@ -571,6 +710,181 @@ export default function RiwayatTransaksiPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title={`Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : "Transaksi Barang Keluar"}`}
+        size="lg"
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>
+              Batal
+            </Button>
+            <Button variant="primary" onClick={handleUpdate} isLoading={isSubmitting}>
+              Simpan Perubahan
+            </Button>
+          </div>
+        }
+      >
+        <form onSubmit={handleUpdate} className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Input
+              label="Tanggal"
+              type="date"
+              value={editForm.tanggal}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, tanggal: e.target.value }))}
+              required
+            />
+
+            <Input
+              label="Kode Barang"
+              type="text"
+              value={editForm.kodeBarang}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, kodeBarang: e.target.value }))}
+              required
+            />
+
+            <Input
+              label="Nama Barang"
+              type="text"
+              value={editForm.namaBarang}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, namaBarang: e.target.value }))}
+              required
+            />
+
+            <Select
+              label="Unit"
+              value={editForm.unit}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, unit: e.target.value as "ZAK" | "DUS" | "KG" | "BOTOL" }))}
+              options={unitOptions}
+              required
+            />
+
+            <Input
+              label={`Jumlah (${editForm.unit === "KG" ? "KG" : "ZAK"})`}
+              type="number"
+              value={editForm.jumlahZAK}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, jumlahZAK: e.target.value }))}
+              required
+            />
+
+            <Input
+              label="FOT"
+              type="text"
+              value={editForm.fot}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, fot: e.target.value }))}
+              required
+            />
+          </div>
+
+          {isBotol && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Input
+                label="Botol per DUS"
+                type="number"
+                value={editForm.botolPerDus}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, botolPerDus: e.target.value }))}
+              />
+              <Input
+                label="Bobot Per Botol (ml)"
+                type="number"
+                value={editForm.bobotPerBotol}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, bobotPerBotol: e.target.value }))}
+              />
+            </div>
+          )}
+
+          {selectedItem?.jenis === "barangMasuk" && (
+            <Input
+              label="Sopir / Nopol"
+              type="text"
+              value={editForm.sopirNopol}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, sopirNopol: e.target.value }))}
+              required
+            />
+          )}
+
+          {selectedItem?.jenis === "barangKeluar" && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Input
+                  label="Nama Customer"
+                  type="text"
+                  value={editForm.namaCustomer}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, namaCustomer: e.target.value }))}
+                  required
+                />
+
+                <Input
+                  label="No PI / Proforma Invoice"
+                  type="text"
+                  value={editForm.nomorPI}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, nomorPI: e.target.value }))}
+                  required
+                />
+
+                <Input
+                  label="No Invoice"
+                  type="text"
+                  value={editForm.nomorInvoice}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, nomorInvoice: e.target.value }))}
+                  required
+                />
+
+                <Input
+                  label="Nomor Surat Pengangkutan"
+                  type="text"
+                  value={editForm.nomorSuratPengangkutan}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, nomorSuratPengangkutan: e.target.value }))}
+                  required
+                />
+              </div>
+
+              <Card title="Sopir & Nopol">
+                <div className="space-y-4">
+                  {editSopirNopolList.map((item, index) => (
+                    <div key={item.id} className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <Input
+                          label={index === 0 ? "Sopir / Nopol" : `Sopir / Nopol ${index + 1}`}
+                          type="text"
+                          value={item.value}
+                          onChange={(e) => handleEditSopirNopolChange(item.id, e.target.value)}
+                          placeholder="Contoh: Budi / B 1234 ABC"
+                          required={index === 0}
+                        />
+                      </div>
+                      {editSopirNopolList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeEditSopirNopol(item.id)}
+                          className="mt-6 p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addEditSopirNopol}
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                    </svg>
+                    Tambah Sopir/Nopol
+                  </Button>
+                </div>
+              </Card>
+            </>
+          )}
+        </form>
       </Modal>
     </div>
   );
