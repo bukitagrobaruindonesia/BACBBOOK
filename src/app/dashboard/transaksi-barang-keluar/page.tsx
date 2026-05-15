@@ -147,7 +147,7 @@ export default function TransaksiBarangKeluarPage() {
     if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah harus lebih dari 0";
     if (!formData.namaCustomer.trim()) newErrors.namaCustomer = "Nama customer wajib diisi";
     if (!formData.nomorPI.trim()) newErrors.nomorPI = "No PI wajib diisi";
-    if (!formData.nomorInvoice.trim()) newErrors.nomorInvoice = "No Invoice wajib diisi";
+    
     if (!formData.nomorSuratPengangkutan.trim()) newErrors.nomorSuratPengangkutan = "Nomor Surat Pengangkutan wajib diisi";
     if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
 
@@ -440,14 +440,13 @@ export default function TransaksiBarangKeluarPage() {
             />
 
             <Input
-              label="No Invoice"
+              label="No Invoice (Opsional)"
               type="text"
               name="nomorInvoice"
               value={formData.nomorInvoice}
               onChange={handleChange}
               placeholder="Masukkan nomor invoice"
               error={errors.nomorInvoice}
-              required
             />
 
             <Input
