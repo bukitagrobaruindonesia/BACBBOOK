@@ -379,10 +379,10 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-gray-600">
-              {row.stokAwalUnit?.toLocaleString()} {getDisplayUnitLabel(row.unit)}
+              {row.stokAwalUnit?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
             </p>
           )}
-          <p className="font-mono text-gray-500">{hitungStokAwalKG(row).toLocaleString()} KG</p>
+          <p className="font-mono text-gray-500">{hitungStokAwalKG(row).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
         </div>
       ),
     },
@@ -394,10 +394,10 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-green-600">
-              +{row.barangMasukUnit?.toLocaleString()} {getDisplayUnitLabel(row.unit)}
+              +{row.barangMasukUnit?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
             </p>
           )}
-          <p className="font-mono text-green-500">+{row.barangMasukKG?.toLocaleString()} KG</p>
+          <p className="font-mono text-green-500">+{row.barangMasukKG?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
         </div>
       ),
     },
@@ -409,10 +409,10 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-red-600">
-              -{row.barangKeluarUnit?.toLocaleString()} {getDisplayUnitLabel(row.unit)}
+              -{row.barangKeluarUnit?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
             </p>
           )}
-          <p className="font-mono text-red-500">-{row.barangKeluarKG?.toLocaleString()} KG</p>
+          <p className="font-mono text-red-500">-{row.barangKeluarKG?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
         </div>
       ),
     },
@@ -424,10 +424,10 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-sm">
           {row.unit !== "KG" && (
             <p className="font-mono font-bold text-green-700">
-              {row.stokAkhirUnit?.toLocaleString()} {getDisplayUnitLabel(row.unit)}
+              {row.stokAkhirUnit?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
             </p>
           )}
-          <p className="font-mono font-bold text-green-600">{hitungStokAkhirKG(row).toLocaleString()} KG</p>
+          <p className="font-mono font-bold text-green-600">{hitungStokAkhirKG(row).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
         </div>
       ),
     },
@@ -613,7 +613,7 @@ export default function LaporanInputStockGudangPage() {
                       Preview Stok
                     </p>
                     <p className="text-3xl font-bold text-amber-700 font-mono">
-                      {parseFloat(formData.stokTersediaUnit).toLocaleString()} {getDisplayUnit()}
+                      {parseFloat(formData.stokTersediaUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnit()}
                     </p>
                   </div>
                 )}
