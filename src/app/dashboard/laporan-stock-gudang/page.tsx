@@ -111,7 +111,7 @@ export default function LaporanInputStockGudangPage() {
         newErrors.bobotPerUnit = "Bobot per unit tidak valid";
     }
 
-    if (!formData.stokTersediaUnit || parseFloat(formData.stokTersediaUnit) < 0)
+    if (!formData.stokTersediaUnit || isNaN(parseFloat(formData.stokTersediaUnit)))
       newErrors.stokTersediaUnit = "Stok tersedia tidak valid";
 
     if (isBotol) {
