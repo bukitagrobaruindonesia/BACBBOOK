@@ -1,11 +1,12 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, getDoc, where } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
 import Input from "@/app/components/ui/Input";
+import Select from "@/app/components/ui/Select";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 
@@ -17,6 +18,7 @@ interface StockItem {
   fot: string;
   bobotPerUnit: number;
   botolPerDus?: number;
+  volumeMl?: number;
   stokAkhirUnit?: number;
   stokAkhirKG: number;
 }
@@ -58,6 +60,13 @@ export default function TransaksiBarangMasukPage() {
     volumeMl: "500",
   });
 
+  const unitOptions = [
+    { value: "ZAK", label: "ZAK" },
+    { value: "DUS", label: "DUS" },
+    { value: "KG", label: "KG" },
+    { value: "BOTOL", label: "BOTOL" },
+  ];
+
   useEffect(() => {
     fetchStockGudang();
   }, []);
@@ -74,6 +83,7 @@ export default function TransaksiBarangMasukPage() {
         fot: doc.data().fot || "",
         bobotPerUnit: doc.data().bobotPerUnit || 50,
         botolPerDus: doc.data().botolPerDus ?? undefined,
+        volumeMl: doc.data().volumeMl ?? undefined,
         stokAkhirUnit: doc.data().stokAkhirUnit || 0,
         stokAkhirKG: doc.data().stokAkhirKG || 0,
       } as StockItem));
@@ -238,6 +248,7 @@ export default function TransaksiBarangMasukPage() {
         fot: formData.fot.trim().toUpperCase(),
         bobotPerUnit: bobotPerUnit,
         botolPerDus: isBotol && botolPerDus !== null ? botolPerDus : undefined,
+        volumeMl: isBotol ? parseFloat(newStockData.volumeMl) || 500 : undefined,
         stokAkhirUnit: stokAkhirUnit,
         stokAkhirKG: stokAkhirKG,
       };
@@ -451,14 +462,12 @@ export default function TransaksiBarangMasukPage() {
               required
             />
 
-            <Input
+            <Select
               label="Unit"
-              type="text"
               name="unit"
               value={formData.unit}
               onChange={handleChange}
-              placeholder="Contoh: ZAK, DUS, KG, BOTOL"
-              error={errors.unit}
+              options={unitOptions}
               required
             />
 
