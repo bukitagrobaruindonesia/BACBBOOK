@@ -6,6 +6,7 @@ import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
 import Input from "@/app/components/ui/Input";
+import Select from "@/app/components/ui/Select";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 
@@ -17,6 +18,7 @@ interface StockItem {
   fot: string;
   bobotPerUnit: number;
   botolPerDus?: number;
+  volumeMl?: number;
   stokAkhirUnit?: number;
   stokAkhirKG: number;
 }
@@ -55,6 +57,13 @@ export default function TransaksiBarangKeluarPage() {
 
   const [matchedStock, setMatchedStock] = useState<StockItem | null>(null);
 
+  const unitOptions = [
+    { value: "ZAK", label: "ZAK" },
+    { value: "DUS", label: "DUS" },
+    { value: "KG", label: "KG" },
+    { value: "BOTOL", label: "BOTOL" },
+  ];
+
   useEffect(() => {
     fetchStockGudang();
   }, []);
@@ -70,7 +79,8 @@ export default function TransaksiBarangKeluarPage() {
         unit: doc.data().unit || "ZAK",
         fot: doc.data().fot || "",
         bobotPerUnit: doc.data().bobotPerUnit || 50,
-        botolPerDus: doc.data().botolPerDus,
+        botolPerDus: doc.data().botolPerDus ?? undefined,
+        volumeMl: doc.data().volumeMl ?? undefined,
         stokAkhirUnit: doc.data().stokAkhirUnit || 0,
         stokAkhirKG: doc.data().stokAkhirKG || 0,
       } as StockItem));
@@ -144,38 +154,14 @@ export default function TransaksiBarangKeluarPage() {
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
     if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
     if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
-    if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah harus lebih dari 0";
+    if (!formData.jumlahZAK || isNaN(parseFloat(formData.jumlahZAK))) newErrors.jumlahZAK = "Jumlah tidak valid";
     if (!formData.namaCustomer.trim()) newErrors.namaCustomer = "Nama customer wajib diisi";
     if (!formData.nomorPI.trim()) newErrors.nomorPI = "No PI wajib diisi";
-    
     if (!formData.nomorSuratPengangkutan.trim()) newErrors.nomorSuratPengangkutan = "Nomor Surat Pengangkutan wajib diisi";
     if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
 
     if (formData.unit === "BOTOL") {
       if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Botol per DUS tidak valid";
-    }
-
-    if (matchedStock) {
-      const jumlahZAK = parseFloat(formData.jumlahZAK) || 0;
-      let totalKG = 0;
-      if (formData.unit === "BOTOL") {
-        const dusPerZak = 10;
-        const botolPerDus = parseFloat(formData.botolPerDus) || 1;
-        const bobotPerBotol = 50;
-        const totalBotol = jumlahZAK * dusPerZak * botolPerDus;
-        totalKG = (totalBotol * bobotPerBotol) / 1000;
-      } else if (formData.unit === "KG") {
-        totalKG = jumlahZAK;
-      } else {
-        totalKG = jumlahZAK * matchedStock.bobotPerUnit;
-      }
-
-      if (formData.unit !== "KG" && jumlahZAK > (matchedStock.stokAkhirUnit || 0)) {
-        newErrors.jumlahZAK = `Stok tidak mencukupi. Tersedia: ${matchedStock.stokAkhirUnit?.toLocaleString()} ${formData.unit}`;
-      }
-      if (totalKG > matchedStock.stokAkhirKG) {
-        newErrors.jumlahZAK = `Stok KG tidak mencukupi. Tersedia: ${matchedStock.stokAkhirKG.toLocaleString()} KG`;
-      }
     }
 
     setErrors(newErrors);
@@ -194,6 +180,7 @@ export default function TransaksiBarangKeluarPage() {
       const botolPerDus = formData.unit === "BOTOL" ? parseFloat(formData.botolPerDus) || 0 : null;
       const bobotPerUnit = matchedStock ? matchedStock.bobotPerUnit : 50;
       const bobotPerBotol = formData.unit === "BOTOL" ? 50 : null;
+      const volumeMl = matchedStock?.volumeMl || 500;
 
       let totalKG = 0;
       if (formData.unit === "BOTOL") {
@@ -235,6 +222,7 @@ export default function TransaksiBarangKeluarPage() {
       if (formData.unit === "BOTOL") {
         transaksiData.botolPerDus = botolPerDus;
         transaksiData.bobotPerBotol = bobotPerBotol;
+        transaksiData.volumeMl = volumeMl;
       }
 
       await addDoc(collection(db, "transaksiBarangKeluar"), transaksiData);
@@ -260,8 +248,8 @@ export default function TransaksiBarangKeluarPage() {
           await updateDoc(stockRef, {
             barangKeluarUnit: currentKeluarUnit + minusUnit,
             barangKeluarKG: currentKeluarKG + minusKG,
-            stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
-            stokAkhirKG: Math.max(0, currentStokKG - minusKG),
+            stokAkhirUnit: currentStokUnit - minusUnit,
+            stokAkhirKG: currentStokKG - minusKG,
             updatedAt: serverTimestamp(),
           });
         }
@@ -295,6 +283,46 @@ export default function TransaksiBarangKeluarPage() {
   };
 
   const isBotol = formData.unit === "BOTOL";
+
+  const getJumlahLabel = () => {
+    if (formData.unit === "KG") return "KG";
+    if (formData.unit === "BOTOL") return "ZAK";
+    return formData.unit;
+  };
+
+  const getStokWarning = () => {
+    if (!matchedStock || !formData.jumlahZAK) return null;
+    const jumlah = parseFloat(formData.jumlahZAK) || 0;
+    const stokUnit = matchedStock.stokAkhirUnit || 0;
+    const stokKG = matchedStock.stokAkhirKG || 0;
+
+    let totalKG = 0;
+    if (formData.unit === "BOTOL") {
+      const dusPerZak = 10;
+      const botolPerDus = parseFloat(formData.botolPerDus) || (matchedStock.botolPerDus || 20);
+      const totalBotol = jumlah * dusPerZak * botolPerDus;
+      totalKG = (totalBotol * 50) / 1000;
+    } else if (formData.unit === "KG") {
+      totalKG = jumlah;
+    } else {
+      totalKG = jumlah * matchedStock.bobotPerUnit;
+    }
+
+    const sisaUnit = stokUnit - jumlah;
+    const sisaKG = stokKG - totalKG;
+
+    if (sisaUnit < 0 || sisaKG < 0) {
+      return {
+        isNegative: true,
+        sisaUnit,
+        sisaKG,
+        message: `Stok akan minus: ${sisaUnit.toLocaleString()} ${formData.unit === "KG" ? "KG" : formData.unit} (${sisaKG.toLocaleString()} KG)`
+      };
+    }
+    return null;
+  };
+
+  const stokWarning = getStokWarning();
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -356,14 +384,12 @@ export default function TransaksiBarangKeluarPage() {
               required
             />
 
-            <Input
+            <Select
               label="Unit"
-              type="text"
               name="unit"
               value={formData.unit}
               onChange={handleChange}
-              placeholder="Contoh: ZAK, DUS, KG, BOTOL"
-              error={errors.unit}
+              options={unitOptions}
               required
             />
 
@@ -382,7 +408,7 @@ export default function TransaksiBarangKeluarPage() {
           {matchedStock && (
             <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-xl">
               <p className="text-sm text-blue-700 font-medium">
-                Barang ditemukan di database: Stok tersedia {matchedStock.stokAkhirUnit?.toLocaleString()} {matchedStock.unit} ({matchedStock.stokAkhirKG.toLocaleString()} KG)
+                Barang ditemukan di database: Stok tersedia {matchedStock.stokAkhirUnit?.toLocaleString()} {matchedStock.unit === "KG" ? "KG" : matchedStock.unit} ({matchedStock.stokAkhirKG.toLocaleString()} KG)
               </p>
               <p className="text-xs text-blue-600 mt-1">
                 Unit, FOT, dan bobot otomatis disesuaikan dari data gudang. Stok akan berkurang setelah disimpan.
@@ -394,12 +420,12 @@ export default function TransaksiBarangKeluarPage() {
         <Card title="Detail Barang Keluar">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Input
-              label={`Jumlah Barang (${formData.unit === "KG" ? "KG" : "ZAK"})`}
+              label={`Jumlah Barang (${getJumlahLabel()})`}
               type="number"
               name="jumlahZAK"
               value={formData.jumlahZAK}
               onChange={handleChange}
-              placeholder={`Masukkan jumlah dalam ${formData.unit === "KG" ? "KG" : "ZAK"}`}
+              placeholder={`Masukkan jumlah dalam ${getJumlahLabel()}`}
               error={errors.jumlahZAK}
               required
             />
@@ -462,6 +488,74 @@ export default function TransaksiBarangKeluarPage() {
           </div>
         </Card>
 
+        {matchedStock && formData.jumlahZAK && (
+          <Card title="Preview & Validasi Stok">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                <p className="text-xs text-green-600 uppercase tracking-wide font-semibold mb-1">Stok Tersedia</p>
+                <p className="text-xl font-bold text-green-700 font-mono">
+                  {matchedStock.stokAkhirUnit?.toLocaleString()} {formData.unit === "KG" ? "KG" : formData.unit}
+                </p>
+                <p className="text-sm text-green-600">{matchedStock.stokAkhirKG.toLocaleString()} KG</p>
+              </div>
+              <div className={`p-4 rounded-xl border ${stokWarning?.isNegative ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}>
+                <p className={`text-xs uppercase tracking-wide font-semibold mb-1 ${stokWarning?.isNegative ? "text-red-600" : "text-amber-600"}`}>
+                  Jumlah Keluar
+                </p>
+                <p className={`text-xl font-bold font-mono ${stokWarning?.isNegative ? "text-red-700" : "text-amber-700"}`}>
+                  {parseFloat(formData.jumlahZAK).toLocaleString()} {getJumlahLabel()}
+                </p>
+                <p className={`text-sm ${stokWarning?.isNegative ? "text-red-600" : "text-amber-600"}`}>
+                  {formData.unit === "BOTOL"
+                    ? `${((parseFloat(formData.jumlahZAK) || 0) * 10 * (parseFloat(formData.botolPerDus) || (matchedStock.botolPerDus || 20)) * 50 / 1000).toLocaleString()} KG`
+                    : formData.unit === "KG"
+                    ? `${parseFloat(formData.jumlahZAK).toLocaleString()} KG`
+                    : `${((parseFloat(formData.jumlahZAK) || 0) * matchedStock.bobotPerUnit).toLocaleString()} KG`
+                  }
+                </p>
+              </div>
+            </div>
+
+            {stokWarning?.isNegative && (
+              <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <p className="text-sm font-bold text-red-700">PERINGATAN: Stok Tidak Mencukupi</p>
+                </div>
+                <p className="text-sm text-red-600">
+                  Stok akan menjadi minus setelah transaksi ini. Sisa stok yang dihitung:
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-3">
+                  <div className="p-3 bg-white rounded-lg border border-red-100">
+                    <p className="text-xs text-red-500">Sisa Unit</p>
+                    <p className="text-lg font-bold text-red-700 font-mono">{stokWarning.sisaUnit.toLocaleString()} {formData.unit === "KG" ? "KG" : formData.unit}</p>
+                  </div>
+                  <div className="p-3 bg-white rounded-lg border border-red-100">
+                    <p className="text-xs text-red-500">Sisa KG</p>
+                    <p className="text-lg font-bold text-red-700 font-mono">{stokWarning.sisaKG.toLocaleString()} KG</p>
+                  </div>
+                </div>
+                <p className="text-xs text-red-500 mt-2">
+                  Transaksi tetap bisa disimpan. Stok akan tertulis minus di laporan stock gudang.
+                </p>
+              </div>
+            )}
+
+            {formData.unit === "BOTOL" && (
+              <p className="text-xs text-amber-500 mt-2">
+                Perhitungan: {formData.jumlahZAK} ZAK x 10 DUS/ZAK x {formData.botolPerDus || matchedStock.botolPerDus || 0} botol/DUS x 50 ml / 1000 = KG
+              </p>
+            )}
+            {formData.unit !== "BOTOL" && formData.unit !== "KG" && (
+              <p className="text-xs text-amber-500 mt-2">
+                Perhitungan: {formData.jumlahZAK} {formData.unit} x {matchedStock.bobotPerUnit} KG/{formData.unit}
+              </p>
+            )}
+          </Card>
+        )}
+
         <Card title="Sopir & Nopol (Opsional)">
           <div className="space-y-6">
             {sopirNopolList.map((item, index) => (
@@ -520,42 +614,6 @@ export default function TransaksiBarangKeluarPage() {
             </Button>
           </div>
         </Card>
-
-        {matchedStock && formData.jumlahZAK && (
-          <Card title="Preview & Validasi Stok">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="p-4 bg-green-50 rounded-xl border border-green-200">
-                <p className="text-xs text-green-600 uppercase tracking-wide font-semibold mb-1">Stok Tersedia</p>
-                <p className="text-xl font-bold text-green-700 font-mono">
-                  {matchedStock.stokAkhirUnit?.toLocaleString()} {formData.unit === "KG" ? "KG" : formData.unit}
-                </p>
-                <p className="text-sm text-green-600">{matchedStock.stokAkhirKG.toLocaleString()} KG</p>
-              </div>
-              <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">Jumlah Keluar</p>
-                <p className="text-xl font-bold text-amber-700 font-mono">
-                  {parseFloat(formData.jumlahZAK).toLocaleString()} {formData.unit === "KG" ? "KG" : "ZAK"}
-                </p>
-                <p className="text-sm text-amber-600">
-                  {formData.unit === "BOTOL"
-                    ? `${((parseFloat(formData.jumlahZAK) || 0) * 10 * (parseFloat(formData.botolPerDus) || 1) * 50 / 1000).toLocaleString()} KG`
-                    : `${((parseFloat(formData.jumlahZAK) || 0) * matchedStock.bobotPerUnit).toLocaleString()} KG`
-                  }
-                </p>
-              </div>
-            </div>
-            {formData.unit === "BOTOL" && (
-              <p className="text-xs text-amber-500 mt-2">
-                Perhitungan: {formData.jumlahZAK} ZAK x 10 DUS/ZAK x {formData.botolPerDus || 0} botol/DUS x 50 ml / 1000 = KG
-              </p>
-            )}
-            {formData.unit !== "BOTOL" && formData.unit !== "KG" && (
-              <p className="text-xs text-amber-500 mt-2">
-                Perhitungan: {formData.jumlahZAK} {formData.unit} x {matchedStock.bobotPerUnit} KG/{formData.unit}
-              </p>
-            )}
-          </Card>
-        )}
 
         <div className="flex items-center justify-end gap-4 pt-4">
           <Button
