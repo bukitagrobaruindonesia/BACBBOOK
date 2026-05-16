@@ -26,7 +26,7 @@ export default function PublicPage() {
 
   const fetchData = async () => {
     try {
-      const q = query(collection(db, "stockGudang"), orderBy("namaBarang", "asc"));
+      const q = query(collection(db, "stockGudang"), orderBy("kodeBarang", "asc"));
       const snapshot = await getDocs(q);
       const items = snapshot.docs.map((doc) => ({
         id: doc.id,

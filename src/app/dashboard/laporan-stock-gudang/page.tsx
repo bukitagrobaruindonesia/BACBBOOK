@@ -79,7 +79,7 @@ export default function LaporanInputStockGudangPage() {
 
   const fetchStockGudang = async () => {
     try {
-      const q = query(collection(db, "stockGudang"), orderBy("namaBarang", "asc"));
+      const q = query(collection(db, "stockGudang"), orderBy("kodeBarang", "asc"));
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((doc) => ({
         id: doc.id,
@@ -251,7 +251,7 @@ export default function LaporanInputStockGudangPage() {
       bobotPerUnit: "50",
       stokTersediaUnit: "",
       botolPerDus: "20",
-    volumeMl: "500",
+      volumeMl: "500",
     });
     setIsNewFot(false);
     setIsEditing(false);
