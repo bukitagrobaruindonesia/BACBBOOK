@@ -42,6 +42,7 @@ export default function LaporanInputStockGudangPage() {
     bobotPerUnit: "50",
     stokTersediaUnit: "",
     botolPerDus: "20",
+    volumeMl: "500",
   });
 
   const [fotList, setFotList] = useState<string[]>([]);
@@ -117,6 +118,8 @@ export default function LaporanInputStockGudangPage() {
     if (isBotol) {
       if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0)
         newErrors.botolPerDus = "Jumlah botol per dus tidak valid";
+      if (!formData.volumeMl || parseFloat(formData.volumeMl) <= 0)
+        newErrors.volumeMl = "Volume tidak valid";
     }
 
     setErrors(newErrors);
@@ -160,6 +163,7 @@ export default function LaporanInputStockGudangPage() {
 
         if (isBotol) {
           docData.botolPerDus = botolPerDus;
+          docData.volumeMl = parseFloat(formData.volumeMl) || 500;
           docData.displayUnit = "ZAK";
         }
 
@@ -187,6 +191,7 @@ export default function LaporanInputStockGudangPage() {
 
         if (isBotol) {
           docData.botolPerDus = botolPerDus;
+          docData.volumeMl = parseFloat(formData.volumeMl) || 500;
           docData.displayUnit = "ZAK";
         }
 
@@ -217,6 +222,7 @@ export default function LaporanInputStockGudangPage() {
       bobotPerUnit: stock.bobotPerUnit?.toString() || "50",
       stokTersediaUnit: stock.stokAkhirUnit?.toString() || "",
       botolPerDus: stock.botolPerDus?.toString() || "20",
+      volumeMl: stock.volumeMl?.toString() || "500",
     });
     setIsNewFot(!fotList.includes(stock.fot));
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -245,6 +251,7 @@ export default function LaporanInputStockGudangPage() {
       bobotPerUnit: "50",
       stokTersediaUnit: "",
       botolPerDus: "20",
+    volumeMl: "500",
     });
     setIsNewFot(false);
     setIsEditing(false);
@@ -360,7 +367,7 @@ export default function LaporanInputStockGudangPage() {
           return (
             <div className="text-xs">
               <p className="font-mono text-pink-600">{row.botolPerDus || 20} botol/DUS</p>
-              <p className="font-mono text-pink-500">50 ml/botol</p>
+              <p className="font-mono text-pink-500">{row.volumeMl || 500} ml/botol</p>
             </div>
           );
         }
@@ -582,16 +589,28 @@ export default function LaporanInputStockGudangPage() {
                 )}
 
                 {isBotol && (
-                  <Input
-                    label="Botol Per DUS"
-                    type="number"
-                    name="botolPerDus"
-                    value={formData.botolPerDus}
-                    onChange={handleChange}
-                    placeholder="Contoh: 20"
-                    error={errors.botolPerDus}
-                    required
-                  />
+                  <>
+                    <Input
+                      label="Botol Per DUS"
+                      type="number"
+                      name="botolPerDus"
+                      value={formData.botolPerDus}
+                      onChange={handleChange}
+                      placeholder="Contoh: 20"
+                      error={errors.botolPerDus}
+                      required
+                    />
+                    <Input
+                      label="Volume (ml)"
+                      type="number"
+                      name="volumeMl"
+                      value={formData.volumeMl}
+                      onChange={handleChange}
+                      placeholder="Contoh: 500"
+                      error={errors.volumeMl}
+                      required
+                    />
+                  </>
                 )}
 
                 {!isEditing && (

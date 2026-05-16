@@ -41,20 +41,19 @@ export interface StockGudang {
   kodeBarang: string;
   namaBarang: string;
   unit: "ZAK" | "DUS" | "KG" | "BOTOL";
-  bobotPerUnit: number;
-  stokAwalUnit?: number;
-  stokAwalKG: number;
-  barangMasukUnit?: number;
-  barangMasukKG: number;
-  barangKeluarUnit?: number;
-  barangKeluarKG: number;
-  stokAkhirUnit?: number;
-  stokAkhirKG: number;
+  bobotPerUnit?: number;
   botolPerDus?: number;
-  dusPerZak?: number;
+  volumeMl?: number;        // ← TAMBAHKAN INI
   displayUnit?: string;
-  secondaryUnit?: string;
-  createdBy: string;
+  stokAwalUnit: number;
+  stokAwalKG: number;
+  barangMasukUnit: number;
+  barangMasukKG: number;
+  barangKeluarUnit: number;
+  barangKeluarKG: number;
+  stokAkhirUnit: number;
+  stokAkhirKG: number;
+  createdBy?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
