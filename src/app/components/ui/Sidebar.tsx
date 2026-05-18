@@ -76,11 +76,19 @@ export default function Sidebar() {
   const { user, logout } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const handleLogout = () => {
+    if (typeof window !== "undefined" && window.confirm("Apakah Anda yakin ingin keluar?")) {
+      logout();
+    }
+  };
+
   return (
     <React.Fragment>
       <button
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
         className="lg:hidden fixed top-4 left-4 z-50 p-3 bg-green-800 text-white rounded-xl shadow-lg"
+        aria-label={isMobileMenuOpen ? "Tutup menu" : "Buka menu"}
+        aria-expanded={isMobileMenuOpen}
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isMobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
@@ -88,15 +96,18 @@ export default function Sidebar() {
       </button>
 
       {isMobileMenuOpen ? (
-        <div className="lg:hidden fixed inset-0 bg-black/50 z-40 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)}></div>
+        <div className="lg:hidden fixed inset-0 bg-black/50 z-40 backdrop-blur-sm" onClick={() => setIsMobileMenuOpen(false)} role="presentation"></div>
       ) : null}
 
-      <aside className={`
+      <aside
+        className={`
         fixed lg:sticky top-0 left-0 z-40 h-screen bg-gradient-to-b from-green-900 to-green-800 text-white flex flex-col shadow-2xl
         transition-transform duration-300 ease-in-out
         w-72
         ${isMobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}
-      `}>
+      `}
+        aria-label="Sidebar navigasi"
+      >
         <div className="p-6 border-b border-green-700/50">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-amber-500 rounded-xl shadow-lg">
@@ -111,7 +122,7 @@ export default function Sidebar() {
           </div>
         </div>
 
-        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto" role="navigation">
           {menuItems.map((item) => {
             const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             return (
@@ -124,6 +135,7 @@ export default function Sidebar() {
                     ? "bg-green-800 text-white shadow-lg border-l-4 border-amber-400"
                     : "text-green-200 hover:text-white hover:bg-green-800/50"
                 }`}
+                aria-current={isActive ? "page" : undefined}
               >
                 {item.icon}
                 <span className="font-medium text-sm">{item.label}</span>
@@ -149,8 +161,9 @@ export default function Sidebar() {
               </div>
             </div>
             <button
-              onClick={logout}
+              onClick={handleLogout}
               className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600/20 text-red-300 hover:bg-red-600/30 rounded-lg transition-colors text-sm font-medium"
+              aria-label="Keluar dari sistem"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />

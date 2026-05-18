@@ -12,6 +12,12 @@ export default function Header(props: HeaderProps) {
   const { title, subtitle } = props;
   const { user, logout } = useAuth();
 
+  const handleLogout = () => {
+    if (typeof window !== "undefined" && window.confirm("Apakah Anda yakin ingin keluar?")) {
+      logout();
+    }
+  };
+
   return (
     <header className="bg-white border-b border-green-100 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sticky top-0 z-30 shadow-sm rounded-xl mb-6">
       <div className="min-w-0">
@@ -27,7 +33,7 @@ export default function Header(props: HeaderProps) {
           {user?.nama ? user.nama.charAt(0).toUpperCase() : "?"}
         </div>
         <button
-          onClick={logout}
+          onClick={handleLogout}
           className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all md:hidden"
           title="Keluar"
         >

@@ -8,16 +8,33 @@ interface CardProps {
   title?: string;
   icon?: React.ReactNode;
   onClick?: () => void;
+  role?: string;
+  ariaLabel?: string;
 }
 
 export default function Card(props: CardProps) {
-  const { children, className = "", title, icon, onClick } = props;
+  const { children, className = "", title, icon, onClick, role, ariaLabel } = props;
+
+  const isClickable = !!onClick;
 
   return (
     <div
       onClick={onClick}
+      role={role || (isClickable ? "button" : undefined)}
+      aria-label={ariaLabel}
+      tabIndex={isClickable ? 0 : undefined}
+      onKeyDown={
+        isClickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
       className={`bg-white rounded-xl shadow-lg border border-green-100 overflow-hidden transition-all duration-300 hover:shadow-xl ${
-        onClick ? "cursor-pointer hover:border-green-300" : ""
+        isClickable ? "cursor-pointer hover:border-green-300 focus:outline-none focus:ring-2 focus:ring-green-500" : ""
       } ${className}`}
     >
       {(title || icon) ? (

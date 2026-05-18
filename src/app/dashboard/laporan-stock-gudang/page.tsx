@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   collection,
   addDoc,
@@ -22,6 +22,24 @@ import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 import Table from "@/app/components/ui/Table";
 import { StockGudang } from "@/app/types";
+
+const KODE_BARANG_MIN_LENGTH = 3;
+const KODE_BARANG_MAX_LENGTH = 50;
+const NAMA_BARANG_MAX_LENGTH = 100;
+const FOT_MAX_LENGTH = 50;
+const MAX_STOK_VALUE = 999999;
+
+function sanitizeInput(input: string): string {
+  return input
+    .replace(/[<>]/g, "")
+    .replace(/javascript:/gi, "")
+    .replace(/on\w+\s*=/gi, "")
+    .trim();
+}
+
+function normalizeKodeBarang(kode: string): string {
+  return kode.trim().toUpperCase().replace(/[^A-Z0-9-_]/g, "");
+}
 
 export default function LaporanInputStockGudangPage() {
   const { user } = useAuth();
@@ -69,14 +87,14 @@ export default function LaporanInputStockGudangPage() {
       const snapshot = await getDocs(q);
       const fotSet = new Set<string>();
       snapshot.docs.forEach((doc) => {
-        const fot = doc.data().fod;
+        const fot = doc.data().fot;
         if (fot && typeof fot === "string" && fot.trim()) {
           fotSet.add(fot.trim().toUpperCase());
         }
       });
       setFotList(Array.from(fotSet));
     } catch (error) {
-      console.error(error);
+      console.error("Error fetching FOT list:", error);
     }
   };
 
@@ -92,18 +110,16 @@ export default function LaporanInputStockGudangPage() {
       } as StockGudang));
       setStockList(data);
     } catch (error) {
-      console.error(error);
+      console.error("Error fetching stock:", error);
     }
   };
 
   const checkDuplicateKodeBarang = async (kodeBarang: string): Promise<boolean> => {
-    if (!kodeBarang.trim()) return false;
+    const normalized = normalizeKodeBarang(kodeBarang);
+    if (normalized.length < KODE_BARANG_MIN_LENGTH) return false;
 
     try {
-      const q = query(
-        collection(db, "stockGudang"),
-        where("kodeBarang", "==", kodeBarang.trim().toUpperCase())
-      );
+      const q = query(collection(db, "stockGudang"), where("kodeBarang", "==", normalized));
       const snapshot = await getDocs(q);
 
       if (isEditing && editId) {
@@ -119,21 +135,23 @@ export default function LaporanInputStockGudangPage() {
   };
 
   const handleKodeBarangChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    const { value } = e.target;
+    const sanitized = value.replace(/[^a-zA-Z0-9-_]/g, "").toUpperCase();
 
-    if (errors[name]) {
+    setFormData((prev) => ({ ...prev, kodeBarang: sanitized }));
+
+    if (errors.kodeBarang) {
       setErrors((prev) => {
         const newErrors = { ...prev };
-        delete newErrors[name];
+        delete newErrors.kodeBarang;
         return newErrors;
       });
     }
 
-    if (value.trim().length >= 3) {
-      const isDuplicate = await checkDuplicateKodeBarang(value);
+    if (sanitized.length >= KODE_BARANG_MIN_LENGTH) {
+      const isDuplicate = await checkDuplicateKodeBarang(sanitized);
       if (isDuplicate) {
-        setDuplicateKodeBarang(value.trim().toUpperCase());
+        setDuplicateKodeBarang(sanitized);
         setShowDuplicateModal(true);
         setFormData((prev) => ({ ...prev, kodeBarang: "" }));
       }
@@ -145,33 +163,54 @@ export default function LaporanInputStockGudangPage() {
     return formData.unit;
   };
 
-  const validateForm = () => {
+  const validateForm = useCallback(() => {
     const newErrors: Record<string, string> = {};
-    if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
-    if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
-    if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
+
+    const fot = sanitizeInput(formData.fot);
+    if (!fot || fot.length < 2) newErrors.fot = "FOT wajib diisi (min 2 karakter)";
+    if (fot.length > FOT_MAX_LENGTH) newErrors.fot = `FOT maksimal ${FOT_MAX_LENGTH} karakter`;
+
+    const kodeBarang = normalizeKodeBarang(formData.kodeBarang);
+    if (!kodeBarang || kodeBarang.length < KODE_BARANG_MIN_LENGTH) {
+      newErrors.kodeBarang = `Kode barang wajib diisi (min ${KODE_BARANG_MIN_LENGTH} karakter)`;
+    }
+    if (kodeBarang.length > KODE_BARANG_MAX_LENGTH) {
+      newErrors.kodeBarang = `Kode barang maksimal ${KODE_BARANG_MAX_LENGTH} karakter`;
+    }
+
+    const namaBarang = sanitizeInput(formData.namaBarang);
+    if (!namaBarang || namaBarang.length < 2) newErrors.namaBarang = "Nama barang wajib diisi (min 2 karakter)";
+    if (namaBarang.length > NAMA_BARANG_MAX_LENGTH) newErrors.namaBarang = `Nama barang maksimal ${NAMA_BARANG_MAX_LENGTH} karakter`;
 
     const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
     const isBotol = formData.unit === "BOTOL";
 
     if (isUnitBased && !isBotol) {
-      if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0)
-        newErrors.bobotPerUnit = "Bobot per unit tidak valid";
+      const bobot = parseFloat(formData.bobotPerUnit);
+      if (!formData.bobotPerUnit || isNaN(bobot) || bobot <= 0 || bobot > 1000) {
+        newErrors.bobotPerUnit = "Bobot per unit tidak valid (1-1000 KG)";
+      }
     }
 
-    if (!formData.stokTersediaUnit || isNaN(parseFloat(formData.stokTersediaUnit)))
-      newErrors.stokTersediaUnit = "Stok tersedia tidak valid";
+    const stok = parseFloat(formData.stokTersediaUnit);
+    if (!formData.stokTersediaUnit || isNaN(stok) || stok < -MAX_STOK_VALUE || stok > MAX_STOK_VALUE) {
+      newErrors.stokTersediaUnit = `Stok tersedia tidak valid (-${MAX_STOK_VALUE} sampai ${MAX_STOK_VALUE})`;
+    }
 
     if (isBotol) {
-      if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0)
-        newErrors.botolPerDus = "Jumlah botol per dus tidak valid";
-      if (!formData.volumeMl || parseFloat(formData.volumeMl) <= 0)
-        newErrors.volumeMl = "Volume tidak valid";
+      const botolPerDus = parseFloat(formData.botolPerDus);
+      if (!formData.botolPerDus || isNaN(botolPerDus) || botolPerDus <= 0 || botolPerDus > 1000) {
+        newErrors.botolPerDus = "Jumlah botol per dus tidak valid (1-1000)";
+      }
+      const volume = parseFloat(formData.volumeMl);
+      if (!formData.volumeMl || isNaN(volume) || volume <= 0 || volume > 10000) {
+        newErrors.volumeMl = "Volume tidak valid (1-10000 ml)";
+      }
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
+  }, [formData]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,7 +218,7 @@ export default function LaporanInputStockGudangPage() {
 
     const isDuplicate = await checkDuplicateKodeBarang(formData.kodeBarang);
     if (isDuplicate) {
-      setDuplicateKodeBarang(formData.kodeBarang.trim().toUpperCase());
+      setDuplicateKodeBarang(normalizeKodeBarang(formData.kodeBarang));
       setShowDuplicateModal(true);
       return;
     }
@@ -207,9 +246,9 @@ export default function LaporanInputStockGudangPage() {
 
       if (isEditing && editId) {
         const docData: any = {
-          fot: formData.fot.trim().toUpperCase(),
-          kodeBarang: formData.kodeBarang.trim().toUpperCase(),
-          namaBarang: formData.namaBarang.trim(),
+          fot: sanitizeInput(formData.fot).toUpperCase(),
+          kodeBarang: normalizeKodeBarang(formData.kodeBarang),
+          namaBarang: sanitizeInput(formData.namaBarang),
           unit: formData.unit,
           bobotPerUnit: bobotPerUnit,
           updatedAt: serverTimestamp(),
@@ -225,9 +264,9 @@ export default function LaporanInputStockGudangPage() {
         setSuccessMessage("Data stock gudang berhasil diperbarui!");
       } else {
         const docData: any = {
-          fot: formData.fot.trim().toUpperCase(),
-          kodeBarang: formData.kodeBarang.trim().toUpperCase(),
-          namaBarang: formData.namaBarang.trim(),
+          fot: sanitizeInput(formData.fot).toUpperCase(),
+          kodeBarang: normalizeKodeBarang(formData.kodeBarang),
+          namaBarang: sanitizeInput(formData.namaBarang),
           unit: formData.unit,
           bobotPerUnit: bobotPerUnit,
           stokAwalUnit: isKG ? 0 : stokTersediaUnit,
@@ -258,7 +297,7 @@ export default function LaporanInputStockGudangPage() {
       fetchFotList();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
-      console.error(error);
+      console.error("Submit error:", error);
       setErrors({ submit: "Gagal menyimpan data. Silakan coba lagi." });
     } finally {
       setIsSubmitting(false);
@@ -291,7 +330,7 @@ export default function LaporanInputStockGudangPage() {
       fetchFotList();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
-      console.error(error);
+      console.error("Delete error:", error);
       setErrors({ submit: "Gagal menghapus data. Silakan coba lagi." });
     }
   };
@@ -337,10 +376,11 @@ export default function LaporanInputStockGudangPage() {
   const isBotol = formData.unit === "BOTOL";
 
   const filteredStockList = stockList.filter((stock) => {
+    const searchLower = searchQuery.toLowerCase();
     const matchesSearch =
-      stock.namaBarang.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      stock.kodeBarang.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      stock.fot.toLowerCase().includes(searchQuery.toLowerCase());
+      stock.namaBarang.toLowerCase().includes(searchLower) ||
+      stock.kodeBarang.toLowerCase().includes(searchLower) ||
+      stock.fot.toLowerCase().includes(searchLower);
     const matchesFot = filterFot ? stock.fot === filterFot : true;
     return matchesSearch && matchesFot;
   });
@@ -504,6 +544,7 @@ export default function LaporanInputStockGudangPage() {
             onClick={() => handleEdit(row)}
             className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
             title="Edit"
+            aria-label={`Edit ${row.namaBarang}`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -513,6 +554,7 @@ export default function LaporanInputStockGudangPage() {
             onClick={() => setShowDeleteConfirm(row.id)}
             className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             title="Hapus"
+            aria-label={`Hapus ${row.namaBarang}`}
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -525,13 +567,10 @@ export default function LaporanInputStockGudangPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <Header
-        title="Laporan & Input Stock Gudang"
-        subtitle="Kelola data stock barang per FOT"
-      />
+      <Header title="Laporan & Input Stock Gudang" subtitle="Kelola data stock barang per FOT" />
 
       {successMessage && (
-        <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3 text-green-700">
+        <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3 text-green-700" role="alert">
           <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -540,7 +579,7 @@ export default function LaporanInputStockGudangPage() {
       )}
 
       {errors.submit && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700" role="alert">
           <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
@@ -550,25 +589,18 @@ export default function LaporanInputStockGudangPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-6" noValidate>
             <Card
               title={isEditing ? "Edit Stock Gudang" : "Input Stock Gudang"}
               icon={
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
-                  />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
               }
             >
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    FOT (Tempat Gudang)
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">FOT (Tempat Gudang)</label>
                   <Select
                     name="fot"
                     value={isNewFot ? "__new__" : formData.fot}
@@ -593,11 +625,10 @@ export default function LaporanInputStockGudangPage() {
                       placeholder="Masukkan nama FOT baru"
                       error={errors.fot}
                       className="mt-2"
+                      maxLength={FOT_MAX_LENGTH}
                     />
                   )}
-                  {!isNewFot && errors.fot && (
-                    <p className="mt-1 text-sm text-red-600">{errors.fot}</p>
-                  )}
+                  {!isNewFot && errors.fot && <p className="mt-1 text-sm text-red-600">{errors.fot}</p>}
                 </div>
 
                 <Input
@@ -609,6 +640,7 @@ export default function LaporanInputStockGudangPage() {
                   placeholder="Contoh: PUP-001"
                   error={errors.kodeBarang}
                   required
+                  maxLength={KODE_BARANG_MAX_LENGTH}
                 />
 
                 <Input
@@ -620,16 +652,10 @@ export default function LaporanInputStockGudangPage() {
                   placeholder="Contoh: Pupuk Urea"
                   error={errors.namaBarang}
                   required
+                  maxLength={NAMA_BARANG_MAX_LENGTH}
                 />
 
-                <Select
-                  label="Unit"
-                  name="unit"
-                  value={formData.unit}
-                  onChange={handleChange}
-                  options={unitOptions}
-                  required
-                />
+                <Select label="Unit" name="unit" value={formData.unit} onChange={handleChange} options={unitOptions} required />
 
                 {isUnitBased && !isBotol && (
                   <Input
@@ -641,6 +667,9 @@ export default function LaporanInputStockGudangPage() {
                     placeholder="Contoh: 50"
                     error={errors.bobotPerUnit}
                     required
+                    min={1}
+                    max={1000}
+                    step="0.01"
                   />
                 )}
 
@@ -655,6 +684,8 @@ export default function LaporanInputStockGudangPage() {
                       placeholder="Contoh: 20"
                       error={errors.botolPerDus}
                       required
+                      min={1}
+                      max={1000}
                     />
                     <Input
                       label="Volume (ml)"
@@ -665,6 +696,8 @@ export default function LaporanInputStockGudangPage() {
                       placeholder="Contoh: 500"
                       error={errors.volumeMl}
                       required
+                      min={1}
+                      max={10000}
                     />
                   </>
                 )}
@@ -679,14 +712,15 @@ export default function LaporanInputStockGudangPage() {
                     placeholder={`Masukkan stok tersedia dalam ${getDisplayUnit()}`}
                     error={errors.stokTersediaUnit}
                     required
+                    min={-MAX_STOK_VALUE}
+                    max={MAX_STOK_VALUE}
+                    step="0.01"
                   />
                 )}
 
                 {formData.stokTersediaUnit && !isEditing && (
                   <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                    <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">
-                      Preview Stok
-                    </p>
+                    <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">Preview Stok</p>
                     <p className="text-3xl font-bold text-amber-700 font-mono">
                       {parseFloat(formData.stokTersediaUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnit()}
                     </p>
@@ -701,13 +735,7 @@ export default function LaporanInputStockGudangPage() {
                   Batal Edit
                 </Button>
               )}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => {
-                  resetForm();
-                }}
-              >
+              <Button type="button" variant="outline" onClick={resetForm}>
                 Reset Form
               </Button>
               <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting}>
@@ -722,12 +750,7 @@ export default function LaporanInputStockGudangPage() {
             title={`Data Stock Gudang (${filteredStockList.length} item)`}
             icon={
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 6h16M4 10h16M4 14h16M4 18h16"
-                />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
               </svg>
             }
           >
@@ -739,6 +762,7 @@ export default function LaporanInputStockGudangPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full"
+                  maxLength={100}
                 />
               </div>
               <div className="sm:w-48">
@@ -753,19 +777,13 @@ export default function LaporanInputStockGudangPage() {
               </div>
             </div>
 
-            <Table
-              columns={columns}
-              data={filteredStockList}
-              isLoading={false}
-              emptyMessage="Belum ada data stock gudang"
-              keyExtractor={(row) => row.id}
-            />
+            <Table columns={columns} data={filteredStockList} isLoading={false} emptyMessage="Belum ada data stock gudang" keyExtractor={(row) => row.id} />
           </Card>
         </div>
       </div>
 
       {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-3 bg-red-100 rounded-full">
@@ -775,19 +793,12 @@ export default function LaporanInputStockGudangPage() {
               </div>
               <h3 className="text-lg font-bold text-gray-900">Konfirmasi Hapus</h3>
             </div>
-            <p className="text-gray-600 mb-6">
-              Apakah Anda yakin ingin menghapus data stock ini? Tindakan ini tidak dapat dibatalkan.
-            </p>
+            <p className="text-gray-600 mb-6">Apakah Anda yakin ingin menghapus data stock ini? Tindakan ini tidak dapat dibatalkan.</p>
             <div className="flex items-center justify-end gap-3">
               <Button type="button" variant="outline" onClick={() => setShowDeleteConfirm(null)}>
                 Batal
               </Button>
-              <Button
-                type="button"
-                variant="primary"
-                className="bg-red-600 hover:bg-red-700"
-                onClick={() => handleDelete(showDeleteConfirm)}
-              >
+              <Button type="button" variant="primary" className="bg-red-600 hover:bg-red-700" onClick={() => handleDelete(showDeleteConfirm)}>
                 Hapus Data
               </Button>
             </div>
@@ -796,7 +807,7 @@ export default function LaporanInputStockGudangPage() {
       )}
 
       {showDuplicateModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-3 bg-amber-100 rounded-full">
@@ -809,16 +820,9 @@ export default function LaporanInputStockGudangPage() {
             <p className="text-gray-600 mb-2">
               Kode barang <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded">{duplicateKodeBarang}</span> sudah terdaftar di database.
             </p>
-            <p className="text-gray-500 text-sm mb-6">
-              Silakan gunakan kode barang yang berbeda atau edit data yang sudah ada melalui tabel di samping.
-            </p>
+            <p className="text-gray-500 text-sm mb-6">Silakan gunakan kode barang yang berbeda atau edit data yang sudah ada melalui tabel di samping.</p>
             <div className="flex items-center justify-end gap-3">
-              <Button
-                type="button"
-                variant="primary"
-                className="bg-amber-600 hover:bg-amber-700"
-                onClick={() => setShowDuplicateModal(false)}
-              >
+              <Button type="button" variant="primary" className="bg-amber-600 hover:bg-amber-700" onClick={() => setShowDuplicateModal(false)}>
                 Mengerti
               </Button>
             </div>

@@ -18,6 +18,24 @@ interface TableProps<T> {
   keyExtractor: (row: T, index: number) => string;
 }
 
+function escapeHtml(unsafe: string): string {
+  return unsafe
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+export function SafeText({ children }: { children: string | number | null | undefined }) {
+  if (children === null || children === undefined) {
+    return <span>-</span>;
+  }
+  const text = String(children);
+  const escaped = escapeHtml(text);
+  return <span dangerouslySetInnerHTML={{ __html: escaped }} />;
+}
+
 export default function Table<T>(props: TableProps<T>) {
   const {
     columns,
@@ -75,7 +93,7 @@ export default function Table<T>(props: TableProps<T>) {
                   <td key={colIndex} className="px-4 sm:px-6 py-3 sm:py-4 text-sm text-gray-700 whitespace-nowrap">
                     {col.render
                       ? col.render(row, rowIndex)
-                      : String((row as any)[col.key] ?? "-")}
+                      : <SafeText>{(row as any)[col.key]}</SafeText>}
                   </td>
                 ))}
               </tr>

@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 import Input from "@/app/components/ui/Input";
 import Button from "@/app/components/ui/Button";
@@ -11,29 +11,81 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [lockoutMessage, setLockoutMessage] = useState("");
   const { login, user, loading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectPath = searchParams.get("redirect") || "/dashboard";
+
+  const sanitizeRedirect = (path: string): string => {
+    if (!path.startsWith("/")) return "/dashboard";
+    if (path.includes("://") || path.includes("//")) return "/dashboard";
+    const blockedPaths = ["/login", "/api", "/_next", "/static"];
+    if (blockedPaths.some((bp) => path.startsWith(bp))) return "/dashboard";
+    return path;
+  };
+
+  const safeRedirect = sanitizeRedirect(redirectPath);
 
   useEffect(() => {
     if (!loading && user) {
-      router.replace("/dashboard");
+      router.replace(safeRedirect);
     }
-  }, [loading, user, router]);
+  }, [loading, user, router, safeRedirect]);
+
+  const validateInputs = useCallback((): boolean => {
+    setError("");
+    setLockoutMessage("");
+
+    const trimmedEmail = email.trim();
+    const trimmedPassword = password.trim();
+
+    if (!trimmedEmail || !trimmedPassword) {
+      setError("Email dan password wajib diisi");
+      return false;
+    }
+
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      setError("Format email tidak valid");
+      return false;
+    }
+
+    if (trimmedPassword.length < 6) {
+      setError("Password minimal 6 karakter");
+      return false;
+    }
+
+    if (trimmedPassword.length > 128) {
+      setError("Password terlalu panjang");
+      return false;
+    }
+
+    return true;
+  }, [email, password]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+
+    if (!validateInputs()) return;
+
     setIsLoading(true);
+    setError("");
+    setLockoutMessage("");
 
     try {
       const success = await login(email, password);
       if (success) {
-        window.location.href = "/dashboard";
+        window.location.href = safeRedirect;
       } else {
         setError("Email atau password salah. Silakan coba lagi.");
       }
     } catch (err: any) {
-      setError("Terjadi kesalahan. Silakan coba lagi.");
+      if (err.message && err.message.includes("terkunci")) {
+        setLockoutMessage(err.message);
+      } else {
+        setError("Terjadi kesalahan sistem. Silakan coba lagi.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -69,7 +121,7 @@ export default function LoginPage() {
             <p className="text-xs sm:text-sm text-gray-500 mt-1">Sistem Administrasi Distributor Pupuk</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5">
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-5" autoComplete="off">
             <Input
               label="Email"
               type="email"
@@ -77,6 +129,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Masukkan email"
               required
+              autoComplete="username"
             />
 
             <Input
@@ -86,6 +139,7 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Masukkan Password"
               required
+              autoComplete="current-password"
             />
 
             {error && (
@@ -94,6 +148,15 @@ export default function LoginPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <span className="text-sm">{error}</span>
+              </div>
+            )}
+
+            {lockoutMessage && (
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-2 text-amber-700 text-sm">
+                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-medium">{lockoutMessage}</span>
               </div>
             )}
 

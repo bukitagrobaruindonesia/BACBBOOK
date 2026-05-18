@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useCallback } from "react";
 
 interface SelectOption {
   value: string;
@@ -17,6 +17,7 @@ interface SelectProps {
   error?: string;
   required?: boolean;
   className?: string;
+  disabled?: boolean;
 }
 
 export default function Select(props: SelectProps) {
@@ -30,24 +31,43 @@ export default function Select(props: SelectProps) {
     error,
     required,
     className = "",
+    disabled,
   } = props;
+
+  const handleChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      const selectedValue = e.target.value;
+
+      const isValidOption = options.some((opt) => opt.value === selectedValue);
+      if (!isValidOption && selectedValue !== "") {
+        return;
+      }
+
+      onChange?.(e);
+    },
+    [onChange, options]
+  );
+
+  const selectId = name ? `select-${name}` : undefined;
 
   return (
     <div className="w-full">
       {label ? (
-        <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+        <label htmlFor={selectId} className="block text-sm font-semibold text-gray-700 mb-1.5">
           {label}
           {required ? <span className="text-red-500 ml-1">*</span> : null}
         </label>
       ) : null}
       <select
+        id={selectId}
         name={name}
         value={value}
-        onChange={onChange}
+        onChange={handleChange}
         required={required}
+        disabled={disabled}
         className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-gray-800 text-sm ${
           error ? "border-red-500 focus:ring-red-500" : "border-gray-300"
-        } ${className}`}
+        } ${disabled ? "bg-gray-50 cursor-not-allowed opacity-60" : ""} ${className}`}
       >
         {placeholder ? (
           <option value="" disabled>
