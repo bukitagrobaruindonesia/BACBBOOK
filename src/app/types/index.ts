@@ -63,6 +63,7 @@ export interface UserSession {
   email: string;
   nama: string;
   role: string;
+  username?: string;
 }
 
 export interface TransaksiBarangMasuk {

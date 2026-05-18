@@ -135,7 +135,7 @@ export default function Sidebar() {
         <div className="p-4 border-t border-green-700/50">
           <div className="mb-3 px-4 py-2 bg-green-800/50 rounded-xl">
             <p className="text-xs text-green-200">Login sebagai</p>
-            <p className="text-sm font-semibold text-white truncate">{user?.username || "Admin"}</p>
+            <p className="text-sm font-semibold text-white truncate">{user?.nama || "Admin"}</p>
           </div>
           <button
             onClick={handleLogout}
