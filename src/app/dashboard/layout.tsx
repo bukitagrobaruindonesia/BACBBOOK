@@ -1,45 +1,37 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import React, { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 import Sidebar from "@/app/components/ui/Sidebar";
-import MobileBottomNav from "@/app/components/ui/MobileBottomNav";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, loading, isAuthenticated } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
-  const pathname = usePathname();
-  const [isVerifying, setIsVerifying] = useState(true);
 
   useEffect(() => {
-    if (loading) return;
+    if (!loading && !user) {
+      router.replace("/login");
+    }
+  }, [user, loading, router]);
 
-    const verifyAccess = async () => {
-      if (!isAuthenticated || !user) {
-        const currentPath = encodeURIComponent(pathname);
-        router.replace(`/login?redirect=${currentPath}`);
-        return;
-      }
-      setIsVerifying(false);
-    };
-
-    verifyAccess();
-  }, [loading, isAuthenticated, user, router, pathname]);
-
-  if (loading || isVerifying) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 via-green-100 to-amber-50">
+      <div className="min-h-screen flex items-center justify-center bg-green-50">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-green-700"></div>
-          <p className="text-green-800 font-medium animate-pulse">Memverifikasi akses...</p>
+          <p className="text-green-800 font-medium animate-pulse">Memuat sistem...</p>
         </div>
       </div>
     );
+  }
+
+  if (!user) {
+    return null;
   }
 
   return (
@@ -50,7 +42,6 @@ export default function DashboardLayout({
           {children}
         </div>
       </main>
-      <MobileBottomNav />
     </div>
   );
 }
