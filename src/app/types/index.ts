@@ -66,6 +66,21 @@ export interface UserSession {
   username?: string;
 }
 
+export interface HargaProduk {
+  id: string;
+  kodeBarang: string;
+  namaProduk: string;
+  jenisProduk: string;
+  jenisUnit: "ZAK" | "BOTOL";
+  hargaPerKg?: number;
+  hargaPerZak?: number;
+  hargaPerLiter?: number;
+  hargaPerDus?: number;
+  createdBy?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface TransaksiBarangMasuk {
   id: string;
   tanggal: string;
