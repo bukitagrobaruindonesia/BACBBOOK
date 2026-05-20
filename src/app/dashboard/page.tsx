@@ -171,6 +171,11 @@ export default function DashboardPage() {
 
   const isToday = filterTanggal === new Date().toISOString().split("T")[0];
 
+  const formatRupiah = (num: number) => {
+    if (!num && num !== 0) return "Rp -";
+    return "Rp " + num.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  };
+
   const quickActions = [
     {
       title: "Input Proforma Invoice",
@@ -611,8 +616,15 @@ export default function DashboardPage() {
                     <p className="text-sm text-gray-500">{pi.namaCustomer}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm font-medium text-green-700">{pi.namaProduk}</p>
+                    <p className="text-sm font-medium text-green-700">
+                      {pi.produkItems && pi.produkItems.length > 0
+                        ? pi.produkItems.map((p) => p.namaProduk).join(", ")
+                        : "-"}
+                    </p>
                     <p className="text-xs text-gray-400">{pi.tanggal}</p>
+                    <p className="text-xs font-mono text-green-600 font-semibold">
+                      {formatRupiah(pi.jumlahTertagih || 0)}
+                    </p>
                   </div>
                 </div>
               ))}
