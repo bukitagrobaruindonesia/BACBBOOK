@@ -35,7 +35,6 @@ export default function InputProformaInvoicePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
-  const isCalculating = useRef(false);
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -66,10 +65,8 @@ export default function InputProformaInvoicePage() {
   }, []);
 
   useEffect(() => {
-    if (!isCalculating.current) {
-      calculateTotals();
-    }
-  }, [formData.uangMuka, formData.includePPN, formData.ongkosKirim]);
+    calculateTotals();
+  }, [produkItems, formData.uangMuka, formData.includePPN, formData.ongkosKirim]);
 
   const generateTanggalJatuhTempo = () => {
     const today = new Date();
@@ -131,24 +128,22 @@ export default function InputProformaInvoicePage() {
     if (num < 0) return "MINUS " + numberToWords(-num);
     let result = "";
     let i = 0;
-    while (num > 0) {
-      const chunk = num % 1000;
+    let tempNum = num;
+    while (tempNum > 0) {
+      const chunk = tempNum % 1000;
       if (chunk > 0) {
         let chunkWords = convertThreeDigits(chunk);
         if (i === 1 && chunk === 1) chunkWords = "SERIBU";
         else if (i > 0) chunkWords += " " + thousands[i];
         result = chunkWords + " " + result;
       }
-      num = Math.floor(num / 1000);
+      tempNum = Math.floor(tempNum / 1000);
       i++;
     }
     return result.trim() + " RUPIAH";
   };
 
   const calculateTotals = useCallback(() => {
-    if (isCalculating.current) return;
-    isCalculating.current = true;
-
     let subtotal = 0;
     const updatedItems = produkItems.map((item) => {
       const qty = parseFloat(item.kuantitas) || 0;
@@ -175,10 +170,6 @@ export default function InputProformaInvoicePage() {
       jumlahTertagih,
       terbilang,
     }));
-
-    setTimeout(() => {
-      isCalculating.current = false;
-    }, 0);
   }, [produkItems, formData.uangMuka, formData.includePPN, formData.ongkosKirim]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -200,7 +191,7 @@ export default function InputProformaInvoicePage() {
 
   const handleProdukChange = (id: string, field: string, value: string) => {
     setProdukItems((prev) => {
-      const updated = prev.map((item) => {
+      return prev.map((item) => {
         if (item.id === id) {
           const newItem = { ...item, [field]: value };
           if (field === "namaProduk") {
@@ -213,12 +204,6 @@ export default function InputProformaInvoicePage() {
         }
         return item;
       });
-
-      setTimeout(() => {
-        calculateTotals();
-      }, 0);
-
-      return updated;
     });
   };
 
