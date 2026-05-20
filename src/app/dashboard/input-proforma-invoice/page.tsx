@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { collection, addDoc, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -128,22 +128,21 @@ export default function InputProformaInvoicePage() {
     if (num < 0) return "MINUS " + numberToWords(-num);
     let result = "";
     let i = 0;
-    let tempNum = num;
-    while (tempNum > 0) {
-      const chunk = tempNum % 1000;
+    while (num > 0) {
+      const chunk = num % 1000;
       if (chunk > 0) {
         let chunkWords = convertThreeDigits(chunk);
         if (i === 1 && chunk === 1) chunkWords = "SERIBU";
         else if (i > 0) chunkWords += " " + thousands[i];
         result = chunkWords + " " + result;
       }
-      tempNum = Math.floor(tempNum / 1000);
+      num = Math.floor(num / 1000);
       i++;
     }
     return result.trim() + " RUPIAH";
   };
 
-  const calculateTotals = useCallback(() => {
+  const calculateTotals = () => {
     let subtotal = 0;
     const updatedItems = produkItems.map((item) => {
       const qty = parseFloat(item.kuantitas) || 0;
@@ -152,6 +151,7 @@ export default function InputProformaInvoicePage() {
       subtotal += total;
       return { ...item, totalHarga: total };
     });
+    setProdukItems(updatedItems);
 
     const uangMuka = parseFloat(formData.uangMuka) || 0;
     const ongkosKirim = parseFloat(formData.ongkosKirim) || 0;
@@ -162,7 +162,6 @@ export default function InputProformaInvoicePage() {
     const jumlahTertagih = subtotal - uangMuka + ppn + ongkosKirim;
     const terbilang = numberToWords(Math.round(jumlahTertagih));
 
-    setProdukItems(updatedItems);
     setFormData((prev) => ({
       ...prev,
       subtotal,
@@ -170,7 +169,7 @@ export default function InputProformaInvoicePage() {
       jumlahTertagih,
       terbilang,
     }));
-  }, [produkItems, formData.uangMuka, formData.includePPN, formData.ongkosKirim]);
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -190,25 +189,25 @@ export default function InputProformaInvoicePage() {
   };
 
   const handleProdukChange = (id: string, field: string, value: string) => {
-    setProdukItems((prev) => {
-      return prev.map((item) => {
+    setProdukItems((prev) =>
+      prev.map((item) => {
         if (item.id === id) {
-          const newItem = { ...item, [field]: value };
+          const updated = { ...item, [field]: value };
           if (field === "namaProduk") {
             const stock = stockList.find((s) => s.namaBarang === value);
             if (stock) {
-              newItem.fot = stock.fot || "";
+              updated.fot = stock.fot || "";
             }
           }
-          return newItem;
+          return updated;
         }
         return item;
-      });
-    });
+      })
+    );
   };
 
   const addProdukItem = () => {
-    const newId = Date.now().toString();
+    const newId = (produkItems.length + 1).toString();
     setProdukItems((prev) => [
       ...prev,
       { id: newId, namaProduk: "", fot: "", kuantitas: "", satuan: "KG", hargaSatuan: "", totalHarga: 0 },
@@ -431,7 +430,7 @@ export default function InputProformaInvoicePage() {
                         <input type="text" value={item.fot} onChange={(e) => handleProdukChange(item.id, "fot", e.target.value)} placeholder="FOT" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
                       </td>
                       <td className="px-4 py-3">
-                        <input type="text" inputMode="decimal" value={item.kuantitas} onChange={(e) => handleProdukChange(item.id, "kuantitas", e.target.value)} placeholder="0.00" className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`kuantitas_${index}`] ? "border-red-500" : "border-gray-300"}`} />
+                        <input type="number" step="0.01" value={item.kuantitas} onChange={(e) => handleProdukChange(item.id, "kuantitas", e.target.value)} placeholder="0.00" className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`kuantitas_${index}`] ? "border-red-500" : "border-gray-300"}`} />
                         {errors[`kuantitas_${index}`] && <p className="mt-1 text-xs text-red-600">{errors[`kuantitas_${index}`]}</p>}
                       </td>
                       <td className="px-4 py-3">
@@ -442,7 +441,7 @@ export default function InputProformaInvoicePage() {
                         </select>
                       </td>
                       <td className="px-4 py-3">
-                        <input type="text" inputMode="decimal" value={item.hargaSatuan} onChange={(e) => handleProdukChange(item.id, "hargaSatuan", e.target.value)} placeholder="0.00" className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`harga_${index}`] ? "border-red-500" : "border-gray-300"}`} />
+                        <input type="number" step="0.01" value={item.hargaSatuan} onChange={(e) => handleProdukChange(item.id, "hargaSatuan", e.target.value)} placeholder="0.00" className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`harga_${index}`] ? "border-red-500" : "border-gray-300"}`} />
                         {errors[`harga_${index}`] && <p className="mt-1 text-xs text-red-600">{errors[`harga_${index}`]}</p>}
                       </td>
                       <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">
@@ -488,7 +487,7 @@ export default function InputProformaInvoicePage() {
               )}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Uang Muka (Opsional)</label>
-                <input type="text" inputMode="decimal" name="uangMuka" value={formData.uangMuka} onChange={handleChange} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
+                <input type="number" step="0.01" name="uangMuka" value={formData.uangMuka} onChange={handleChange} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
               </div>
               {parseFloat(formData.uangMuka) > 0 && (
                 <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg border border-blue-100">
@@ -498,7 +497,7 @@ export default function InputProformaInvoicePage() {
               )}
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Ongkos Kirim (Opsional)</label>
-                <input type="text" inputMode="decimal" name="ongkosKirim" value={formData.ongkosKirim} onChange={handleChange} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
+                <input type="number" step="0.01" name="ongkosKirim" value={formData.ongkosKirim} onChange={handleChange} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
               </div>
               {parseFloat(formData.ongkosKirim) > 0 && (
                 <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg border border-purple-100">
