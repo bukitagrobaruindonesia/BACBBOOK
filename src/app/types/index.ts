@@ -13,23 +13,35 @@ export interface SopirNopolData {
   nomorSIM?: string;
 }
 
+export interface ProdukItem {
+  namaProduk: string;
+  fot: string;
+  kuantitas: number;
+  satuan: string;
+  hargaSatuan: number;
+  totalHarga: number;
+}
+
 export interface ProformaInvoice {
   id: string;
   tanggal: string;
   nomorPI: string;
   namaCustomer: string;
-  namaProduk: string;
-  fot: string;
-  kuantitasKG: number;
-  barangDiambil: number;
-  sisaBarang: number;
-  kodeBeritaAcara: string;
-  fileBeritaAcara: string;
-  fileBeritaAcaraName: string;
-  kodeInvoice: string;
-  fileInvoice: string;
-  fileInvoiceName: string;
+  alamatCustomer: string;
+  metodePembayaran: string;
+  produkItems: ProdukItem[];
+  uangMuka: number;
+  includePPN: boolean;
+  ppnNominal: number;
+  ongkosKirim: number;
+  subtotal: number;
+  jumlahTertagih: number;
+  terbilang: string;
+  tanggalJatuhTempo: string;
   keterangan: string;
+  ttdNama: string;
+  ttdJabatan: string;
+  ttdImage: string;
   createdBy: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -43,7 +55,7 @@ export interface StockGudang {
   unit: "ZAK" | "DUS" | "KG" | "BOTOL";
   bobotPerUnit?: number;
   botolPerDus?: number;
-  volumeMl?: number;        // ← TAMBAHKAN INI
+  volumeMl?: number;
   displayUnit?: string;
   stokAwalUnit: number;
   stokAwalKG: number;
@@ -100,6 +112,14 @@ export interface TransaksiBarangKeluar {
   createdBy: string;
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+export interface TTDData {
+  id: string;
+  nama: string;
+  jabatan: string;
+  ttdImage: string;
+  createdAt?: Date;
 }
 
 export type JenisTransaksi = "barangMasuk" | "barangKeluar";
