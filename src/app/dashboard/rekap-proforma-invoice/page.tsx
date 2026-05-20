@@ -177,47 +177,10 @@ export default function RekapProformaInvoicePage() {
             background: white;
           }
 
-          .header-row {
-            display: flex;
-            align-items: flex-start;
-            justify-content: space-between;
+          .header-img {
+            width: 100%;
+            display: block;
             margin-bottom: 0;
-          }
-          .logo-area {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-          }
-          .logo-img {
-            height: 52px;
-            width: auto;
-            display: block;
-          }
-          .company-text { padding-top: 2px; }
-          .company-title {
-            font-size: 15px;
-            font-weight: bold;
-            color: #333;
-            margin: 0;
-            letter-spacing: 0.3px;
-          }
-          .company-subtitle {
-            font-size: 9px;
-            color: #16a34a;
-            margin: 1px 0 0 0;
-            font-weight: 700;
-          }
-          .company-address {
-            font-size: 8px;
-            color: #16a34a;
-            margin: 2px 0 0 0;
-            font-style: italic;
-          }
-          .qr-area { text-align: right; }
-          .qr-img {
-            width: 52px;
-            height: 52px;
-            display: block;
           }
 
           .invoice-title {
@@ -236,22 +199,24 @@ export default function RekapProformaInvoicePage() {
             letter-spacing: 3px;
           }
 
+          .info-section {
+            margin-bottom: 10px;
+          }
+          .kepada-label {
+            font-size: 9px;
+            color: #333;
+            margin-bottom: 2px;
+          }
           .info-row {
             display: flex;
             justify-content: space-between;
             gap: 0;
-            margin-bottom: 10px;
           }
-          .customer-info {
+          .customer-box {
             flex: 1;
             border: 1px solid #000;
             padding: 8px 10px;
             min-height: 75px;
-          }
-          .customer-label {
-            font-size: 9px;
-            color: #333;
-            margin-bottom: 3px;
           }
           .customer-name {
             font-size: 11px;
@@ -323,13 +288,6 @@ export default function RekapProformaInvoicePage() {
             text-transform: uppercase;
             line-height: 1.4;
           }
-          .bank-details {
-            margin-top: 10px;
-            font-size: 8px;
-            line-height: 1.6;
-            color: #333;
-          }
-          .bank-details strong { color: #000; font-size: 9px; }
           .calc-area {
             width: 250px;
             padding: 0;
@@ -443,45 +401,35 @@ export default function RekapProformaInvoicePage() {
         </div>
 
         <div class="page">
-          <div class="header-row">
-            <div class="logo-area">
-              <img src="/logo.png" alt="Logo" class="logo-img" onerror="this.style.display='none'; this.nextElementSibling.style.marginLeft='0';" />
-              <div class="company-text">
-                <p class="company-title">PT. BUKIT AGROCHEMICAL BARU</p>
-                <p class="company-subtitle">GENERAL TRADING FERTILIZER & AGRICULTURAL CHEMICALS</p>
-                <p class="company-address">Alamat Kantor : Jl. Yos Sudarso no. 8 Kujan, Bulik, Lamandau, Kalimantan Tengah 74612</p>
-              </div>
-            </div>
-            <div class="qr-area">
-              <img src="/qr-code.png" alt="QR" class="qr-img" onerror="this.style.display='none'; this.parentElement.innerHTML='<div style=\'width:52px;height:52px;border:1px solid #ccc;display:flex;align-items:center;justify-content:center;font-size:8px;color:#999;\'>QR</div>';" />
-            </div>
-          </div>
+          <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=\'text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;\'>Logo tidak tersedia</div>');" />
 
           <div class="invoice-title">
             <h1>PROFORMA INVOICE</h1>
           </div>
 
-          <div class="info-row">
-            <div class="customer-info">
-              <p class="customer-label">Kepada Yth,</p>
-              <p class="customer-name">${item.namaCustomer || ""}</p>
-              <p class="customer-address">${(item.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
-            </div>
-            <div class="invoice-meta">
-              <div class="meta-row">
-                <span class="meta-label">Tanggal</span>
-                <span class="meta-colon">:</span>
-                <span class="meta-value">${item.tanggal || ""}</span>
+          <div class="info-section">
+            <p class="kepada-label">Kepada Yth,</p>
+            <div class="info-row">
+              <div class="customer-box">
+                <p class="customer-name">${item.namaCustomer || ""}</p>
+                <p class="customer-address">${(item.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
               </div>
-              <div class="meta-row">
-                <span class="meta-label">No Invoice</span>
-                <span class="meta-colon">:</span>
-                <span class="meta-value">${item.nomorPI || ""}</span>
-              </div>
-              <div class="meta-row">
-                <span class="meta-label">Metode Pembayaran</span>
-                <span class="meta-colon">:</span>
-                <span class="meta-value">${item.metodePembayaran || ""}</span>
+              <div class="invoice-meta">
+                <div class="meta-row">
+                  <span class="meta-label">Tanggal</span>
+                  <span class="meta-colon">:</span>
+                  <span class="meta-value">${item.tanggal || ""}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">No Invoice</span>
+                  <span class="meta-colon">:</span>
+                  <span class="meta-value">${item.nomorPI || ""}</span>
+                </div>
+                <div class="meta-row">
+                  <span class="meta-label">Metode Pembayaran</span>
+                  <span class="meta-colon">:</span>
+                  <span class="meta-value">${item.metodePembayaran || ""}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -507,15 +455,6 @@ export default function RekapProformaInvoicePage() {
             <div class="terbilang-area">
               <div class="terbilang-title">Terbilang :</div>
               <div class="terbilang-text">${item.terbilang || "-"}</div>
-              <div class="bank-details">
-                <p style="font-weight: 700; margin-bottom: 2px;">Pembayaran mohon ditransfer via rekening:</p>
-                <p><strong>BANK MANDIRI</strong> - Cabang Lamandau</p>
-                <p>a/n PT Bukit Agrochemical Baru</p>
-                <p style="margin-bottom: 4px;">No. Rek : 159-00-1205477-0</p>
-                <p><strong>BANK BRI</strong> - Cabang Lamandau</p>
-                <p>a/n PT Bukit Agrochemical Baru</p>
-                <p>No. Rek : 2232-01000-879-567</p>
-              </div>
             </div>
             <div class="calc-area">
               <div class="calc-line">
