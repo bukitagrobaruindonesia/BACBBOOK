@@ -20,7 +20,6 @@ export default function DashboardPage() {
     totalBarangKeluar: 0,
     totalStokAkhirUnit: 0,
     totalStokAkhirKG: 0,
-    totalHargaProduk: 0,
     recentPI: [] as ProformaInvoice[],
     lowStock: [] as StockGudang[],
     stockList: [] as StockGudang[],
@@ -121,9 +120,6 @@ export default function DashboardPage() {
         createdAt: doc.data().createdAt?.toDate(),
       }));
 
-      const hargaSnapshot = await getDocs(collection(db, "daftarHarga"));
-      const hargaTotal = hargaSnapshot.size;
-
       const piTotal = (await getDocs(collection(db, "proformaInvoice"))).size;
       const stockTotal = stockSnapshot.size;
 
@@ -141,7 +137,6 @@ export default function DashboardPage() {
         totalBarangKeluar: totalKeluarUnit,
         totalStokAkhirUnit: totalStokUnit,
         totalStokAkhirKG: totalStokKG,
-        totalHargaProduk: hargaTotal,
         recentPI: piData,
         lowStock: stockData.filter((s) => s.stokAkhirKG < 1000).slice(0, 5),
         stockList: stockData,
@@ -254,28 +249,6 @@ export default function DashboardPage() {
       href: "/dashboard/riwayat-transaksi",
       color: "from-purple-600 to-purple-700",
     },
-    {
-      title: "Input Harga Produk",
-      desc: "Kelola daftar harga produk",
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      ),
-      href: "/dashboard/input-harga",
-      color: "from-amber-500 to-amber-600",
-    },
-    {
-      title: "Daftar Harga",
-      desc: "Lihat daftar harga produk",
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      ),
-      href: "/dashboard/daftar-harga",
-      color: "from-yellow-500 to-yellow-600",
-    },
   ];
 
   return (
@@ -317,7 +290,7 @@ export default function DashboardPage() {
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="bg-gradient-to-br from-green-600 to-green-700 text-white border-none">
           <div className="flex items-center justify-between">
             <div>
@@ -375,20 +348,6 @@ export default function DashboardPage() {
             </div>
           </div>
         </Card>
-
-        <Card className="bg-gradient-to-br from-yellow-500 to-yellow-600 text-white border-none">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-yellow-100 text-sm font-medium">Total Harga Produk</p>
-              <p className="text-4xl font-bold mt-2">{stats.totalHargaProduk}</p>
-            </div>
-            <div className="p-3 bg-white/20 rounded-xl">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-          </div>
-        </Card>
       </div>
 
       <div>
@@ -398,7 +357,7 @@ export default function DashboardPage() {
           </svg>
           Aksi Cepat
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {quickActions.map((action) => (
             <div
               key={action.title}
