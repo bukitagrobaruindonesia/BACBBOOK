@@ -538,6 +538,7 @@ export default function InputProformaInvoicePage() {
     { value: "KG", label: "KG" },
     { value: "ZAK", label: "ZAK" },
     { value: "DUS", label: "DUS" },
+    { value: "LITER", label: "LITER" },
   ];
 
   const formatRupiah = (num: number) => {
