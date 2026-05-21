@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { collection, addDoc, getDocs, query, orderBy, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, getDocs, query, orderBy, serverTimestamp, doc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -9,6 +9,7 @@ import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
+import Modal from "@/app/components/ui/Modal";
 import { StockGudang } from "@/app/types";
 
 interface ProdukItem {
@@ -28,14 +29,29 @@ interface TTDData {
   ttdImage: string;
 }
 
+interface CustomerData {
+  id: string;
+  namaCustomer: string;
+  alamatCustomer: string;
+  createdAt: any;
+}
+
 export default function InputProformaInvoicePage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockGudang[]>([]);
   const [ttdList, setTtdList] = useState<TTDData[]>([]);
   const [existingPIList, setExistingPIList] = useState<string[]>([]);
+  const [customerList, setCustomerList] = useState<CustomerData[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<CustomerData | null>(null);
+  const [editCustomerName, setEditCustomerName] = useState("");
+  const [editCustomerAddress, setEditCustomerAddress] = useState("");
+  const customerInputRef = useRef<HTMLDivElement>(null);
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -74,7 +90,18 @@ export default function InputProformaInvoicePage() {
     fetchStockGudang();
     fetchTTD();
     fetchExistingPI();
+    fetchCustomers();
     generateTanggalJatuhTempo();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (customerInputRef.current && !customerInputRef.current.contains(event.target as Node)) {
+        setShowCustomerDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const generateTanggalJatuhTempo = () => {
@@ -117,6 +144,116 @@ export default function InputProformaInvoicePage() {
       setExistingPIList(nomorPIs);
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const fetchCustomers = async () => {
+    try {
+      const q = query(collection(db, "customers"), orderBy("namaCustomer", "asc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      } as CustomerData));
+      setCustomerList(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const saveCustomerToHistory = async (nama: string, alamat: string) => {
+    if (!nama.trim() || !alamat.trim()) return;
+    const normalizedName = nama.trim().toLowerCase();
+    const existing = customerList.find((c) => c.namaCustomer.trim().toLowerCase() === normalizedName);
+    if (existing) {
+      if (existing.alamatCustomer.trim() !== alamat.trim()) {
+        try {
+          await updateDoc(doc(db, "customers", existing.id), {
+            alamatCustomer: alamat.trim(),
+            updatedAt: serverTimestamp(),
+          });
+          fetchCustomers();
+        } catch (error) {
+          console.error(error);
+        }
+      }
+      return;
+    }
+    try {
+      await addDoc(collection(db, "customers"), {
+        namaCustomer: nama.trim(),
+        alamatCustomer: alamat.trim(),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      fetchCustomers();
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleDeleteCustomer = async (id: string) => {
+    if (!confirm("Apakah Anda yakin ingin menghapus customer ini?")) return;
+    try {
+      await deleteDoc(doc(db, "customers", id));
+      fetchCustomers();
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleEditCustomer = (customer: CustomerData) => {
+    setEditingCustomer(customer);
+    setEditCustomerName(customer.namaCustomer);
+    setEditCustomerAddress(customer.alamatCustomer);
+  };
+
+  const handleSaveEditCustomer = async () => {
+    if (!editingCustomer || !editCustomerName.trim() || !editCustomerAddress.trim()) return;
+    try {
+      await updateDoc(doc(db, "customers", editingCustomer.id), {
+        namaCustomer: editCustomerName.trim(),
+        alamatCustomer: editCustomerAddress.trim(),
+        updatedAt: serverTimestamp(),
+      });
+      setEditingCustomer(null);
+      setEditCustomerName("");
+      setEditCustomerAddress("");
+      fetchCustomers();
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const filteredCustomers = customerList.filter((c) =>
+    c.namaCustomer.toLowerCase().includes(customerSearch.toLowerCase()) ||
+    c.alamatCustomer.toLowerCase().includes(customerSearch.toLowerCase())
+  );
+
+  const customerDropdownOptions = customerList.filter((c) =>
+    c.namaCustomer.toLowerCase().includes(formData.namaCustomer.toLowerCase())
+  );
+
+  const handleSelectCustomer = (customer: CustomerData) => {
+    setFormData((prev) => ({
+      ...prev,
+      namaCustomer: customer.namaCustomer,
+      alamatCustomer: customer.alamatCustomer,
+    }));
+    setShowCustomerDropdown(false);
+    if (errors.namaCustomer) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors.namaCustomer;
+        return newErrors;
+      });
+    }
+    if (errors.alamatCustomer) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors.alamatCustomer;
+        return newErrors;
+      });
     }
   };
 
@@ -230,6 +367,19 @@ export default function InputProformaInvoicePage() {
     setTimeout(() => calculateTotals(), 0);
   };
 
+  const handleCustomerNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setFormData((prev) => ({ ...prev, namaCustomer: value, alamatCustomer: "" }));
+    setShowCustomerDropdown(true);
+    if (errors.namaCustomer) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors.namaCustomer;
+        return newErrors;
+      });
+    }
+  };
+
   const handleProdukChange = (id: string, field: string, value: string) => {
     setProdukItems((prev) => {
       return prev.map((item) => {
@@ -335,6 +485,8 @@ export default function InputProformaInvoicePage() {
         updatedAt: serverTimestamp(),
       });
 
+      await saveCustomerToHistory(formData.namaCustomer, formData.alamatCustomer);
+
       setSuccessMessage("Proforma Invoice berhasil disimpan!");
       setFormData({
         tanggal: new Date().toISOString().split("T")[0],
@@ -430,14 +582,86 @@ export default function InputProformaInvoicePage() {
                   </div>
                 )}
               </div>
-              <Input label="Nama Customer" type="text" name="namaCustomer" value={formData.namaCustomer} onChange={handleChange} placeholder="Masukkan nama customer" error={errors.namaCustomer} required />
+
+              <div ref={customerInputRef} className="relative">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
+                  Nama Customer <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    name="namaCustomer"
+                    value={formData.namaCustomer}
+                    onChange={handleCustomerNameChange}
+                    onFocus={() => setShowCustomerDropdown(true)}
+                    placeholder="Ketik nama customer..."
+                    autoComplete="off"
+                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white ${errors.namaCustomer ? "border-red-500" : "border-gray-300"}`}
+                  />
+                  {formData.namaCustomer && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFormData((prev) => ({ ...prev, namaCustomer: "", alamatCustomer: "" }));
+                        setShowCustomerDropdown(false);
+                      }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {errors.namaCustomer && <p className="mt-1 text-sm text-red-600">{errors.namaCustomer}</p>}
+
+                {showCustomerDropdown && customerDropdownOptions.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {customerDropdownOptions.map((customer) => (
+                      <button
+                        key={customer.id}
+                        type="button"
+                        onClick={() => handleSelectCustomer(customer)}
+                        className="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors border-b border-gray-100 last:border-b-0"
+                      >
+                        <p className="text-sm font-medium text-gray-900">{customer.namaCustomer}</p>
+                        <p className="text-xs text-gray-500 truncate">{customer.alamatCustomer}</p>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {showCustomerDropdown && formData.namaCustomer && customerDropdownOptions.length === 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4 text-center">
+                    <p className="text-sm text-gray-500">Customer baru - alamat akan disimpan setelah submit</p>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">
                   Alamat Customer <span className="text-red-500">*</span>
                 </label>
-                <textarea name="alamatCustomer" value={formData.alamatCustomer} onChange={handleChange} rows={3} placeholder="Masukkan alamat lengkap customer" className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none ${errors.alamatCustomer ? "border-red-500" : "border-gray-300"}`} />
+                <textarea
+                  name="alamatCustomer"
+                  value={formData.alamatCustomer}
+                  onChange={handleChange}
+                  rows={3}
+                  placeholder="Masukkan alamat lengkap customer"
+                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none ${errors.alamatCustomer ? "border-red-500" : "border-gray-300"}`}
+                />
                 {errors.alamatCustomer && <p className="mt-1 text-sm text-red-600">{errors.alamatCustomer}</p>}
               </div>
+
+              <div className="flex items-center gap-3">
+                <Button type="button" variant="secondary" size="sm" onClick={() => setIsCustomerModalOpen(true)}>
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                  </svg>
+                  Riwayat Customer
+                </Button>
+              </div>
+
               <Select label="Metode Pembayaran" name="metodePembayaran" value={formData.metodePembayaran} onChange={handleChange} options={[{ value: "Transfer", label: "Transfer" }, { value: "Cash", label: "Cash" }]} required />
             </div>
           </Card>
@@ -630,6 +854,96 @@ export default function InputProformaInvoicePage() {
           </Button>
         </div>
       </form>
+
+      <Modal isOpen={isCustomerModalOpen} onClose={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); setCustomerSearch(""); }} title="Riwayat Customer" size="lg" footer={
+        <Button variant="outline" onClick={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); setCustomerSearch(""); }}>Tutup</Button>
+      }>
+        <div className="space-y-4">
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input type="text" placeholder="Cari nama atau alamat customer..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
+          </div>
+
+          <div className="text-sm text-gray-500">
+            Menampilkan {filteredCustomers.length} dari {customerList.length} customer
+          </div>
+
+          <div className="overflow-x-auto max-h-96 overflow-y-auto">
+            <table className="w-full">
+              <thead className="sticky top-0 bg-white">
+                <tr className="bg-green-50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Nama Customer</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Alamat</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase w-32">Aksi</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredCustomers.map((customer) => (
+                  <tr key={customer.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                      {editingCustomer?.id === customer.id ? (
+                        <input type="text" value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                      ) : (
+                        customer.namaCustomer
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {editingCustomer?.id === customer.id ? (
+                        <input type="text" value={editCustomerAddress} onChange={(e) => setEditCustomerAddress(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
+                      ) : (
+                        customer.alamatCustomer
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {editingCustomer?.id === customer.id ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={handleSaveEditCustomer} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Simpan">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                          <button onClick={() => setEditingCustomer(null)} className="p-1.5 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors" title="Batal">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-center gap-2">
+                          <button onClick={() => handleSelectCustomer(customer)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Pilih">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </button>
+                          <button onClick={() => handleEditCustomer(customer)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                          <button onClick={() => handleDeleteCustomer(customer.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {filteredCustomers.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-8 text-center text-sm text-gray-500">
+                      Belum ada data customer
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
