@@ -125,9 +125,7 @@ export default function RekapProformaInvoicePage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const totalKuantitas = (item.produkItems || []).reduce((sum, p) => sum + (p.kuantitas || 0), 0);
-
-    const produkRows = (item.produkItems || []).map((p, idx) => `
+        const produkRows = (item.produkItems || []).map((p, idx) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${idx + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600; height: 28px;">${p.namaProduk || ""}</td>
@@ -481,9 +479,7 @@ export default function RekapProformaInvoicePage() {
               <div class="terbilang-area">
                 <div class="terbilang-title">Terbilang :</div>
                 <div class="terbilang-text">${item.terbilang || "-"}</div>
-                <div style="margin-top: 8px; font-size: 9px; color: #333; font-weight: 600;">
-                  Total Kuantitas : <span style="color: #000;">${totalKuantitas.toLocaleString("id-ID")} kg</span>
-                </div>
+                
               </div>
               <div class="calc-area">
                 <div class="calc-line">
