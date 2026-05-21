@@ -45,6 +45,8 @@ export interface ProformaInvoice {
   createdBy: string;
   createdAt?: Date;
   updatedAt?: Date;
+  sisaPengambilanKG?: number;
+  statusPengangkutan?: "belum_dimuat" | "partial" | "complete";
 }
 
 export interface StockGudang {
@@ -115,6 +117,34 @@ export interface TransaksiBarangKeluar {
   updatedAt?: Date;
 }
 
+export interface SuratPengangkutanItem {
+  nomorSubDO: string;
+  nomorPO: string;
+  jenisPupuk: string;
+  party: string;
+  pengambilanMT: number;
+  pengambilanZAK: number;
+  sisa: string;
+}
+
+export interface SuratPengangkutan {
+  id: string;
+  jenisSurat: "gudangInduk" | "do";
+  tanggal: string;
+  namaKabupaten: string;
+  nomorSeri: string;
+  nomorPIList?: string[];
+  items: SuratPengangkutanItem[];
+  sopirNopolList: SopirNopolData[];
+  nomorPolisi: string;
+  driverUnit: string;
+  nomorSIM?: string;
+  totalPengambilanKG?: number;
+  createdBy: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface TTDData {
   id: string;
   nama: string;
@@ -123,4 +153,4 @@ export interface TTDData {
   createdAt?: Date;
 }
 
-export type JenisTransaksi = "barangMasuk" | "barangKeluar";
+export type JenisTransaksi = "barangMasuk" | "barangKeluar" | "suratPengangkutanGudangInduk" | "suratPengangkutanDO";
