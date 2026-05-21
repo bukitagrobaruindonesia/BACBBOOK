@@ -33,6 +33,9 @@ interface UnifiedTransaksi {
   botolPerDus?: number;
   bobotPerBotol?: number;
   nomorSeri?: string;
+  nomorPolisi?: string;
+  driverUnit?: string;
+  nomorSIM?: string;
   items?: Array<{
     nomorSubDO: string;
     nomorPO: string;
@@ -465,15 +468,20 @@ export default function RiwayatTransaksiPage() {
           <div class="table-section">
             <div class="table-title">DATA UNIT ANGKUTAN</div>
             <table class="data-table">
-              <thead>
+              <tbody>
                 <tr>
-                  <th style="width: 40px;">NO</th>
-                  <th>NAMA SOPIR</th>
-                  <th style="width: 120px;">NO. POLISI</th>
-                  <th style="width: 120px;">NOMOR SIM</th>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorPolisi || "-"}</td>
                 </tr>
-              </thead>
-              <tbody>${sopirHtml}</tbody>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.driverUnit || "-"}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorSIM || "-"}</td>
+                </tr>
+              </tbody>
             </table>
           </div>
           <div class="notes-section">

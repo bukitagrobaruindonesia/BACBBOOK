@@ -605,22 +605,18 @@ export default function SuratPengangkutanPage() {
           <div class="table-section">
             <div class="table-title">DATA UNIT ANGKUTAN</div>
             <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width: 40px;">NO</th>
-                  <th>NAMA SOPIR</th>
-                  <th style="width: 120px;">NO. POLISI</th>
-                  <th style="width: 120px;">NOMOR SIM</th>
-                </tr>
-              </thead>
               <tbody>
-                ${sopirHtml}
                 <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;" colspan="2">NO. POLISI : ${formData.nomorPolisi}</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;" colspan="2">DRIVER UNIT : ${formData.driverUnit}</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${formData.nomorPolisi}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;" colspan="4">NOMOR SIM : ${formData.nomorSIM || "-"}</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${formData.driverUnit}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${formData.nomorSIM || "-"}</td>
                 </tr>
               </tbody>
             </table>
