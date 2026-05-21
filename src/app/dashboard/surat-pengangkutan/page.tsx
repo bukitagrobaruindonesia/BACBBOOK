@@ -73,17 +73,24 @@ interface LoadedPI {
   totalOrdered: number;
 }
 
+interface ExistingSurat {
+  id: string;
+  nomorSeri: string;
+}
+
 export default function SuratPengangkutanPage() {
   const { user } = useAuth();
   const [piList, setPiList] = useState<ProformaInvoice[]>([]);
   const [stockList, setStockList] = useState<StockItem[]>([]);
   const [loadedPIList, setLoadedPIList] = useState<LoadedPI[]>([]);
+  const [existingSuratList, setExistingSuratList] = useState<ExistingSurat[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [jenisSurat, setJenisSurat] = useState<"gudangInduk" | "do" | "">("");
   const [showJenisModal, setShowJenisModal] = useState(true);
   const [nomorSeri, setNomorSeri] = useState("");
+  const [nomorSeriError, setNomorSeriError] = useState("");
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -122,8 +129,42 @@ export default function SuratPengangkutanPage() {
     fetchProformaInvoice();
     fetchStockGudang();
     fetchLoadedPI();
-    generateNomorSeri();
+    fetchExistingSurat();
   }, []);
+
+  const fetchExistingSurat = async () => {
+    try {
+      const q = query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        nomorSeri: doc.data().nomorSeri || "",
+      } as ExistingSurat));
+      setExistingSuratList(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const checkNomorSeriExists = (value: string) => {
+    if (!value.trim()) {
+      setNomorSeriError("");
+      return false;
+    }
+    const exists = existingSuratList.some((s) => s.nomorSeri.trim().toUpperCase() === value.trim().toUpperCase());
+    if (exists) {
+      setNomorSeriError("Nomor seri sudah ada dalam database. Silakan gunakan nomor seri lain.");
+      return true;
+    }
+    setNomorSeriError("");
+    return false;
+  };
+
+  const handleNomorSeriChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNomorSeri(value);
+    checkNomorSeriExists(value);
+  };
 
   const generateNomorSeri = () => {
     const now = new Date();
@@ -131,7 +172,9 @@ export default function SuratPengangkutanPage() {
     const month = String(now.getMonth() + 1).padStart(2, "0");
     const day = String(now.getDate()).padStart(2, "0");
     const random = Math.floor(1000 + Math.random() * 9000);
-    setNomorSeri(`BAGB-IV/${year}/${month}/${day}.${random}`);
+    const generated = `BAGB-IV/${year}/${month}/${day}.${random}`;
+    setNomorSeri(generated);
+    checkNomorSeriExists(generated);
   };
 
   const fetchProformaInvoice = async () => {
@@ -232,6 +275,118 @@ export default function SuratPengangkutanPage() {
     return { totalOrdered, totalLoaded, remaining: totalOrdered - totalLoaded };
   };
 
+  const getSelectedPIProducts = () => {
+    if (formData.nomorPIList.length === 0) return [];
+    const selectedPIs = piList.filter((pi) => formData.nomorPIList.includes(pi.nomorPI));
+    const productMap: Record<string, { namaProduk: string; fot: string; produsen: string; totalKuantitas: number; loaded: number }> = {};
+
+    selectedPIs.forEach((pi) => {
+      pi.produkItems.forEach((prod) => {
+        const key = `${prod.namaProduk}_${prod.fot}`;
+        if (!productMap[key]) {
+          productMap[key] = {
+            namaProduk: prod.namaProduk,
+            fot: prod.fot,
+            produsen: prod.produsen || "",
+            totalKuantitas: 0,
+            loaded: 0,
+          };
+        }
+        productMap[key].totalKuantitas += prod.kuantitas || 0;
+      });
+    });
+
+    const q = query(collection(db, "suratPengangkutan"), where("jenisSurat", "==", "gudangInduk"));
+    getDocs(q).then((snapshot) => {
+      snapshot.docs.forEach((doc) => {
+        const data = doc.data();
+        const piArray = data.nomorPIList || [];
+        const items = data.items || [];
+        const hasMatch = piArray.some((pi: string) => formData.nomorPIList.includes(pi));
+        if (hasMatch) {
+          items.forEach((item: any) => {
+            const key = Object.keys(productMap).find((k) => {
+              const [nama] = k.split("_");
+              return item.jenisPupuk && item.jenisPupuk.toUpperCase().includes(nama.toUpperCase());
+            });
+            if (key && productMap[key]) {
+              const mt = parseFloat(item.pengambilanMT) || 0;
+              const zak = parseFloat(item.pengambilanZAK) || 0;
+              productMap[key].loaded += mt * 1000 + zak * 50;
+            }
+          });
+        }
+      });
+    });
+
+    return Object.values(productMap);
+  };
+
+  const autoGenerateItemsFromPI = () => {
+    if (formData.nomorPIList.length === 0) {
+      setItems([
+        {
+          id: 1,
+          nomorSubDO: "",
+          nomorPO: "",
+          jenisPupuk: "",
+          party: "",
+          pengambilanMT: "",
+          pengambilanZAK: "",
+          sisa: "",
+        },
+      ]);
+      return;
+    }
+
+    const selectedPIs = piList.filter((pi) => formData.nomorPIList.includes(pi.nomorPI));
+    const newItems: SuratPengangkutanItem[] = [];
+    let idCounter = 1;
+
+    selectedPIs.forEach((pi) => {
+      pi.produkItems.forEach((prod) => {
+        const loadedData = loadedPIList.find((l) => l.nomorPI === pi.nomorPI);
+        const totalOrdered = prod.kuantitas || 0;
+        const totalLoaded = loadedData?.totalLoaded || 0;
+        const remaining = totalOrdered - totalLoaded;
+
+        if (remaining > 0) {
+          newItems.push({
+            id: idCounter++,
+            nomorSubDO: "",
+            nomorPO: "",
+            jenisPupuk: prod.namaProduk,
+            party: "",
+            pengambilanMT: remaining >= 1000 ? (remaining / 1000).toFixed(2) : "",
+            pengambilanZAK: remaining < 1000 ? String(Math.ceil(remaining / 50)) : "",
+            sisa: "",
+          });
+        }
+      });
+    });
+
+    if (newItems.length === 0) {
+      newItems.push({
+        id: 1,
+        nomorSubDO: "",
+        nomorPO: "",
+        jenisPupuk: "",
+        party: "",
+        pengambilanMT: "",
+        pengambilanZAK: "",
+        sisa: "",
+      });
+    }
+
+    setItems(newItems);
+  };
+
+  useEffect(() => {
+    if (jenisSurat === "gudangInduk") {
+      autoGenerateItemsFromPI();
+    }
+  }, [formData.nomorPIList]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -299,6 +454,8 @@ export default function SuratPengangkutanPage() {
     if (!formData.namaKabupaten.trim()) newErrors.namaKabupaten = "Nama kabupaten wajib diisi";
     if (!formData.driverUnit.trim()) newErrors.driverUnit = "Driver unit wajib diisi";
     if (!formData.nomorPolisi.trim()) newErrors.nomorPolisi = "Nomor polisi wajib diisi";
+    if (!nomorSeri.trim()) newErrors.nomorSeri = "Nomor seri wajib diisi";
+    if (nomorSeriError) newErrors.nomorSeri = nomorSeriError;
 
     if (jenisSurat === "gudangInduk") {
       if (formData.nomorPIList.length === 0) newErrors.nomorPI = "Nomor PI wajib dipilih";
@@ -342,7 +499,7 @@ export default function SuratPengangkutanPage() {
         jenisSurat,
         tanggal: formData.tanggal,
         namaKabupaten: formData.namaKabupaten,
-        nomorSeri,
+        nomorSeri: nomorSeri.trim(),
         items: items.map((item) => ({
           nomorSubDO: item.nomorSubDO,
           nomorPO: item.nomorPO,
@@ -415,7 +572,7 @@ export default function SuratPengangkutanPage() {
       const transaksiData = {
         tanggal: formData.tanggal,
         jenis: jenisSurat === "gudangInduk" ? "suratPengangkutanGudangInduk" : "suratPengangkutanDO",
-        nomorSeri,
+        nomorSeri: nomorSeri.trim(),
         items: suratData.items,
         sopirNopolList: suratData.sopirNopolList,
         nomorPolisi: formData.nomorPolisi,
@@ -430,6 +587,7 @@ export default function SuratPengangkutanPage() {
       resetForm();
       generateNomorSeri();
       fetchLoadedPI();
+      fetchExistingSurat();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
       console.error(error);
@@ -469,6 +627,7 @@ export default function SuratPengangkutanPage() {
     ]);
     setSopirList([{ id: 1, namaSopir: "", nopol: "", nomorSIM: "" }]);
     setErrors({});
+    setNomorSeriError("");
   };
 
   const handlePrintPDF = () => {
@@ -664,7 +823,7 @@ export default function SuratPengangkutanPage() {
           </div>
           <div className="grid grid-cols-1 gap-4">
             <button
-              onClick={() => { setJenisSurat("gudangInduk"); setShowJenisModal(false); }}
+              onClick={() => { setJenisSurat("gudangInduk"); setShowJenisModal(false); generateNomorSeri(); }}
               className="p-6 border-2 border-green-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all text-left group"
             >
               <div className="flex items-center gap-4">
@@ -680,7 +839,7 @@ export default function SuratPengangkutanPage() {
               </div>
             </button>
             <button
-              onClick={() => { setJenisSurat("do"); setShowJenisModal(false); }}
+              onClick={() => { setJenisSurat("do"); setShowJenisModal(false); generateNomorSeri(); }}
               className="p-6 border-2 border-blue-200 rounded-xl hover:border-blue-500 hover:bg-blue-50 transition-all text-left group"
             >
               <div className="flex items-center gap-4">
@@ -765,9 +924,34 @@ export default function SuratPengangkutanPage() {
             />
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
-              <div className="px-4 py-3 bg-gray-100 rounded-xl font-mono text-sm text-gray-700 border border-gray-200">
-                {nomorSeri}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={nomorSeri}
+                  onChange={handleNomorSeriChange}
+                  placeholder="Masukkan nomor seri surat pengangkutan"
+                  className={`flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all font-mono text-sm ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={generateNomorSeri}
+                >
+                  Generate
+                </Button>
               </div>
+              {nomorSeriError && (
+                <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {nomorSeriError}
+                </p>
+              )}
+              {errors.nomorSeri && !nomorSeriError && (
+                <p className="mt-1 text-sm text-red-600">{errors.nomorSeri}</p>
+              )}
             </div>
           </div>
         </Card>
@@ -857,7 +1041,7 @@ export default function SuratPengangkutanPage() {
                     type="text"
                     value={item.jenisPupuk}
                     onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)}
-                    placeholder="Contoh: MAHKOTA NPK"
+                    placeholder="Otomatis dari PI"
                     error={errors[`jenisPupuk_${idx}`]}
                     required
                   />
@@ -876,7 +1060,7 @@ export default function SuratPengangkutanPage() {
                     value={item.pengambilanMT}
                     onChange={(e) => handleItemChange(item.id, "pengambilanMT", e.target.value)}
                     placeholder="Contoh: 16.6"
-                    />
+                  />
                   <Input
                     label="Pengambilan (ZAK)"
                     type="number"
@@ -1010,7 +1194,7 @@ export default function SuratPengangkutanPage() {
             </svg>
             Preview PDF
           </Button>
-          <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting}>
+          <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting} disabled={!!nomorSeriError}>
             Simpan Surat Pengangkutan
           </Button>
         </div>
