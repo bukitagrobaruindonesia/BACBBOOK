@@ -39,6 +39,7 @@ export default function LaporanInputStockGudangPage() {
     fot: "",
     kodeBarang: "",
     namaBarang: "",
+    namaProdusen: "",
     unit: "ZAK" as "ZAK" | "DUS" | "KG" | "BOTOL",
     bobotPerUnit: "50",
     stokTersediaUnit: "",
@@ -69,7 +70,7 @@ export default function LaporanInputStockGudangPage() {
       const snapshot = await getDocs(q);
       const fotSet = new Set<string>();
       snapshot.docs.forEach((doc) => {
-        const fot = doc.data().fod;
+        const fot = doc.data().fot;
         if (fot && typeof fot === "string" && fot.trim()) {
           fotSet.add(fot.trim().toUpperCase());
         }
@@ -150,6 +151,7 @@ export default function LaporanInputStockGudangPage() {
     if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
     if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
     if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
+    if (!formData.namaProdusen.trim()) newErrors.namaProdusen = "Nama produsen wajib diisi";
 
     const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
     const isBotol = formData.unit === "BOTOL";
@@ -159,8 +161,10 @@ export default function LaporanInputStockGudangPage() {
         newErrors.bobotPerUnit = "Bobot per unit tidak valid";
     }
 
-    if (!formData.stokTersediaUnit || isNaN(parseFloat(formData.stokTersediaUnit)))
-      newErrors.stokTersediaUnit = "Stok tersedia tidak valid";
+    if (!isEditing) {
+      if (!formData.stokTersediaUnit || isNaN(parseFloat(formData.stokTersediaUnit)))
+        newErrors.stokTersediaUnit = "Stok tersedia tidak valid";
+    }
 
     if (isBotol) {
       if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0)
@@ -210,10 +214,18 @@ export default function LaporanInputStockGudangPage() {
           fot: formData.fot.trim().toUpperCase(),
           kodeBarang: formData.kodeBarang.trim().toUpperCase(),
           namaBarang: formData.namaBarang.trim(),
+          namaProdusen: formData.namaProdusen.trim(),
           unit: formData.unit,
           bobotPerUnit: bobotPerUnit,
           updatedAt: serverTimestamp(),
         };
+
+        if (formData.stokTersediaUnit) {
+          const newStokUnit = parseFloat(formData.stokTersediaUnit) || 0;
+          const newStokKG = isKG ? 0 : newStokUnit * bobotPerUnit;
+          docData.stokAkhirUnit = isKG ? 0 : newStokUnit;
+          docData.stokAkhirKG = newStokKG;
+        }
 
         if (isBotol) {
           docData.botolPerDus = botolPerDus;
@@ -228,6 +240,7 @@ export default function LaporanInputStockGudangPage() {
           fot: formData.fot.trim().toUpperCase(),
           kodeBarang: formData.kodeBarang.trim().toUpperCase(),
           namaBarang: formData.namaBarang.trim(),
+          namaProdusen: formData.namaProdusen.trim(),
           unit: formData.unit,
           bobotPerUnit: bobotPerUnit,
           stokAwalUnit: isKG ? 0 : stokTersediaUnit,
@@ -272,6 +285,7 @@ export default function LaporanInputStockGudangPage() {
       fot: stock.fot,
       kodeBarang: stock.kodeBarang,
       namaBarang: stock.namaBarang,
+      namaProdusen: stock.namaProdusen || "",
       unit: stock.unit,
       bobotPerUnit: stock.bobotPerUnit?.toString() || "50",
       stokTersediaUnit: stock.stokAkhirUnit?.toString() || "",
@@ -301,6 +315,7 @@ export default function LaporanInputStockGudangPage() {
       fot: "",
       kodeBarang: "",
       namaBarang: "",
+      namaProdusen: "",
       unit: "ZAK",
       bobotPerUnit: "50",
       stokTersediaUnit: "",
@@ -340,7 +355,8 @@ export default function LaporanInputStockGudangPage() {
     const matchesSearch =
       stock.namaBarang.toLowerCase().includes(searchQuery.toLowerCase()) ||
       stock.kodeBarang.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      stock.fot.toLowerCase().includes(searchQuery.toLowerCase());
+      stock.fot.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (stock.namaProdusen || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFot = filterFot ? stock.fot === filterFot : true;
     return matchesSearch && matchesFot;
   });
@@ -392,6 +408,14 @@ export default function LaporanInputStockGudangPage() {
       header: "Nama Barang",
       render: (row: StockGudang) => (
         <span className="font-medium text-gray-800">{row.namaBarang}</span>
+      ),
+    },
+    {
+      key: "namaProdusen",
+      header: "Produsen",
+      width: "140px",
+      render: (row: StockGudang) => (
+        <span className="text-xs text-gray-600">{row.namaProdusen || "-"}</span>
       ),
     },
     {
@@ -622,6 +646,17 @@ export default function LaporanInputStockGudangPage() {
                   required
                 />
 
+                <Input
+                  label="Nama Produsen"
+                  type="text"
+                  name="namaProdusen"
+                  value={formData.namaProdusen}
+                  onChange={handleChange}
+                  placeholder="Contoh: PT Petrokimia Gresik"
+                  error={errors.namaProdusen}
+                  required
+                />
+
                 <Select
                   label="Unit"
                   name="unit"
@@ -669,20 +704,18 @@ export default function LaporanInputStockGudangPage() {
                   </>
                 )}
 
-                {!isEditing && (
-                  <Input
-                    label={`Stok Tersedia (${getDisplayUnit()})`}
-                    type="number"
-                    name="stokTersediaUnit"
-                    value={formData.stokTersediaUnit}
-                    onChange={handleChange}
-                    placeholder={`Masukkan stok tersedia dalam ${getDisplayUnit()}`}
-                    error={errors.stokTersediaUnit}
-                    required
-                  />
-                )}
+                <Input
+                  label={`Stok Tersedia (${getDisplayUnit()})`}
+                  type="number"
+                  name="stokTersediaUnit"
+                  value={formData.stokTersediaUnit}
+                  onChange={handleChange}
+                  placeholder={`Masukkan stok tersedia dalam ${getDisplayUnit()}`}
+                  error={errors.stokTersediaUnit}
+                  required
+                />
 
-                {formData.stokTersediaUnit && !isEditing && (
+                {formData.stokTersediaUnit && (
                   <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
                     <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">
                       Preview Stok
@@ -735,7 +768,7 @@ export default function LaporanInputStockGudangPage() {
               <div className="flex-1">
                 <Input
                   type="text"
-                  placeholder="Cari nama barang, kode, atau FOT..."
+                  placeholder="Cari nama barang, kode, produsen, atau FOT..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full"

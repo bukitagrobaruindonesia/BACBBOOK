@@ -68,6 +68,7 @@ export interface StockGudang {
   createdBy?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  namaProdusen?: string;
 }
 
 export interface UserSession {
