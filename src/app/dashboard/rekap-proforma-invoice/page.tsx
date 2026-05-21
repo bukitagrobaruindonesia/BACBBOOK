@@ -175,14 +175,29 @@ export default function RekapProformaInvoicePage() {
             width: 182mm;
             margin: 0 auto;
             background: white;
+            position: relative;
+            min-height: 257mm;
           }
-
+          .watermark {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 280px;
+            height: auto;
+            opacity: 0.08;
+            pointer-events: none;
+            z-index: 0;
+          }
+          .content-layer {
+            position: relative;
+            z-index: 1;
+          }
           .header-img {
             width: 100%;
             display: block;
             margin-bottom: 0;
           }
-
           .invoice-title {
             text-align: center;
             margin: 8px 0 10px 0;
@@ -198,7 +213,6 @@ export default function RekapProformaInvoicePage() {
             font-weight: bold;
             letter-spacing: 3px;
           }
-
           .info-section {
             margin-bottom: 10px;
           }
@@ -244,7 +258,6 @@ export default function RekapProformaInvoicePage() {
           .meta-label { color: #333; min-width: 90px; }
           .meta-colon { margin: 0 3px; }
           .meta-value { color: #000; font-weight: 600; text-align: right; flex: 1; }
-
           .data-table {
             width: 100%;
             border-collapse: collapse;
@@ -264,7 +277,6 @@ export default function RekapProformaInvoicePage() {
             padding: 5px 3px;
             vertical-align: top;
           }
-
           .summary-row {
             display: flex;
             border: 1px solid #000;
@@ -310,14 +322,20 @@ export default function RekapProformaInvoicePage() {
           .calc-amount { font-weight: 600; font-family: monospace; font-size: 9px; }
           .calc-amount-bold { font-size: 10px; color: #000; font-weight: 700; font-family: monospace; }
           .due-date {
-            padding: 3px 10px;
+            padding: 5px 10px;
             text-align: right;
             border-top: 1px solid #ddd;
-            font-size: 9px;
+            font-size: 11px;
           }
-          .due-label { color: #666; }
-          .due-value { color: #dc2626; font-weight: 700; }
-
+          .due-label { color: #666; font-size: 11px; }
+          .due-value { color: #dc2626; font-weight: 700; font-size: 11px; }
+          .created-info {
+            padding: 4px 10px;
+            text-align: right;
+            border-top: 1px solid #eee;
+            font-size: 10px;
+            color: #666;
+          }
           .footer-row {
             display: flex;
             border: 1px solid #000;
@@ -369,7 +387,6 @@ export default function RekapProformaInvoicePage() {
             font-size: 8px;
             color: #555;
           }
-
           .print-btn {
             background: #16a34a;
             color: white;
@@ -401,112 +418,119 @@ export default function RekapProformaInvoicePage() {
         </div>
 
         <div class="page">
-          <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=\'text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;\'>Logo tidak tersedia</div>');" />
+          <img src="/LogoAGRO.png" alt="Watermark" class="watermark" onerror="this.style.display='none'" />
 
-          <div class="invoice-title">
-            <h1>PROFORMA INVOICE</h1>
-          </div>
+          <div class="content-layer">
+            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=\'text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;\'>Logo tidak tersedia</div>');" />
 
-          <div class="info-section">
-            <p class="kepada-label">Kepada Yth,</p>
-            <div class="info-row">
-              <div class="customer-box">
-                <p class="customer-name">${item.namaCustomer || ""}</p>
-                <p class="customer-address">${(item.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
-              </div>
-              <div class="invoice-meta">
-                <div class="meta-row">
-                  <span class="meta-label">Tanggal</span>
-                  <span class="meta-colon">:</span>
-                  <span class="meta-value">${item.tanggal || ""}</span>
+            <div class="invoice-title">
+              <h1>PROFORMA INVOICE</h1>
+            </div>
+
+            <div class="info-section">
+              <p class="kepada-label">Kepada Yth,</p>
+              <div class="info-row">
+                <div class="customer-box">
+                  <p class="customer-name">${item.namaCustomer || ""}</p>
+                  <p class="customer-address">${(item.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
                 </div>
-                <div class="meta-row">
-                  <span class="meta-label">No Invoice</span>
-                  <span class="meta-colon">:</span>
-                  <span class="meta-value">${item.nomorPI || ""}</span>
+                <div class="invoice-meta">
+                  <div class="meta-row">
+                    <span class="meta-label">Tanggal</span>
+                    <span class="meta-colon">:</span>
+                    <span class="meta-value">${item.tanggal || ""}</span>
+                  </div>
+                  <div class="meta-row">
+                    <span class="meta-label">No Invoice</span>
+                    <span class="meta-colon">:</span>
+                    <span class="meta-value">${item.nomorPI || ""}</span>
+                  </div>
+                  <div class="meta-row">
+                    <span class="meta-label">Metode Pembayaran</span>
+                    <span class="meta-colon">:</span>
+                    <span class="meta-value">${item.metodePembayaran || ""}</span>
+                  </div>
                 </div>
-                <div class="meta-row">
-                  <span class="meta-label">Metode Pembayaran</span>
-                  <span class="meta-colon">:</span>
-                  <span class="meta-value">${item.metodePembayaran || ""}</span>
+              </div>
+            </div>
+
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 28px;">NO</th>
+                  <th style="text-align: left; padding-left: 8px;">Nama Produk</th>
+                  <th style="width: 45px;">Fot</th>
+                  <th style="width: 75px;">Kuantitas<br>(kg)</th>
+                  <th style="width: 95px;">Harga Satuan</th>
+                  <th style="width: 105px;">Total Harga</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${produkRows}
+                ${emptyRows}
+              </tbody>
+            </table>
+
+            <div class="summary-row">
+              <div class="terbilang-area">
+                <div class="terbilang-title">Terbilang :</div>
+                <div class="terbilang-text">${item.terbilang || "-"}</div>
+              </div>
+              <div class="calc-area">
+                <div class="calc-line">
+                  <span class="calc-name">Subtotal</span>
+                  <span class="calc-amount">${formatRupiah(item.subtotal)}</span>
+                </div>
+                ${(item.uangMuka || 0) > 0 ? `
+                <div class="calc-line">
+                  <span class="calc-name">Uang Muka</span>
+                  <span class="calc-amount">${formatRupiah(item.uangMuka)}</span>
+                </div>
+                ` : ""}
+                ${item.includePPN ? `
+                <div class="calc-line">
+                  <span class="calc-name">PPN 11%</span>
+                  <span class="calc-amount">${formatRupiah(item.ppnNominal)}</span>
+                </div>
+                ` : ""}
+                ${(item.ongkosKirim || 0) > 0 ? `
+                <div class="calc-line">
+                  <span class="calc-name">Ongkos Kirim</span>
+                  <span class="calc-amount">${formatRupiah(item.ongkosKirim)}</span>
+                </div>
+                ` : ""}
+                <div class="calc-line">
+                  <span class="calc-name-bold">Jumlah Tertagih</span>
+                  <span class="calc-amount-bold">${formatRupiah(item.jumlahTertagih)}</span>
+                </div>
+                <div class="due-date">
+                  <span class="due-label">Tanggal Jatuh Tempo : </span>
+                  <span class="due-value">${item.tanggalJatuhTempo || ""}</span>
+                </div>
+                <div class="created-info">
+                  Dibuat: ${item.createdAt ? item.createdAt.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}
                 </div>
               </div>
             </div>
-          </div>
 
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width: 28px;">NO</th>
-                <th style="text-align: left; padding-left: 8px;">Nama Produk</th>
-                <th style="width: 45px;">Fot</th>
-                <th style="width: 75px;">Kuantitas<br>(kg)</th>
-                <th style="width: 95px;">Harga Satuan</th>
-                <th style="width: 105px;">Total Harga</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${produkRows}
-              ${emptyRows}
-            </tbody>
-          </table>
-
-          <div class="summary-row">
-            <div class="terbilang-area">
-              <div class="terbilang-title">Terbilang :</div>
-              <div class="terbilang-text">${item.terbilang || "-"}</div>
-            </div>
-            <div class="calc-area">
-              <div class="calc-line">
-                <span class="calc-name">Subtotal</span>
-                <span class="calc-amount">${formatRupiah(item.subtotal)}</span>
+            <div class="footer-row">
+              <div class="footer-bank-area">
+                <p class="footer-bank-title">Pembayaran mohon ditransfer via rekening:</p>
+                <div class="footer-bank-text">
+                  <p><strong>BANK MANDIRI</strong> - Cabang Lamandau</p>
+                  <p>a/n PT Bukit Agrochemical Baru</p>
+                  <p>No. Rek : 159-00-1205477-0</p>
+                  <p style="margin-top: 3px;"><strong>BANK BRI</strong> - Cabang Lamandau</p>
+                  <p>a/n PT Bukit Agrochemical Baru</p>
+                  <p>No. Rek : 2232-01000-879-567</p>
+                </div>
               </div>
-              ${(item.uangMuka || 0) > 0 ? `
-              <div class="calc-line">
-                <span class="calc-name">Uang Muka</span>
-                <span class="calc-amount">${formatRupiah(item.uangMuka)}</span>
+              <div class="footer-ttd-area">
+                <p class="ttd-title">Dengan Hormat</p>
+                ${item.ttdImage ? `<img src="${item.ttdImage}" class="ttd-img" alt="TTD" />` : `<div style="height: 40px;"></div>`}
+                <p class="ttd-name">${item.ttdNama || ""}</p>
+                <p class="ttd-role">${item.ttdJabatan ? `(${item.ttdJabatan})` : ""}</p>
               </div>
-              ` : ""}
-              ${item.includePPN ? `
-              <div class="calc-line">
-                <span class="calc-name">PPN 11%</span>
-                <span class="calc-amount">${formatRupiah(item.ppnNominal)}</span>
-              </div>
-              ` : ""}
-              ${(item.ongkosKirim || 0) > 0 ? `
-              <div class="calc-line">
-                <span class="calc-name">Ongkos Kirim</span>
-                <span class="calc-amount">${formatRupiah(item.ongkosKirim)}</span>
-              </div>
-              ` : ""}
-              <div class="calc-line">
-                <span class="calc-name-bold">Jumlah Tertagih</span>
-                <span class="calc-amount-bold">${formatRupiah(item.jumlahTertagih)}</span>
-              </div>
-              <div class="due-date">
-                <span class="due-label">Tanggal Jatuh Tempo : </span>
-                <span class="due-value">${item.tanggalJatuhTempo || ""}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="footer-row">
-            <div class="footer-bank-area">
-              <p class="footer-bank-title">Pembayaran mohon ditransfer via rekening:</p>
-              <div class="footer-bank-text">
-                <p><strong>BANK MANDIRI</strong> - Cabang Lamandau</p>
-                <p>a/n PT Bukit Agrochemical Baru</p>
-                <p>No. Rek : 159-00-1205477-0</p>
-                <p style="margin-top: 3px;"><strong>BANK BRI</strong> - Cabang Lamandau</p>
-                <p>a/n PT Bukit Agrochemical Baru</p>
-                <p>No. Rek : 2232-01000-879-567</p>
-              </div>
-            </div>
-            <div class="footer-ttd-area">
-              <p class="ttd-title">Dengan Hormat</p>
-              ${item.ttdImage ? `<img src="${item.ttdImage}" class="ttd-img" alt="TTD" />` : `<div style="height: 40px;"></div>`}
-              <p class="ttd-name">${item.ttdNama || ""}</p>
-              <p class="ttd-role">${item.ttdJabatan ? `(${item.ttdJabatan})` : ""}</p>
             </div>
           </div>
         </div>
