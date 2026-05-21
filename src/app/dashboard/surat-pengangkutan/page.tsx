@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import {
   collection,
   addDoc,
@@ -10,14 +10,12 @@ import {
   serverTimestamp,
   doc,
   updateDoc,
-  getDoc,
   where,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
 import Input from "@/app/components/ui/Input";
-import Select from "@/app/components/ui/Select";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 
@@ -78,6 +76,15 @@ interface ExistingSurat {
   nomorSeri: string;
 }
 
+interface ProductLoadInfo {
+  namaProduk: string;
+  fot: string;
+  totalOrdered: number;
+  totalLoaded: number;
+  remaining: number;
+  bobotPerUnit: number;
+}
+
 export default function SuratPengangkutanPage() {
   const { user } = useAuth();
   const [piList, setPiList] = useState<ProformaInvoice[]>([]);
@@ -91,6 +98,7 @@ export default function SuratPengangkutanPage() {
   const [showJenisModal, setShowJenisModal] = useState(true);
   const [nomorSeri, setNomorSeri] = useState("");
   const [nomorSeriError, setNomorSeriError] = useState("");
+  const [productLoadInfo, setProductLoadInfo] = useState<ProductLoadInfo[]>([]);
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -131,6 +139,13 @@ export default function SuratPengangkutanPage() {
     fetchLoadedPI();
     fetchExistingSurat();
   }, []);
+
+  useEffect(() => {
+    if (jenisSurat === "gudangInduk" && formData.nomorPIList.length > 0) {
+      calculateProductLoadInfo();
+      autoGenerateItemsFromPI();
+    }
+  }, [formData.nomorPIList, loadedPIList, stockList]);
 
   const fetchExistingSurat = async () => {
     try {
@@ -228,7 +243,8 @@ export default function SuratPengangkutanPage() {
           const totalKG = items.reduce((sum: number, item: any) => {
             const mt = parseFloat(item.pengambilanMT) || 0;
             const zak = parseFloat(item.pengambilanZAK) || 0;
-            return sum + mt * 1000 + zak * 50;
+            const bobot = item.bobotPerUnit || 50;
+            return sum + mt * 1000 + zak * bobot;
           }, 0);
           loadedMap[pi] = (loadedMap[pi] || 0) + totalKG;
         });
@@ -275,24 +291,38 @@ export default function SuratPengangkutanPage() {
     return { totalOrdered, totalLoaded, remaining: totalOrdered - totalLoaded };
   };
 
-  const getSelectedPIProducts = () => {
-    if (formData.nomorPIList.length === 0) return [];
+  const getBobotPerUnitForProduct = (namaProduk: string) => {
+    const stockMatch = stockList.find((s) =>
+      s.namaBarang.toUpperCase().includes(namaProduk.toUpperCase()) ||
+      namaProduk.toUpperCase().includes(s.namaBarang.toUpperCase())
+    );
+    return stockMatch ? stockMatch.bobotPerUnit : 50;
+  };
+
+  const calculateProductLoadInfo = () => {
+    if (formData.nomorPIList.length === 0) {
+      setProductLoadInfo([]);
+      return;
+    }
+
     const selectedPIs = piList.filter((pi) => formData.nomorPIList.includes(pi.nomorPI));
-    const productMap: Record<string, { namaProduk: string; fot: string; produsen: string; totalKuantitas: number; loaded: number }> = {};
+    const productMap: Record<string, ProductLoadInfo> = {};
 
     selectedPIs.forEach((pi) => {
       pi.produkItems.forEach((prod) => {
         const key = `${prod.namaProduk}_${prod.fot}`;
+        const bobot = getBobotPerUnitForProduct(prod.namaProduk);
         if (!productMap[key]) {
           productMap[key] = {
             namaProduk: prod.namaProduk,
             fot: prod.fot,
-            produsen: prod.produsen || "",
-            totalKuantitas: 0,
-            loaded: 0,
+            totalOrdered: 0,
+            totalLoaded: 0,
+            remaining: 0,
+            bobotPerUnit: bobot,
           };
         }
-        productMap[key].totalKuantitas += prod.kuantitas || 0;
+        productMap[key].totalOrdered += prod.kuantitas || 0;
       });
     });
 
@@ -305,21 +335,28 @@ export default function SuratPengangkutanPage() {
         const hasMatch = piArray.some((pi: string) => formData.nomorPIList.includes(pi));
         if (hasMatch) {
           items.forEach((item: any) => {
-            const key = Object.keys(productMap).find((k) => {
-              const [nama] = k.split("_");
-              return item.jenisPupuk && item.jenisPupuk.toUpperCase().includes(nama.toUpperCase());
+            Object.keys(productMap).forEach((key) => {
+              const prod = productMap[key];
+              if (item.jenisPupuk && (
+                item.jenisPupuk.toUpperCase().includes(prod.namaProduk.toUpperCase()) ||
+                prod.namaProduk.toUpperCase().includes(item.jenisPupuk.toUpperCase())
+              )) {
+                const mt = parseFloat(item.pengambilanMT) || 0;
+                const zak = parseFloat(item.pengambilanZAK) || 0;
+                const bobot = item.bobotPerUnit || prod.bobotPerUnit;
+                prod.totalLoaded += mt * 1000 + zak * bobot;
+              }
             });
-            if (key && productMap[key]) {
-              const mt = parseFloat(item.pengambilanMT) || 0;
-              const zak = parseFloat(item.pengambilanZAK) || 0;
-              productMap[key].loaded += mt * 1000 + zak * 50;
-            }
           });
         }
       });
-    });
 
-    return Object.values(productMap);
+      Object.keys(productMap).forEach((key) => {
+        productMap[key].remaining = productMap[key].totalOrdered - productMap[key].totalLoaded;
+      });
+
+      setProductLoadInfo(Object.values(productMap));
+    });
   };
 
   const autoGenerateItemsFromPI = () => {
@@ -345,20 +382,22 @@ export default function SuratPengangkutanPage() {
 
     selectedPIs.forEach((pi) => {
       pi.produkItems.forEach((prod) => {
+        const bobot = getBobotPerUnitForProduct(prod.namaProduk);
         const loadedData = loadedPIList.find((l) => l.nomorPI === pi.nomorPI);
         const totalOrdered = prod.kuantitas || 0;
         const totalLoaded = loadedData?.totalLoaded || 0;
         const remaining = totalOrdered - totalLoaded;
 
         if (remaining > 0) {
+          const zakValue = remaining / bobot;
           newItems.push({
             id: idCounter++,
             nomorSubDO: "",
             nomorPO: "",
             jenisPupuk: prod.namaProduk,
             party: "",
-            pengambilanMT: remaining >= 1000 ? (remaining / 1000).toFixed(2) : "",
-            pengambilanZAK: remaining < 1000 ? String(Math.ceil(remaining / 50)) : "",
+            pengambilanMT: zakValue >= 20 ? (remaining / 1000).toFixed(2) : "",
+            pengambilanZAK: zakValue < 20 ? String(Math.ceil(zakValue)) : String(Math.floor(zakValue)),
             sisa: "",
           });
         }
@@ -380,12 +419,6 @@ export default function SuratPengangkutanPage() {
 
     setItems(newItems);
   };
-
-  useEffect(() => {
-    if (jenisSurat === "gudangInduk") {
-      autoGenerateItemsFromPI();
-    }
-  }, [formData.nomorPIList]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -492,7 +525,8 @@ export default function SuratPengangkutanPage() {
       const totalPengambilanKG = items.reduce((sum, item) => {
         const mt = parseFloat(item.pengambilanMT) || 0;
         const zak = parseFloat(item.pengambilanZAK) || 0;
-        return sum + mt * 1000 + zak * 50;
+        const bobot = getBobotPerUnitForProduct(item.jenisPupuk);
+        return sum + mt * 1000 + zak * bobot;
       }, 0);
 
       const suratData: any = {
@@ -500,15 +534,20 @@ export default function SuratPengangkutanPage() {
         tanggal: formData.tanggal,
         namaKabupaten: formData.namaKabupaten,
         nomorSeri: nomorSeri.trim(),
-        items: items.map((item) => ({
-          nomorSubDO: item.nomorSubDO,
-          nomorPO: item.nomorPO,
-          jenisPupuk: item.jenisPupuk,
-          party: item.party,
-          pengambilanMT: parseFloat(item.pengambilanMT) || 0,
-          pengambilanZAK: parseFloat(item.pengambilanZAK) || 0,
-          sisa: item.sisa,
-        })),
+        items: items.map((item) => {
+          const bobot = getBobotPerUnitForProduct(item.jenisPupuk);
+          return {
+            nomorSubDO: item.nomorSubDO,
+            nomorPO: item.nomorPO,
+            jenisPupuk: item.jenisPupuk,
+            party: item.party,
+            pengambilanMT: parseFloat(item.pengambilanMT) || 0,
+            pengambilanZAK: parseFloat(item.pengambilanZAK) || 0,
+            bobotPerUnit: bobot,
+            totalKG: (parseFloat(item.pengambilanMT) || 0) * 1000 + (parseFloat(item.pengambilanZAK) || 0) * bobot,
+            sisa: item.sisa,
+          };
+        }),
         sopirNopolList: sopirList
           .filter((s) => s.namaSopir.trim() || s.nopol.trim())
           .map((s) => ({
@@ -552,18 +591,26 @@ export default function SuratPengangkutanPage() {
           }
         });
 
-        stockList.forEach((stock) => {
-          const stockRef = doc(db, "stockGudang", stock.id);
-          const currentStokUnit = stock.stokAkhirUnit || 0;
-          const currentStokKG = stock.stokAkhirKG || 0;
-          const minusUnit = Math.ceil(totalPengambilanKG / (stock.bobotPerUnit || 50));
-          updateDoc(stockRef, {
-            barangKeluarUnit: (stock.barangKeluarUnit || 0) + minusUnit,
-            barangKeluarKG: (stock.barangKeluarKG || 0) + totalPengambilanKG,
-            stokAkhirUnit: currentStokUnit - minusUnit,
-            stokAkhirKG: currentStokKG - totalPengambilanKG,
-            updatedAt: serverTimestamp(),
-          });
+        items.forEach((item) => {
+          const bobot = getBobotPerUnitForProduct(item.jenisPupuk);
+          const itemTotalKG = (parseFloat(item.pengambilanMT) || 0) * 1000 + (parseFloat(item.pengambilanZAK) || 0) * bobot;
+          const stockMatch = stockList.find((s) =>
+            s.namaBarang.toUpperCase().includes(item.jenisPupuk.toUpperCase()) ||
+            item.jenisPupuk.toUpperCase().includes(s.namaBarang.toUpperCase())
+          );
+          if (stockMatch) {
+            const stockRef = doc(db, "stockGudang", stockMatch.id);
+            const currentStokUnit = stockMatch.stokAkhirUnit || 0;
+            const currentStokKG = stockMatch.stokAkhirKG || 0;
+            const minusUnit = parseFloat(item.pengambilanZAK) || Math.ceil(itemTotalKG / bobot);
+            updateDoc(stockRef, {
+              barangKeluarUnit: (stockMatch.barangKeluarUnit || 0) + minusUnit,
+              barangKeluarKG: (stockMatch.barangKeluarKG || 0) + itemTotalKG,
+              stokAkhirUnit: currentStokUnit - minusUnit,
+              stokAkhirKG: currentStokKG - itemTotalKG,
+              updatedAt: serverTimestamp(),
+            });
+          }
         });
       }
 
@@ -628,6 +675,7 @@ export default function SuratPengangkutanPage() {
     setSopirList([{ id: 1, namaSopir: "", nopol: "", nomorSIM: "" }]);
     setErrors({});
     setNomorSeriError("");
+    setProductLoadInfo([]);
   };
 
   const handlePrintPDF = () => {
@@ -992,6 +1040,30 @@ export default function SuratPengangkutanPage() {
                   <div className="p-4 bg-green-50 rounded-xl border border-green-200">
                     <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Sisa</p>
                     <p className="text-xl font-bold text-green-700 font-mono">{selectedPIInfo.remaining.toLocaleString()} KG</p>
+                  </div>
+                </div>
+              )}
+
+              {productLoadInfo.length > 0 && (
+                <div className="mt-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Detail Per Produk</h4>
+                  <div className="space-y-2">
+                    {productLoadInfo.map((prod, idx) => (
+                      <div key={idx} className={`p-3 rounded-lg border ${prod.remaining > 0 ? "bg-yellow-50 border-yellow-200" : "bg-green-50 border-green-200"}`}>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <p className="font-semibold text-sm text-gray-800">{prod.namaProduk}</p>
+                            <p className="text-xs text-gray-500">FOT: {prod.fot} | Bobot: {prod.bobotPerUnit} KG/ZAK</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-gray-500">{prod.totalLoaded.toLocaleString()} / {prod.totalOrdered.toLocaleString()} KG</p>
+                            <p className={`text-sm font-bold ${prod.remaining > 0 ? "text-yellow-700" : "text-green-700"}`}>
+                              Sisa: {prod.remaining.toLocaleString()} KG
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
