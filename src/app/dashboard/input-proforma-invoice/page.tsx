@@ -15,6 +15,7 @@ interface ProdukItem {
   id: string;
   namaProduk: string;
   fot: string;
+  produsen: string;
   kuantitas: string;
   satuan: string;
   hargaSatuan: string;
@@ -55,7 +56,7 @@ export default function InputProformaInvoicePage() {
   });
 
   const [produkItems, setProdukItems] = useState<ProdukItem[]>([
-    { id: "1", namaProduk: "", fot: "", kuantitas: "", satuan: "KG", hargaSatuan: "" },
+    { id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "" },
   ]);
 
   const produkItemsRef = useRef(produkItems);
@@ -238,6 +239,10 @@ export default function InputProformaInvoicePage() {
             const stock = stockList.find((s) => s.namaBarang === value);
             if (stock) {
               newItem.fot = stock.fot || "";
+              newItem.produsen = stock.namaProdusen || "";
+            } else {
+              newItem.fot = "";
+              newItem.produsen = "";
             }
           }
           return newItem;
@@ -252,7 +257,7 @@ export default function InputProformaInvoicePage() {
     const newId = Date.now().toString();
     setProdukItems((prev) => [
       ...prev,
-      { id: newId, namaProduk: "", fot: "", kuantitas: "", satuan: "KG", hargaSatuan: "" },
+      { id: newId, namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "" },
     ]);
   };
 
@@ -307,6 +312,7 @@ export default function InputProformaInvoicePage() {
         produkItems: produkItems.map((item) => ({
           namaProduk: item.namaProduk,
           fot: item.fot,
+          produsen: item.produsen,
           kuantitas: parseFloat(item.kuantitas),
           satuan: item.satuan,
           hargaSatuan: parseFloat(item.hargaSatuan),
@@ -348,7 +354,7 @@ export default function InputProformaInvoicePage() {
         selectedTTD: "",
       });
       setProdukItems([
-        { id: "1", namaProduk: "", fot: "", kuantitas: "", satuan: "KG", hargaSatuan: "" },
+        { id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "" },
       ]);
       generateTanggalJatuhTempo();
       setTimeout(() => setSuccessMessage(""), 5000);
@@ -467,6 +473,7 @@ export default function InputProformaInvoicePage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-12">No</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider">Nama Produk</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-32">FOT</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Produsen</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-32">Kuantitas</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-24">Satuan</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Harga Satuan</th>
@@ -488,6 +495,9 @@ export default function InputProformaInvoicePage() {
                       </td>
                       <td className="px-4 py-3">
                         <input type="text" value={item.fot} onChange={(e) => handleProdukChange(item.id, "fot", e.target.value)} placeholder="FOT" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input type="text" value={item.produsen} readOnly placeholder="Produsen" className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" />
                       </td>
                       <td className="px-4 py-3">
                         <input type="text" inputMode="decimal" value={item.kuantitas} onChange={(e) => handleProdukChange(item.id, "kuantitas", e.target.value)} placeholder="0.00" className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`kuantitas_${index}`] ? "border-red-500" : "border-gray-300"}`} />
@@ -609,7 +619,7 @@ export default function InputProformaInvoicePage() {
               keterangan: "",
               selectedTTD: "",
             });
-            setProdukItems([{ id: "1", namaProduk: "", fot: "", kuantitas: "", satuan: "KG", hargaSatuan: "" }]);
+            setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "" }]);
             generateTanggalJatuhTempo();
             setErrors({});
           }}>

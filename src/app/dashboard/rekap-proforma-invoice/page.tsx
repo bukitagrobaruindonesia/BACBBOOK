@@ -14,6 +14,7 @@ import { exportToExcel } from "@/app/utils/exportExcel";
 interface ProdukItem {
   namaProduk: string;
   fot: string;
+  produsen: string;
   kuantitas: number;
   satuan: string;
   hargaSatuan: number;
@@ -124,11 +125,14 @@ export default function RekapProformaInvoicePage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
+    const totalKuantitas = (item.produkItems || []).reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+
     const produkRows = (item.produkItems || []).map((p, idx) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${idx + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600; height: 28px;">${p.namaProduk || ""}</td>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${p.fot || ""}</td>
+        <td style="padding: 5px 8px; font-size: 9px; border: 1px solid #000; vertical-align: top; height: 28px; color: #555;">${p.produsen || ""}</td>
         <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${p.kuantitas?.toLocaleString("id-ID") || "0"}</td>
         <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${formatRupiah(p.hargaSatuan)}</td>
         <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600; height: 28px;">${formatRupiah(p.totalHarga)}</td>
@@ -141,6 +145,7 @@ export default function RekapProformaInvoicePage() {
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${(item.produkItems || []).length + i + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
+        <td style="padding: 5px 8px; font-size: 9px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
         <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
         <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
         <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
@@ -460,7 +465,8 @@ export default function RekapProformaInvoicePage() {
                   <th style="width: 28px;">NO</th>
                   <th style="text-align: left; padding-left: 8px;">Nama Produk</th>
                   <th style="width: 45px;">Fot</th>
-                  <th style="width: 75px;">Kuantitas<br>(kg)</th>
+                  <th style="width: 90px;">Produsen</th>
+                  <th style="width: 60px;">Kuantitas<br>(kg)</th>
                   <th style="width: 95px;">Harga Satuan</th>
                   <th style="width: 105px;">Total Harga</th>
                 </tr>
@@ -475,6 +481,9 @@ export default function RekapProformaInvoicePage() {
               <div class="terbilang-area">
                 <div class="terbilang-title">Terbilang :</div>
                 <div class="terbilang-text">${item.terbilang || "-"}</div>
+                <div style="margin-top: 8px; font-size: 9px; color: #333; font-weight: 600;">
+                  Total Kuantitas : <span style="color: #000;">${totalKuantitas.toLocaleString("id-ID")} kg</span>
+                </div>
               </div>
               <div class="calc-area">
                 <div class="calc-line">
@@ -675,6 +684,7 @@ export default function RekapProformaInvoicePage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">No</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Produk</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">FOT</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Produsen</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase">Kuantitas</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase">Harga</th>
                     <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase">Total</th>
@@ -686,6 +696,7 @@ export default function RekapProformaInvoicePage() {
                       <td className="px-4 py-3 text-sm text-gray-900">{idx + 1}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.namaProduk}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.fot}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">{p.produsen || "-"}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono">{p.kuantitas?.toLocaleString("id-ID")} {p.satuan}</td>
                       <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono">{formatRupiah(p.hargaSatuan)}</td>
                       <td className="px-4 py-3 text-sm font-semibold text-gray-900 text-right font-mono">{formatRupiah(p.totalHarga)}</td>
@@ -698,6 +709,8 @@ export default function RekapProformaInvoicePage() {
               <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Terbilang</p>
                 <p className="text-sm font-semibold text-gray-800 uppercase">{selectedItem.terbilang}</p>
+                <p className="text-xs text-gray-500 uppercase tracking-wide mt-3 mb-1">Total Kuantitas</p>
+                <p className="text-sm font-semibold text-gray-800">{(selectedItem.produkItems || []).reduce((sum, p) => sum + (p.kuantitas || 0), 0).toLocaleString("id-ID")} kg</p>
               </div>
               <div className="p-4 bg-green-50 rounded-xl border border-green-100">
                 <div className="flex justify-between py-1">
