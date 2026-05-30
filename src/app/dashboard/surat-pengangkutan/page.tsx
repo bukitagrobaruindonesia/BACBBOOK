@@ -620,8 +620,8 @@ export default function SuratPengangkutanPage() {
       )
       .join("");
     const piBadge = selectedPI
-      ? `<span style="display: inline-block; background: #dcfce7; padding: 2px 8px; border-radius: 4px; margin-right: 4px; font-size: 10px;">${selectedPI.nomorPI}</span>`
-      : "-";
+      ? `<span style="display: inline-block; background: #dcfce7; padding: 2px 8px; border-radius: 4px; margin-right: 4px; font-size: 10px; font-weight: 600;">${selectedPI.nomorPI}</span>`
+      : '<span style="font-size: 10px; color: #666;">-</span>';
     const recipientBox = jenisSurat === "gudangInduk"
       ? `<div class="recipient-box">
               <p class="recipient-title">Kepada Yth :</p>
@@ -905,7 +905,7 @@ export default function SuratPengangkutanPage() {
         {jenisSurat === "gudangInduk" && (
           <Card title="Proforma Invoice">
             <div className="space-y-4">
-              <div ref={searchRef} className="relative" style={{ position: 'relative', zIndex: 50 }}>
+              <div ref={searchRef} className="relative z-50">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Cari Nomor Proforma Invoice
                 </label>
@@ -926,7 +926,7 @@ export default function SuratPengangkutanPage() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
                 />
                 {showPISearch && (
-                  <div className="fixed sm:absolute left-4 right-4 sm:left-0 sm:right-0 sm:mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[60vh] sm:max-h-[400px] overflow-y-auto" style={{ zIndex: 9999, top: 'auto' }}>
+                  <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[400px] overflow-y-auto z-[9999]" onMouseDown={(e) => e.preventDefault()}>
                     {searchPI && filteredPIList.length === 0 ? (
                       <div className="p-4 text-sm text-gray-500">Tidak ada PI yang tersedia (semua sudah selesai dimuat atau tidak cocok)</div>
                     ) : !searchPI ? (

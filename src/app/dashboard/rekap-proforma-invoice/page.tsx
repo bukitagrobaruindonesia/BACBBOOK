@@ -35,20 +35,28 @@ interface ProdukItem {
   totalHarga: number;
 }
 
+interface SuratMuatItem {
+  nomorSubDO?: string;
+  nomorPO?: string;
+  jenisPupuk: string;
+  party?: string;
+  pengambilanZAK: number;
+  bobotPerUnit: number;
+  totalKG: number;
+  sisa?: string;
+  fot?: string;
+}
+
 interface SuratMuatInfo {
   id: string;
   nomorSeri: string;
   tanggal: string;
-  items: Array<{
-    jenisPupuk: string;
-    pengambilanZAK: number;
-    bobotPerUnit: number;
-    totalKG: number;
-  }>;
+  items: SuratMuatItem[];
   totalKG: number;
   nomorPolisi: string;
   driverUnit: string;
   nomorPI: string;
+  nomorSIM?: string;
 }
 
 interface ProformaInvoice {
@@ -185,6 +193,7 @@ export default function RekapProformaInvoicePage() {
           nomorPolisi: d.nomorPolisi || "",
           driverUnit: d.driverUnit || "",
           nomorPI: d.nomorPI || "",
+          nomorSIM: d.nomorSIM || "",
         };
         piList.forEach((pi) => {
           if (!map[pi]) map[pi] = [];
@@ -231,6 +240,29 @@ export default function RekapProformaInvoicePage() {
     return { class: "bg-gray-100 text-gray-600", label: "Belum Dimuat" };
   };
 
+  const getProdukLoadStatus = (item: ProformaInvoice) => {
+    const suratList = getSuratMuatForPI(item.nomorPI);
+    return item.produkItems.map((prod) => {
+      const ordered = prod.kuantitas || 0;
+      let loaded = 0;
+      suratList.forEach((surat) => {
+        (surat.items || []).forEach((it) => {
+          if (it.jenisPupuk && (
+            it.jenisPupuk.toUpperCase().includes(prod.namaProduk.toUpperCase()) ||
+            prod.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
+          )) {
+            loaded += (it.pengambilanZAK || 0) * (it.bobotPerUnit || 50);
+          }
+        });
+      });
+      const remaining = Math.max(0, ordered - loaded);
+      let status = "pending";
+      if (loaded >= ordered) status = "complete";
+      else if (loaded > 0) status = "partial";
+      return { namaProduk: prod.namaProduk, ordered, loaded, remaining, status };
+    });
+  };
+
   const filteredData = data.filter((item) =>
     item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -262,15 +294,15 @@ export default function RekapProformaInvoicePage() {
       nomorSeri: surat.nomorSeri,
       nomorPolisi: surat.nomorPolisi,
       driverUnit: surat.driverUnit,
-      nomorSIM: "",
+      nomorSIM: surat.nomorSIM || "",
       items: (surat.items || []).map((it) => ({
-        nomorSubDO: "",
-        nomorPO: "",
+        nomorSubDO: it.nomorSubDO || "",
+        nomorPO: it.nomorPO || "",
         jenisPupuk: it.jenisPupuk || "",
-        party: "",
+        party: it.party || "",
         pengambilanZAK: String(it.pengambilanZAK || 0),
         bobotPerUnit: it.bobotPerUnit || 50,
-        sisa: "",
+        sisa: it.sisa || "",
       })),
     });
     setIsEditSuratModalOpen(true);
@@ -334,9 +366,13 @@ export default function RekapProformaInvoicePage() {
         const piData = piSnap.data();
         const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
         const newSisa = Math.max(0, currentSisa + delta);
+        const totalOrdered = selectedItem.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+        let newStatus = "pending";
+        if (newSisa <= 0) newStatus = "complete";
+        else if (newSisa < totalOrdered) newStatus = "partial";
         await updateDoc(piRef, {
           sisaPengambilanKG: newSisa,
-          statusPengangkutan: newSisa <= 0 ? "complete" : (totalPengambilanKG > 0 ? "partial" : "pending"),
+          statusPengangkutan: newStatus,
           updatedAt: serverTimestamp(),
         });
       }
@@ -399,9 +435,14 @@ export default function RekapProformaInvoicePage() {
         const piData = piSnap.data();
         const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
         const newSisa = currentSisa + totalKG;
+        const totalOrdered = selectedItem!.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+        let newStatus = "pending";
+        if (newSisa >= totalOrdered) newStatus = "pending";
+        else if (newSisa > 0) newStatus = "partial";
+        else newStatus = "complete";
         await updateDoc(piRef, {
           sisaPengambilanKG: newSisa,
-          statusPengangkutan: newSisa > 0 ? "partial" : "pending",
+          statusPengangkutan: newStatus,
           updatedAt: serverTimestamp(),
         });
       }
@@ -574,7 +615,7 @@ export default function RekapProformaInvoicePage() {
         <div class="page">
           <img src="/LogoAGRO.png" alt="Watermark" class="watermark" onerror="this.style.display='none'" />
           <div class="content-layer">
-            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=\'text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;\'>Logo tidak tersedia</div>');" />
+            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>');" />
             <div class="invoice-title">
               <h1>PROFORMA INVOICE</h1>
             </div>
@@ -690,6 +731,158 @@ export default function RekapProformaInvoicePage() {
     printWindow.document.close();
   };
 
+  const handlePrintSuratPDF = (surat: SuratMuatInfo) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const itemsHtml = (surat.items || [])
+      .map(
+        (it, idx) => `
+        <tr>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPO || "-"}</td>
+          <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
+        </tr>
+      `
+      )
+      .join("");
+    const piBadge = selectedItem
+      ? `<span style="display: inline-block; background: #dcfce7; padding: 2px 8px; border-radius: 4px; margin-right: 4px; font-size: 10px; font-weight: 600;">${selectedItem.nomorPI}</span>`
+      : '<span style="font-size: 10px; color: #666;">-</span>';
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Surat Pengangkutan ${surat.nomorSeri}</title>
+        <style>
+          @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
+          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
+          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; }
+          .header-img { width: 100%; display: block; margin-bottom: 0; }
+          .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; }
+          .info-section { margin-bottom: 12px; }
+          .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
+          .info-label { font-weight: 600; }
+          .recipient-box { border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px; }
+          .recipient-title { font-size: 9px; color: #333; margin-bottom: 2px; }
+          .recipient-name { font-size: 11px; font-weight: 700; }
+          .recipient-address { font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px; }
+          .salutation { font-size: 10px; margin-bottom: 8px; }
+          .salutation p { margin-bottom: 2px; }
+          .table-section { margin-bottom: 10px; }
+          .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; }
+          .data-table { width: 100%; border-collapse: collapse; }
+          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; }
+          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
+          .notes-section { margin-top: 10px; font-size: 9px; }
+          .notes-section p { margin-bottom: 2px; }
+          .signature-row { display: flex; justify-content: space-between; margin-top: 20px; }
+          .signature-box { width: 45%; text-align: center; }
+          .signature-title { font-size: 9px; margin-bottom: 30px; }
+          .signature-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
+          .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
+          .footer-img { width: 100%; display: block; margin-top: 10px; }
+          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+          @media print { .print-bar { display: none !important; } }
+        </style>
+      </head>
+      <body>
+        <div class="print-bar no-print">
+          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+        <div class="page">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <div class="title-bar">SURAT PENGANGKUTAN</div>
+          <div class="info-section">
+            <div class="info-row">
+              <span>Lamandau, ${new Date(surat.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Nomor Seri : ${surat.nomorSeri}</span>
+            </div>
+          </div>
+          <div class="recipient-box">
+            <p class="recipient-title">Kepada Yth :</p>
+            <p class="recipient-name">Bapak Kepala Gudang Induk</p>
+            <p class="recipient-name">PT Bukit Agrochemical Baru</p>
+            <p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p>
+          </div>
+          <div class="salutation">
+            <p>Dengan Hormat,</p>
+            <p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p>
+          </div>
+          <div style="margin-bottom: 8px; font-size: 10px;">
+            <span style="font-weight: 600;">Nomor Proforma Invoice : </span>${piBadge}
+          </div>
+          <div class="table-section">
+            <div class="table-title">DASAR PENGANGKUTAN</div>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 30px;">NO</th>
+                  <th style="width: 100px;">NOMOR SUB DO</th>
+                  <th style="width: 100px;">NOMOR PO</th>
+                  <th>JENIS PUPUK</th>
+                  <th style="width: 60px;">PARTY</th>
+                  <th style="width: 100px;">PENGAMBILAN<br>ZAK</th>
+                  <th style="width: 60px;">SISA</th>
+                </tr>
+              </thead>
+              <tbody>${itemsHtml}</tbody>
+            </table>
+          </div>
+          <div class="table-section">
+            <div class="table-title">DATA UNIT ANGKUTAN</div>
+            <table class="data-table">
+              <tbody>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorPolisi || "-"}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.driverUnit || "-"}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorSIM || "-"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="notes-section">
+            <p style="font-weight: 700;">Notes :</p>
+            <p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
+            <p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
+            <p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
+          </div>
+          <div class="signature-row">
+            <div class="signature-box">
+              <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+              <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" />
+              <p class="signature-name">HENDRA PRAMASYANTO</p>
+            </div>
+            <div class="signature-box">
+              <p class="signature-title">Diangkut oleh,<br>Driver</p>
+              <div style="height: 50px;"></div>
+              <p class="signature-name">${surat.driverUnit || ""}</p>
+            </div>
+          </div>
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+        </div>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   const columns = [
     {
       key: "tanggal",
@@ -717,21 +910,32 @@ export default function RekapProformaInvoicePage() {
     {
       key: "statusPengangkutan",
       header: "Status Muat",
-      width: "180px",
+      width: "320px",
       render: (row: ProformaInvoice) => {
-        const status = getStatusPengangkutan(row);
-        const badge = getStatusBadge(status);
-        const totalOrdered = getTotalOrdered(row);
-        const totalLoaded = getTotalLoaded(row.nomorPI);
-        const isComplete = status === "complete";
+        const produkStatus = getProdukLoadStatus(row);
+        const isComplete = produkStatus.every((p) => p.status === "complete");
+        const isPartial = produkStatus.some((p) => p.status === "partial" || p.status === "complete");
+        const badge = isComplete
+          ? { class: "bg-green-100 text-green-700", label: "Selesai Dimuat" }
+          : isPartial
+          ? { class: "bg-yellow-100 text-yellow-700", label: "Sebagian Dimuat" }
+          : { class: "bg-gray-100 text-gray-600", label: "Belum Dimuat" };
         return (
           <div className="flex flex-col gap-2">
             <span className={`px-2 py-1 rounded-md text-xs font-bold ${badge.class}`}>
               {badge.label}
             </span>
-            <span className="text-xs text-gray-500 font-mono">
-              {totalLoaded.toLocaleString()} / {totalOrdered.toLocaleString()} KG
-            </span>
+            <div className="space-y-1">
+              {produkStatus.map((p, i) => (
+                <div key={i} className="text-xs text-gray-600">
+                  <span className="font-semibold">{p.namaProduk}:</span>{' '}
+                  <span className="font-mono">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
+                  {p.status === "partial" && <span className="text-yellow-600 ml-1">(Sebagian)</span>}
+                  {p.status === "complete" && <span className="text-green-600 ml-1">(Selesai)</span>}
+                  {p.status === "pending" && <span className="text-gray-400 ml-1">(Belum)</span>}
+                </div>
+              ))}
+            </div>
             {!isComplete && (
               <button
                 onClick={(e) => { e.stopPropagation(); router.push("/dashboard/surat-pengangkutan"); }}
@@ -889,19 +1093,13 @@ export default function RekapProformaInvoicePage() {
                   );
                 })()}
               </div>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-xs text-gray-500">Total Dipesan</p>
-                  <p className="text-lg font-bold text-blue-700 font-mono">{getTotalOrdered(selectedItem).toLocaleString()} KG</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Sudah Dimuat</p>
-                  <p className="text-lg font-bold text-amber-700 font-mono">{getTotalLoaded(selectedItem.nomorPI).toLocaleString()} KG</p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500">Sisa</p>
-                  <p className="text-lg font-bold text-green-700 font-mono">{Math.max(0, getTotalOrdered(selectedItem) - getTotalLoaded(selectedItem.nomorPI)).toLocaleString()} KG</p>
-                </div>
+              <div className="space-y-2">
+                {getProdukLoadStatus(selectedItem).map((p, i) => (
+                  <div key={i} className="flex justify-between items-center text-sm">
+                    <span className="font-medium text-gray-700">{p.namaProduk}</span>
+                    <span className="font-mono text-gray-900">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
+                  </div>
+                ))}
               </div>
             </div>
             {getSuratMuatForPI(selectedItem.nomorPI).length > 0 && (
@@ -940,6 +1138,11 @@ export default function RekapProformaInvoicePage() {
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.driverUnit}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">
                           <div className="flex items-center gap-2 justify-center">
+                            <button onClick={() => handlePrintSuratPDF(surat)} className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print Surat">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                              </svg>
+                            </button>
                             <button onClick={() => handleEditSurat(surat)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit Surat">
                               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />

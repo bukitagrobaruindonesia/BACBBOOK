@@ -407,9 +407,13 @@ export default function RiwayatTransaksiPage() {
           const piData = piSnap.data();
           const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
           const newSisa = Math.max(0, currentSisa + delta);
+          const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+          let newStatus = "pending";
+          if (newSisa <= 0) newStatus = "complete";
+          else if (newSisa < totalOrdered) newStatus = "partial";
           await updateDoc(piRef, {
             sisaPengambilanKG: newSisa,
-            statusPengangkutan: newSisa <= 0 ? "complete" : (totalPengambilanKG > 0 ? "partial" : "pending"),
+            statusPengangkutan: newStatus,
             updatedAt: serverTimestamp(),
           });
         }
@@ -474,9 +478,14 @@ export default function RiwayatTransaksiPage() {
             const piData = piSnap.data();
             const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
             const newSisa = currentSisa + totalKG;
+            const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+            let newStatus = "pending";
+            if (newSisa >= totalOrdered) newStatus = "pending";
+            else if (newSisa > 0) newStatus = "partial";
+            else newStatus = "complete";
             await updateDoc(piRef, {
               sisaPengambilanKG: newSisa,
-              statusPengangkutan: newSisa > 0 ? "partial" : "pending",
+              statusPengangkutan: newStatus,
               updatedAt: serverTimestamp(),
             });
           }
@@ -510,6 +519,8 @@ export default function RiwayatTransaksiPage() {
             }
           }
         }
+      }
+      if (item.jenis === "suratPengangkutanGudangInduk" || item.jenis === "suratPengangkutanDO") {
         await deleteDoc(doc(db, "suratPengangkutan", item.id));
       }
       await deleteDoc(doc(db, collectionName, item.id));
