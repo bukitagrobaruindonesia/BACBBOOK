@@ -1,7 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, where, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  doc,
+  deleteDoc,
+  updateDoc,
+  where,
+  serverTimestamp,
+} from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -264,6 +274,10 @@ export default function RekapProformaInvoicePage() {
         <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
       </tr>
     `).join("");
+
+    const createdAtStr = item.createdAt instanceof Date
+      ? item.createdAt.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+      : "-";
 
     const html = `
       <!DOCTYPE html>
@@ -539,7 +553,7 @@ export default function RekapProformaInvoicePage() {
           <img src="/LogoAGRO.png" alt="Watermark" class="watermark" onerror="this.style.display='none'" />
 
           <div class="content-layer">
-            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=\"text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;\">Logo tidak tersedia</div>');" />
+            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=\\'text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;\\'>Logo tidak tersedia</div>');" />
 
             <div class="invoice-title">
               <h1>PROFORMA INVOICE</h1>
@@ -628,7 +642,7 @@ export default function RekapProformaInvoicePage() {
                   <span class="due-value">${item.tanggalJatuhTempo || ""}</span>
                 </div>
                 <div class="created-info">
-                  Dibuat: ${item.createdAt ? item.createdAt.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "-"}
+                  Dibuat: ${createdAtStr}
                 </div>
               </div>
             </div>
@@ -918,8 +932,6 @@ export default function RekapProformaInvoicePage() {
               <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Terbilang</p>
                 <p className="text-sm font-semibold text-gray-800 uppercase">{selectedItem.terbilang}</p>
-                <p className="text-xs text-gray-500 uppercase tracking-wide mt-3 mb-1">Total Kuantitas</p>
-                <p className="text-sm font-semibold text-gray-800">{(selectedItem.produkItems || []).reduce((sum, p) => sum + (p.kuantitas || 0), 0).toLocaleString("id-ID")} kg</p>
               </div>
               <div className="p-4 bg-green-50 rounded-xl border border-green-100">
                 <div className="flex justify-between py-1">

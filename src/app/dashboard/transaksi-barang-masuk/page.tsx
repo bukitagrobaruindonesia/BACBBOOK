@@ -217,6 +217,7 @@ export default function TransaksiBarangMasukPage() {
         fot: formData.fot.trim().toUpperCase(),
         kodeBarang: formData.kodeBarang.trim().toUpperCase(),
         namaBarang: formData.namaBarang.trim(),
+        namaProdusen: "",
         unit: formData.unit,
         bobotPerUnit: bobotPerUnit,
         stokAwalUnit: isKG ? 0 : stokTersediaUnit,
