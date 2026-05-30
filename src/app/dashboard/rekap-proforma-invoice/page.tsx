@@ -96,6 +96,17 @@ interface StockItem {
   barangKeluarKG: number;
 }
 
+interface EditSuratItem {
+  nomorSubDO: string;
+  nomorPO: string;
+  jenisPupuk: string;
+  party: string;
+  pengambilanZAK: string;
+  bobotPerUnit: number;
+  sisa: string;
+  maxZAK: number;
+}
+
 export default function RekapProformaInvoicePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -122,15 +133,7 @@ export default function RekapProformaInvoicePage() {
     nomorPolisi: "",
     driverUnit: "",
     nomorSIM: "",
-    items: [] as Array<{
-      nomorSubDO: string;
-      nomorPO: string;
-      jenisPupuk: string;
-      party: string;
-      pengambilanZAK: string;
-      bobotPerUnit: number;
-      sisa: string;
-    }>,
+    items: [] as EditSuratItem[],
   });
 
   useEffect(() => {
@@ -207,7 +210,7 @@ export default function RekapProformaInvoicePage() {
   };
 
   const getStockForProduct = (namaProduk: string) => {
-    return stockList.find((s) =>
+    return stockList.find((s: StockItem) =>
       s.namaBarang.toUpperCase().includes(namaProduk.toUpperCase()) ||
       namaProduk.toUpperCase().includes(s.namaBarang.toUpperCase())
     );
@@ -218,12 +221,12 @@ export default function RekapProformaInvoicePage() {
   };
 
   const getTotalOrdered = (item: ProformaInvoice) => {
-    return item.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+    return item.produkItems.reduce((sum: number, p: ProdukItem) => sum + (p.kuantitas || 0), 0);
   };
 
   const getTotalLoaded = (nomorPI: string) => {
     const suratList = getSuratMuatForPI(nomorPI);
-    return suratList.reduce((sum, s) => sum + (s.totalKG || 0), 0);
+    return suratList.reduce((sum: number, s: SuratMuatInfo) => sum + (s.totalKG || 0), 0);
   };
 
   const getStatusPengangkutan = (item: ProformaInvoice) => {
@@ -242,11 +245,11 @@ export default function RekapProformaInvoicePage() {
 
   const getProdukLoadStatus = (item: ProformaInvoice) => {
     const suratList = getSuratMuatForPI(item.nomorPI);
-    return item.produkItems.map((prod) => {
+    return item.produkItems.map((prod: ProdukItem) => {
       const ordered = prod.kuantitas || 0;
       let loaded = 0;
-      suratList.forEach((surat) => {
-        (surat.items || []).forEach((it) => {
+      suratList.forEach((surat: SuratMuatInfo) => {
+        (surat.items || []).forEach((it: SuratMuatItem) => {
           if (it.jenisPupuk && (
             it.jenisPupuk.toUpperCase().includes(prod.namaProduk.toUpperCase()) ||
             prod.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
@@ -263,7 +266,7 @@ export default function RekapProformaInvoicePage() {
     });
   };
 
-  const filteredData = data.filter((item) =>
+  const filteredData = data.filter((item: ProformaInvoice) =>
     item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -295,15 +298,20 @@ export default function RekapProformaInvoicePage() {
       nomorPolisi: surat.nomorPolisi,
       driverUnit: surat.driverUnit,
       nomorSIM: surat.nomorSIM || "",
-      items: (surat.items || []).map((it) => ({
-        nomorSubDO: it.nomorSubDO || "",
-        nomorPO: it.nomorPO || "",
-        jenisPupuk: it.jenisPupuk || "",
-        party: it.party || "",
-        pengambilanZAK: String(it.pengambilanZAK || 0),
-        bobotPerUnit: it.bobotPerUnit || 50,
-        sisa: it.sisa || "",
-      })),
+      items: (surat.items || []).map((it: SuratMuatItem) => {
+        const pengambilan = it.pengambilanZAK || 0;
+        const sisa = parseFloat(it.sisa || "0") || 0;
+        return {
+          nomorSubDO: it.nomorSubDO || "",
+          nomorPO: it.nomorPO || "",
+          jenisPupuk: it.jenisPupuk || "",
+          party: it.party || "",
+          pengambilanZAK: String(pengambilan),
+          bobotPerUnit: it.bobotPerUnit || 50,
+          sisa: String(sisa),
+          maxZAK: pengambilan + sisa,
+        };
+      }),
     });
     setIsEditSuratModalOpen(true);
   };
@@ -333,7 +341,7 @@ export default function RekapProformaInvoicePage() {
     setIsSubmitting(true);
     try {
       const oldItems = selectedSurat.items || [];
-      const newItems = editSuratForm.items.map((it) => ({
+      const newItems = editSuratForm.items.map((it: EditSuratItem) => ({
         nomorSubDO: it.nomorSubDO,
         nomorPO: it.nomorPO,
         jenisPupuk: it.jenisPupuk,
@@ -344,7 +352,7 @@ export default function RekapProformaInvoicePage() {
         sisa: it.sisa,
         fot: "",
       }));
-      const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
+      const totalPengambilanKG = newItems.reduce((sum: number, it: any) => sum + it.totalKG, 0);
       const updateData: any = {
         tanggal: editSuratForm.tanggal,
         nomorSeri: editSuratForm.nomorSeri.trim(),
@@ -356,9 +364,13 @@ export default function RekapProformaInvoicePage() {
         updatedAt: serverTimestamp(),
       };
       await updateDoc(doc(db, "suratPengangkutan", selectedSurat.id), updateData);
-      await updateDoc(doc(db, "transaksiBarangKeluar", selectedSurat.id), updateData);
+      const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", selectedSurat.nomorSeri));
+      const transaksiSnapshot = await getDocs(transaksiQuery);
+      if (!transaksiSnapshot.empty) {
+        await updateDoc(doc(db, "transaksiBarangKeluar", transaksiSnapshot.docs[0].id), updateData);
+      }
 
-      const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+      const oldTotalKG = oldItems.reduce((sum: number, it: SuratMuatItem) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const delta = oldTotalKG - totalPengambilanKG;
       const piRef = doc(db, "proformaInvoice", selectedItem.id);
       const piSnap = await getDoc(piRef);
@@ -366,7 +378,7 @@ export default function RekapProformaInvoicePage() {
         const piData = piSnap.data();
         const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
         const newSisa = Math.max(0, currentSisa + delta);
-        const totalOrdered = selectedItem.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+        const totalOrdered = selectedItem.produkItems.reduce((sum: number, p: ProdukItem) => sum + (p.kuantitas || 0), 0);
         let newStatus = "pending";
         if (newSisa <= 0) newStatus = "complete";
         else if (newSisa < totalOrdered) newStatus = "partial";
@@ -379,11 +391,11 @@ export default function RekapProformaInvoicePage() {
 
       const productMapOld: Record<string, number> = {};
       const productMapNew: Record<string, number> = {};
-      oldItems.forEach((it) => {
+      oldItems.forEach((it: SuratMuatItem) => {
         const key = it.jenisPupuk;
         productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
       });
-      newItems.forEach((it) => {
+      newItems.forEach((it: any) => {
         const key = it.jenisPupuk;
         productMapNew[key] = (productMapNew[key] || 0) + (it.totalKG || 0);
       });
@@ -428,14 +440,14 @@ export default function RekapProformaInvoicePage() {
   const handleDeleteSurat = async (surat: SuratMuatInfo) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus surat pengangkutan ${surat.nomorSeri}?`)) return;
     try {
-      const totalKG = (surat.items || []).reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+      const totalKG = (surat.items || []).reduce((sum: number, it: SuratMuatItem) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const piRef = doc(db, "proformaInvoice", selectedItem!.id);
       const piSnap = await getDoc(piRef);
       if (piSnap.exists()) {
         const piData = piSnap.data();
         const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
         const newSisa = currentSisa + totalKG;
-        const totalOrdered = selectedItem!.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+        const totalOrdered = selectedItem!.produkItems.reduce((sum: number, p: ProdukItem) => sum + (p.kuantitas || 0), 0);
         let newStatus = "pending";
         if (newSisa >= totalOrdered) newStatus = "pending";
         else if (newSisa > 0) newStatus = "partial";
@@ -447,7 +459,7 @@ export default function RekapProformaInvoicePage() {
         });
       }
       const productMap: Record<string, number> = {};
-      (surat.items || []).forEach((it) => {
+      (surat.items || []).forEach((it: SuratMuatItem) => {
         const key = it.jenisPupuk;
         productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
       });
@@ -475,8 +487,12 @@ export default function RekapProformaInvoicePage() {
           }
         }
       }
+      const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", surat.nomorSeri));
+      const transaksiSnapshot = await getDocs(transaksiQuery);
+      if (!transaksiSnapshot.empty) {
+        await deleteDoc(doc(db, "transaksiBarangKeluar", transaksiSnapshot.docs[0].id));
+      }
       await deleteDoc(doc(db, "suratPengangkutan", surat.id));
-      await deleteDoc(doc(db, "transaksiBarangKeluar", surat.id));
       fetchData();
       fetchSuratMuat();
       fetchStockGudang();
@@ -496,7 +512,7 @@ export default function RekapProformaInvoicePage() {
   };
 
   const handleExportExcel = () => {
-    const exportData = filteredData.map((item) => ({
+    const exportData = filteredData.map((item: ProformaInvoice) => ({
       "Tanggal": item.tanggal,
       "Nomor PI": item.nomorPI,
       "Nama Customer": item.namaCustomer,
@@ -520,7 +536,7 @@ export default function RekapProformaInvoicePage() {
   const handlePrintPDF = (item: ProformaInvoice) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-    const produkRows = (item.produkItems || []).map((p, idx) => `
+    const produkRows = (item.produkItems || []).map((p: ProdukItem, idx: number) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${idx + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600; height: 28px;">${p.namaProduk || ""}</td>
@@ -532,7 +548,7 @@ export default function RekapProformaInvoicePage() {
       </tr>
     `).join("");
     const emptyRowsCount = Math.max(0, 10 - (item.produkItems || []).length);
-    const emptyRows = Array.from({ length: emptyRowsCount }, (_, i) => `
+    const emptyRows = Array.from({ length: emptyRowsCount }, (_, i: number) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${(item.produkItems || []).length + i + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
@@ -736,7 +752,7 @@ export default function RekapProformaInvoicePage() {
     if (!printWindow) return;
     const itemsHtml = (surat.items || [])
       .map(
-        (it, idx) => `
+        (it: SuratMuatItem, idx: number) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>
@@ -913,8 +929,8 @@ export default function RekapProformaInvoicePage() {
       width: "320px",
       render: (row: ProformaInvoice) => {
         const produkStatus = getProdukLoadStatus(row);
-        const isComplete = produkStatus.every((p) => p.status === "complete");
-        const isPartial = produkStatus.some((p) => p.status === "partial" || p.status === "complete");
+        const isComplete = produkStatus.every((p: any) => p.status === "complete");
+        const isPartial = produkStatus.some((p: any) => p.status === "partial" || p.status === "complete");
         const badge = isComplete
           ? { class: "bg-green-100 text-green-700", label: "Selesai Dimuat" }
           : isPartial
@@ -926,7 +942,7 @@ export default function RekapProformaInvoicePage() {
               {badge.label}
             </span>
             <div className="space-y-1">
-              {produkStatus.map((p, i) => (
+              {produkStatus.map((p: any, i: number) => (
                 <div key={i} className="text-xs text-gray-600">
                   <span className="font-semibold">{p.namaProduk}:</span>{' '}
                   <span className="font-mono">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
@@ -996,7 +1012,20 @@ export default function RekapProformaInvoicePage() {
   const handleSuratItemChange = (idx: number, field: string, value: string) => {
     setEditSuratForm((prev) => {
       const newItems = [...prev.items];
-      newItems[idx] = { ...newItems[idx], [field]: value };
+      const item = { ...newItems[idx], [field]: value };
+      if (field === "pengambilanZAK") {
+        const zak = parseFloat(value) || 0;
+        const maxZAK = item.maxZAK || 0;
+        if (maxZAK > 0) {
+          if (zak >= maxZAK) {
+            item.pengambilanZAK = String(maxZAK);
+            item.sisa = "0";
+          } else {
+            item.sisa = String(Math.max(0, maxZAK - zak));
+          }
+        }
+      }
+      newItems[idx] = item;
       return { ...prev, items: newItems };
     });
   };
@@ -1004,14 +1033,14 @@ export default function RekapProformaInvoicePage() {
   const addSuratItem = () => {
     setEditSuratForm((prev) => ({
       ...prev,
-      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "" }],
+      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0 }],
     }));
   };
 
   const removeSuratItem = (idx: number) => {
     setEditSuratForm((prev) => ({
       ...prev,
-      items: prev.items.filter((_, i) => i !== idx),
+      items: prev.items.filter((_: EditSuratItem, i: number) => i !== idx),
     }));
   };
 
@@ -1041,7 +1070,7 @@ export default function RekapProformaInvoicePage() {
           Menampilkan {filteredData.length} dari {data.length} data
         </div>
 
-        <Table columns={columns} data={filteredData} isLoading={isLoading} emptyMessage="Belum ada data proforma invoice" keyExtractor={(row) => row.id} onRowClick={handleDetail} />
+        <Table columns={columns} data={filteredData} isLoading={isLoading} emptyMessage="Belum ada data proforma invoice" keyExtractor={(row: ProformaInvoice) => row.id} onRowClick={handleDetail} />
       </Card>
 
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="Detail Proforma Invoice" size="lg" footer={
@@ -1094,7 +1123,7 @@ export default function RekapProformaInvoicePage() {
                 })()}
               </div>
               <div className="space-y-2">
-                {getProdukLoadStatus(selectedItem).map((p, i) => (
+                {getProdukLoadStatus(selectedItem).map((p: any, i: number) => (
                   <div key={i} className="flex justify-between items-center text-sm">
                     <span className="font-medium text-gray-700">{p.namaProduk}</span>
                     <span className="font-mono text-gray-900">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
@@ -1120,18 +1149,18 @@ export default function RekapProformaInvoicePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {getSuratMuatForPI(selectedItem.nomorPI).map((surat, idx) => (
+                    {getSuratMuatForPI(selectedItem.nomorPI).map((surat: SuratMuatInfo, idx: number) => (
                       <tr key={idx} className="border-b">
                         <td className="px-4 py-3 text-sm text-gray-900 border">{idx + 1}</td>
                         <td className="px-4 py-3 text-sm font-mono font-bold text-green-700 border">{surat.nomorSeri}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.tanggal}</td>
                         <td className="px-4 py-3 text-sm text-gray-800 border">
-                          {surat.items.map((it, i) => (
+                          {surat.items.map((it: SuratMuatItem, i: number) => (
                             <div key={i}>{it.jenisPupuk} ({it.pengambilanZAK} ZAK)</div>
                           ))}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono border">
-                          {surat.items.reduce((sum, it) => sum + (it.pengambilanZAK || 0), 0).toLocaleString()}
+                          {surat.items.reduce((sum: number, it: SuratMuatItem) => sum + (it.pengambilanZAK || 0), 0).toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right font-mono border">{surat.totalKG.toLocaleString()}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.nomorPolisi}</td>
@@ -1175,7 +1204,7 @@ export default function RekapProformaInvoicePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(selectedItem.produkItems || []).map((p, idx) => (
+                  {(selectedItem.produkItems || []).map((p: ProdukItem, idx: number) => (
                     <tr key={idx}>
                       <td className="px-4 py-3 text-sm text-gray-900">{idx + 1}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.namaProduk}</td>
@@ -1281,7 +1310,7 @@ export default function RekapProformaInvoicePage() {
           </div>
           <div className="space-y-4">
             <h4 className="text-sm font-semibold text-gray-700">Item Pengangkutan</h4>
-            {editSuratForm.items.map((item, idx) => (
+            {editSuratForm.items.map((item: EditSuratItem, idx: number) => (
               <div key={idx} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div className="flex items-center justify-between mb-3">
                   <h5 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h5>

@@ -124,6 +124,7 @@ export default function RiwayatTransaksiPage() {
       pengambilanZAK: string;
       bobotPerUnit: number;
       sisa: string;
+      maxZAK: number;
     }>,
   });
 
@@ -289,15 +290,20 @@ export default function RiwayatTransaksiPage() {
         nomorPolisi: item.nomorPolisi || "",
         driverUnit: item.driverUnit || "",
         nomorSIM: item.nomorSIM || "",
-        items: (item.items || []).map((it) => ({
-          nomorSubDO: it.nomorSubDO || "",
-          nomorPO: it.nomorPO || "",
-          jenisPupuk: it.jenisPupuk || "",
-          party: it.party || "",
-          pengambilanZAK: String(it.pengambilanZAK || 0),
-          bobotPerUnit: it.bobotPerUnit || 50,
-          sisa: it.sisa || "",
-        })),
+        items: (item.items || []).map((it) => {
+          const pengambilan = it.pengambilanZAK || 0;
+          const sisa = parseFloat(it.sisa || "0") || 0;
+          return {
+            nomorSubDO: it.nomorSubDO || "",
+            nomorPO: it.nomorPO || "",
+            jenisPupuk: it.jenisPupuk || "",
+            party: it.party || "",
+            pengambilanZAK: String(pengambilan),
+            bobotPerUnit: it.bobotPerUnit || 50,
+            sisa: String(sisa),
+            maxZAK: pengambilan + sisa,
+          };
+        }),
       });
     } else {
       setEditForm({
@@ -393,8 +399,12 @@ export default function RiwayatTransaksiPage() {
       totalPengambilanKG: totalPengambilanKG,
       updatedAt: serverTimestamp(),
     };
+    const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorSeri", "==", selectedItem!.nomorSeri || ""));
+    const suratSnapshot = await getDocs(suratQuery);
+    if (!suratSnapshot.empty) {
+      await updateDoc(doc(db, "suratPengangkutan", suratSnapshot.docs[0].id), updateData);
+    }
     await updateDoc(doc(db, "transaksiBarangKeluar", selectedItem!.id), updateData);
-    await updateDoc(doc(db, "suratPengangkutan", selectedItem!.id), updateData);
 
     if (selectedItem!.jenis === "suratPengangkutanGudangInduk" && selectedItem!.nomorPI) {
       const pi = getPIByNomor(selectedItem!.nomorPI);
@@ -521,7 +531,11 @@ export default function RiwayatTransaksiPage() {
         }
       }
       if (item.jenis === "suratPengangkutanGudangInduk" || item.jenis === "suratPengangkutanDO") {
-        await deleteDoc(doc(db, "suratPengangkutan", item.id));
+        const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorSeri", "==", item.nomorSeri || ""));
+        const suratSnapshot = await getDocs(suratQuery);
+        if (!suratSnapshot.empty) {
+          await deleteDoc(doc(db, "suratPengangkutan", suratSnapshot.docs[0].id));
+        }
       }
       await deleteDoc(doc(db, collectionName, item.id));
       fetchData();
@@ -900,7 +914,20 @@ export default function RiwayatTransaksiPage() {
   const handleSuratItemChange = (idx: number, field: string, value: string) => {
     setEditSuratForm((prev) => {
       const newItems = [...prev.items];
-      newItems[idx] = { ...newItems[idx], [field]: value };
+      const item = { ...newItems[idx], [field]: value };
+      if (field === "pengambilanZAK") {
+        const zak = parseFloat(value) || 0;
+        const maxZAK = item.maxZAK || 0;
+        if (maxZAK > 0) {
+          if (zak >= maxZAK) {
+            item.pengambilanZAK = String(maxZAK);
+            item.sisa = "0";
+          } else {
+            item.sisa = String(Math.max(0, maxZAK - zak));
+          }
+        }
+      }
+      newItems[idx] = item;
       return { ...prev, items: newItems };
     });
   };
@@ -908,7 +935,7 @@ export default function RiwayatTransaksiPage() {
   const addSuratItem = () => {
     setEditSuratForm((prev) => ({
       ...prev,
-      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "" }],
+      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0 }],
     }));
   };
 
