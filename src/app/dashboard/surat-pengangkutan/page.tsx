@@ -404,6 +404,10 @@ export default function SuratPengangkutanPage() {
           const zak = parseFloat(value) || 0;
           if (item.maxZAK > 0 && zak > item.maxZAK) {
             updated.pengambilanZAK = String(item.maxZAK);
+            updated.sisa = "0";
+          } else if (item.maxZAK > 0) {
+            const sisaZAK = Math.max(0, item.maxZAK - zak);
+            updated.sisa = String(sisaZAK);
           }
         }
         return updated;
@@ -921,10 +925,12 @@ export default function SuratPengangkutanPage() {
                   placeholder="Ketik nomor PI atau nama customer..."
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                 />
-                {showPISearch && searchPI && (
-                  <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                    {filteredPIList.length === 0 ? (
+                {showPISearch && (
+                  <div className="absolute z-[100] w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[300px] overflow-y-auto" style={{ position: 'absolute', left: 0, right: 0 }}>
+                    {searchPI && filteredPIList.length === 0 ? (
                       <div className="p-4 text-sm text-gray-500">Tidak ada PI yang tersedia (semua sudah selesai dimuat atau tidak cocok)</div>
+                    ) : !searchPI ? (
+                      <div className="p-3 text-xs text-gray-400">Ketik minimal 1 karakter untuk mencari PI</div>
                     ) : (
                       filteredPIList.map((pi) => {
                         const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
@@ -935,7 +941,7 @@ export default function SuratPengangkutanPage() {
                             key={pi.id}
                             type="button"
                             onClick={() => handlePISelect(pi)}
-                            className="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors border-b border-gray-100 last:border-0"
+                            className="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors border-b border-gray-100 last:border-0 block"
                           >
                             <p className="font-semibold text-gray-800">{pi.nomorPI}</p>
                             <p className="text-sm text-gray-500">{pi.namaCustomer} | {pi.tanggal}</p>
@@ -1030,7 +1036,14 @@ export default function SuratPengangkutanPage() {
                       </p>
                     )}
                   </div>
-                  <Input label="Sisa" type="text" value={item.sisa} onChange={(e) => handleItemChange(item.id, "sisa", e.target.value)} placeholder="Opsional" />
+                  <div>
+                    <Input label="Sisa (ZAK)" type="text" value={item.sisa} onChange={(e) => handleItemChange(item.id, "sisa", e.target.value)} placeholder="Auto-calculate" readOnly />
+                    {item.bobotPerUnit > 0 && item.sisa && (
+                      <p className="mt-1 text-xs text-gray-500">
+                        = {(parseFloat(item.sisa || "0") * item.bobotPerUnit).toLocaleString()} KG
+                      </p>
+                    )}
+                  </div>
                 </div>
                 {errors[`pengambilan_${idx}`] && (
                   <p className="mt-2 text-sm text-red-600">{errors[`pengambilan_${idx}`]}</p>
