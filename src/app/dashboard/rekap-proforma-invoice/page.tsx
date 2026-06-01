@@ -124,6 +124,8 @@ interface TTDData {
   ttdImage: string;
 }
 
+type SuratMuatMap = Record<string, SuratMuatInfo[]>;
+
 const getRomanMonth = (month: number) => {
   const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
   return romans[month - 1] || "I";
@@ -159,7 +161,7 @@ export default function RekapProformaInvoicePage() {
   const router = useRouter();
   const { user } = useAuth();
   const [data, setData] = useState<ProformaInvoice[]>([]);
-  const [suratMuatMap, setSuratMuatMap] = useState<Record<string, SuratMuatInfo[]>>({});
+  const [suratMuatMap, setSuratMuatMap] = useState<SuratMuatMap>({});
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItem, setSelectedItem] = useState<ProformaInvoice | null>(null);
@@ -1486,6 +1488,146 @@ export default function RekapProformaInvoicePage() {
       render: (row: ProformaInvoice) => row.namaCustomer,
     },
     {
+      key: "invoice",
+      header: "Invoice",
+      width: "120px",
+      render: (row: ProformaInvoice) => {
+        const status = getStatusPengangkutan(row);
+        const isComplete = status === "complete";
+        const suratList = getSuratMuatForPI(row.nomorPI);
+        return (
+          <div className="flex flex-col gap-1">
+            {suratList.map((surat: SuratMuatInfo) => (
+              <button
+                key={surat.id}
+                onClick={(e) => { e.stopPropagation(); setSelectedItem(row); handleOpenInvoice(surat); }}
+                disabled={!isComplete}
+                className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${
+                  isComplete
+                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                }`}
+                title={isComplete ? "Print Invoice" : "Belum selesai dimuat"}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Invoice
+              </button>
+            ))}
+            {suratList.length === 0 && (
+              <span className="text-xs text-gray-400">-</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "invoice",
+      header: "Invoice",
+      width: "120px",
+      render: (row: ProformaInvoice) => {
+        const status = getStatusPengangkutan(row);
+        const isComplete = status === "complete";
+        const suratList = getSuratMuatForPI(row.nomorPI);
+        return (
+          <div className="flex flex-col gap-1">
+            {suratList.map((surat: SuratMuatInfo) => (
+              <button
+                key={surat.id}
+                onClick={(e) => { e.stopPropagation(); setSelectedItem(row); handleOpenInvoice(surat); }}
+                disabled={!isComplete}
+                className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${
+                  isComplete
+                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                }`}
+                title={isComplete ? "Print Invoice" : "Belum selesai dimuat"}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Invoice
+              </button>
+            ))}
+            {suratList.length === 0 && (
+              <span className="text-xs text-gray-400">-</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "invoice",
+      header: "Invoice",
+      width: "120px",
+      render: (row: ProformaInvoice) => {
+        const status = getStatusPengangkutan(row);
+        const isComplete = status === "complete";
+        const suratList = getSuratMuatForPI(row.nomorPI);
+        return (
+          <div className="flex flex-col gap-1">
+            {suratList.map((surat: SuratMuatInfo) => (
+              <button
+                key={surat.id}
+                onClick={(e) => { e.stopPropagation(); setSelectedItem(row); handleOpenInvoice(surat); }}
+                disabled={!isComplete}
+                className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${
+                  isComplete
+                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                }`}
+                title={isComplete ? "Print Invoice" : "Belum selesai dimuat"}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Invoice
+              </button>
+            ))}
+            {suratList.length === 0 && (
+              <span className="text-xs text-gray-400">-</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: "invoice",
+      header: "Invoice",
+      width: "120px",
+      render: (row: ProformaInvoice) => {
+        const status = getStatusPengangkutan(row);
+        const isComplete = status === "complete";
+        const suratList = getSuratMuatForPI(row.nomorPI);
+        return (
+          <div className="flex flex-col gap-1">
+            {suratList.map((surat: SuratMuatInfo) => (
+              <button
+                key={surat.id}
+                onClick={(e) => { e.stopPropagation(); setSelectedItem(row); handleOpenInvoice(surat); }}
+                disabled={!isComplete}
+                className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${
+                  isComplete
+                    ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                }`}
+                title={isComplete ? "Print Invoice" : "Belum selesai dimuat"}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Invoice
+              </button>
+            ))}
+            {suratList.length === 0 && (
+              <span className="text-xs text-gray-400">-</span>
+            )}
+          </div>
+        );
+      },
+    },
+    {
       key: "jumlahTertagih",
       header: "Jumlah",
       width: "160px",
@@ -1744,7 +1886,7 @@ export default function RekapProformaInvoicePage() {
                       <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase border">Total KG</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">No. Polisi</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Driver</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase border" colSpan={4}>Aksi</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase border" colSpan={3}>Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1785,13 +1927,7 @@ export default function RekapProformaInvoicePage() {
                             </svg>
                           </button>
                         </td>
-                        <td className="px-2 py-3 text-sm text-gray-600 border">
-                          <button onClick={() => handleOpenInvoice(surat)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Invoice">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                          </button>
-                        </td>
+
                       </tr>
                     ))}
                   </tbody>
@@ -2087,11 +2223,7 @@ export default function RekapProformaInvoicePage() {
               })()}
             </div>
           )}
-          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100 text-sm text-blue-700">
-            <p>Invoice akan menggunakan:</p>
-            <p>Header: Picture3.png | Footer: Picture1.png</p>
-            <p>Hormat Kami: Sri Setyo Wibowo (Picture4.png)</p>
-          </div>
+
         </div>
       </Modal>
     </div>
