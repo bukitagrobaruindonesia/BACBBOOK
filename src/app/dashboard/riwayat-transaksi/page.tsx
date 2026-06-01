@@ -649,41 +649,32 @@ export default function RiwayatTransaksiPage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const isDO = item.jenis === "suratPengangkutanDO";
+    const isGI = item.jenis === "suratPengangkutanGudangInduk";
+    const piDisplay = item.nomorPIList && item.nomorPIList.length > 0
+      ? item.nomorPIList.join(", ")
+      : item.nomorPI || "";
+
     const itemsHtml = (item.items || [])
       .map(
         (it, idx) => `
         <tr>
-          <td style="text-align: center; padding: 8px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
-          ${isDO ? `<td style="text-align: center; padding: 8px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
-          ${isDO ? `<td style="text-align: center; padding: 8px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPO || "-"}</td>` : ""}
-          <td style="padding: 8px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
-          <td style="text-align: center; padding: 8px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
-          <td style="text-align: center; padding: 8px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "0"} ZAK</td>
-          <td style="text-align: right; padding: 8px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${(it.totalKG || 0).toLocaleString("id-ID")} KG</td>
-          <td style="text-align: center; padding: 8px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
+          ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI ? (piDisplay || "-") : (it.nomorPO || "-")}</td>
+          <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
         </tr>
       `
       )
       .join("");
 
-    const piListHtml = item.nomorPIList && item.nomorPIList.length > 0
-      ? item.nomorPIList.map((pi) => `<span style="display: inline-block; background: #dcfce7; padding: 3px 10px; border-radius: 4px; margin-right: 6px; margin-bottom: 4px; font-size: 10px; font-weight: 600; border: 1px solid #16a34a;">${pi}</span>`).join("")
-      : (item.nomorPI ? `<span style="display: inline-block; background: #dcfce7; padding: 3px 10px; border-radius: 4px; margin-right: 6px; font-size: 10px; font-weight: 600; border: 1px solid #16a34a;">${item.nomorPI}</span>` : '<span style="font-size: 10px; color: #666;">-</span>');
-
-    const totalZAK = (item.items || []).reduce((sum, it) => sum + (it.pengambilanZAK || 0), 0);
-    const totalKG = getTotalKGForSurat(item);
-
-    const jenisBarangList = (item.items || [])
-      .map((it) => it.jenisPupuk)
-      .filter(Boolean)
-      .join(", ");
-
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Surat Pengangkutan ${item.nomorSeri}</title>
+        <title>Surat Pengangkutan ${item.nomorSeri || ""}</title>
         <style>
           @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
           @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
@@ -695,9 +686,6 @@ export default function RiwayatTransaksiPage() {
           .info-section { margin-bottom: 12px; }
           .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
           .info-label { font-weight: 600; }
-          .info-box { border: 1px solid #000; padding: 10px; margin-bottom: 10px; background: #f9fafb; }
-          .info-box-title { font-size: 9px; color: #666; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-          .info-box-value { font-size: 11px; font-weight: 700; color: #000; }
           .recipient-box { border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px; }
           .recipient-title { font-size: 9px; color: #333; margin-bottom: 2px; }
           .recipient-name { font-size: 11px; font-weight: 700; }
@@ -707,12 +695,8 @@ export default function RiwayatTransaksiPage() {
           .table-section { margin-bottom: 10px; }
           .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; }
           .data-table { width: 100%; border-collapse: collapse; }
-          .data-table th { background: #f0fdf4; font-size: 9px; padding: 6px 3px; border: 1px solid #000; font-weight: 700; text-align: center; }
-          .data-table td { border: 1px solid #000; padding: 6px 3px; vertical-align: top; }
-          .summary-box { display: flex; justify-content: space-between; border: 1px solid #000; border-top: none; padding: 8px 10px; background: #f0fdf4; }
-          .summary-item { text-align: center; }
-          .summary-label { font-size: 9px; color: #333; margin-bottom: 2px; }
-          .summary-value { font-size: 12px; font-weight: 700; color: #000; }
+          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; }
+          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
           .notes-section { margin-top: 10px; font-size: 9px; }
           .notes-section p { margin-bottom: 2px; }
           .signature-row { display: flex; justify-content: space-between; margin-top: 20px; }
@@ -733,98 +717,67 @@ export default function RiwayatTransaksiPage() {
         <div class="page">
           <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
           <div class="title-bar">SURAT PENGANGKUTAN</div>
-
           <div class="info-section">
             <div class="info-row">
               <span>Lamandau, ${new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
             </div>
-            <div class="info-row" style="margin-top: 6px;">
-              <span class="info-label">Nomor Seri : <span style="font-size: 12px;">${item.nomorSeri || "-"}</span></span>
+            <div class="info-row">
+              <span class="info-label">Nomor Seri : ${item.nomorSeri || "-"}</span>
             </div>
+            ${piDisplay ? `<div class="info-row"><span class="info-label">Nomor PI : ${piDisplay}</span></div>` : ""}
           </div>
-
-          <div class="info-box">
-            <div class="info-box-title">Nomor Proforma Invoice</div>
-            <div class="info-box-value">${piListHtml}</div>
-          </div>
-
-          <div class="info-box" style="margin-bottom: 10px;">
-            <div class="info-box-title">Jenis Barang / Pupuk yang Diangkut</div>
-            <div class="info-box-value">${jenisBarangList || "-"}</div>
-          </div>
-
           <div class="recipient-box">
             <p class="recipient-title">Kepada Yth :</p>
             <p class="recipient-name">Bapak Kepala Gudang Induk</p>
             <p class="recipient-name">PT Bukit Agrochemical Baru</p>
             <p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p>
           </div>
-
           <div class="salutation">
             <p>Dengan Hormat,</p>
             <p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p>
           </div>
-
           <div class="table-section">
             <div class="table-title">DASAR PENGANGKUTAN</div>
             <table class="data-table">
               <thead>
                 <tr>
                   <th style="width: 30px;">NO</th>
-                  ${isDO ? `<th style="width: 90px;">NOMOR SUB DO</th>` : ""}
-                  ${isDO ? `<th style="width: 90px;">NOMOR PO</th>` : ""}
+                  ${!isGI ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
+                  <th style="width: 100px;">NOMOR PO</th>
                   <th>JENIS PUPUK</th>
                   <th style="width: 60px;">PARTY</th>
-                  <th style="width: 80px;">PENGAMBILAN<br>ZAK</th>
-                  <th style="width: 90px;">TOTAL KG</th>
+                  <th style="width: 100px;">PENGAMBILAN<br>ZAK</th>
                   <th style="width: 60px;">SISA</th>
                 </tr>
               </thead>
               <tbody>${itemsHtml}</tbody>
             </table>
-            <div class="summary-box">
-              <div class="summary-item">
-                <div class="summary-label">Total ZAK</div>
-                <div class="summary-value">${totalZAK.toLocaleString("id-ID")} ZAK</div>
-              </div>
-              <div class="summary-item">
-                <div class="summary-label">Total KG</div>
-                <div class="summary-value">${totalKG.toLocaleString("id-ID")} KG</div>
-              </div>
-              <div class="summary-item">
-                <div class="summary-label">Jenis Barang</div>
-                <div class="summary-value">${(item.items || []).length} Jenis</div>
-              </div>
-            </div>
           </div>
-
           <div class="table-section">
             <div class="table-title">DATA UNIT ANGKUTAN</div>
             <table class="data-table">
               <tbody>
                 <tr>
-                  <td style="padding: 8px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
-                  <td style="padding: 8px 8px; font-size: 10px; border: 1px solid #000; font-weight: 700;">${item.nomorPolisi || "-"}</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorPolisi || "-"}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 8px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
-                  <td style="padding: 8px 8px; font-size: 10px; border: 1px solid #000; font-weight: 700;">${item.driverUnit || "-"}</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.driverUnit || "-"}</td>
                 </tr>
                 <tr>
-                  <td style="padding: 8px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
-                  <td style="padding: 8px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorSIM || "-"}</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorSIM || "-"}</td>
                 </tr>
               </tbody>
             </table>
           </div>
-
           <div class="notes-section">
             <p style="font-weight: 700;">Notes :</p>
             <p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
             <p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
             <p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
           </div>
-
           <div class="signature-row">
             <div class="signature-box">
               <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
@@ -837,7 +790,6 @@ export default function RiwayatTransaksiPage() {
               <p class="signature-name">${item.driverUnit || ""}</p>
             </div>
           </div>
-
           <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
         </div>
       </body>
@@ -846,7 +798,8 @@ export default function RiwayatTransaksiPage() {
     printWindow.document.write(html);
     printWindow.document.close();
   };
-const jenisOptions = [
+
+  const jenisOptions = [
     { value: "semua", label: "Semua Transaksi" },
     { value: "barangMasuk", label: "Barang Masuk" },
     { value: "barangKeluar", label: "Barang Keluar" },
