@@ -88,6 +88,7 @@ interface ProformaInvoice {
   updatedAt: any;
   sisaPengambilanKG?: number;
   statusPengangkutan?: string;
+  invoiceBaseNumber?: string;
 }
 
 interface StockItem {
@@ -144,6 +145,16 @@ const validateNomorSeriFormat = (value: string) => {
   return regex.test(value.trim());
 };
 
+const parseInvoiceNumber = (nomor: string) => {
+  const match = nomor.match(/^BAGB-INV(?:-S(\d+))?-(\d{4})$/);
+  if (!match) return null;
+  return {
+    isPartial: !!match[1],
+    partialNum: match[1] ? parseInt(match[1]) : 0,
+    baseNum: parseInt(match[2]),
+  };
+};
+
 export default function RekapProformaInvoicePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -164,6 +175,9 @@ export default function RekapProformaInvoicePage() {
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [invoiceSurat, setInvoiceSurat] = useState<SuratMuatInfo | null>(null);
   const [selectedOrderTTD, setSelectedOrderTTD] = useState("");
+  const [invoiceNomor, setInvoiceNomor] = useState("");
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [showRegenerateButton, setShowRegenerateButton] = useState(false);
 
   const [editForm, setEditForm] = useState({
     tanggal: "",
@@ -310,7 +324,7 @@ export default function RekapProformaInvoicePage() {
   };
 
   const getStockForProduct = (namaProduk: string) => {
-    return stockList.find((s: StockItem) =>
+    return stockList.find((s) =>
       s.namaBarang.toUpperCase().includes(namaProduk.toUpperCase()) ||
       namaProduk.toUpperCase().includes(s.namaBarang.toUpperCase())
     );
@@ -321,12 +335,12 @@ export default function RekapProformaInvoicePage() {
   };
 
   const getTotalOrdered = (item: ProformaInvoice) => {
-    return item.produkItems.reduce((sum: number, p: ProdukItem) => sum + (p.kuantitas || 0), 0);
+    return item.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
   };
 
   const getTotalLoaded = (nomorPI: string) => {
     const suratList = getSuratMuatForPI(nomorPI);
-    return suratList.reduce((sum: number, s: SuratMuatInfo) => sum + (s.totalKG || 0), 0);
+    return suratList.reduce((sum, s) => sum + (s.totalKG || 0), 0);
   };
 
   const getStatusPengangkutan = (item: ProformaInvoice) => {
@@ -345,11 +359,11 @@ export default function RekapProformaInvoicePage() {
 
   const getProdukLoadStatus = (item: ProformaInvoice) => {
     const suratList = getSuratMuatForPI(item.nomorPI);
-    return item.produkItems.map((prod: ProdukItem) => {
+    return item.produkItems.map((prod) => {
       const ordered = prod.kuantitas || 0;
       let loaded = 0;
-      suratList.forEach((surat: SuratMuatInfo) => {
-        (surat.items || []).forEach((it: SuratMuatItem) => {
+      suratList.forEach((surat) => {
+        (surat.items || []).forEach((it) => {
           if (it.jenisPupuk && (
             it.jenisPupuk.toUpperCase().includes(prod.namaProduk.toUpperCase()) ||
             prod.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
@@ -366,7 +380,107 @@ export default function RekapProformaInvoicePage() {
     });
   };
 
-  const filteredData = data.filter((item: ProformaInvoice) =>
+  const getNextInvoiceBaseNumber = async (): Promise<string> => {
+    const piQuery = query(collection(db, "proformaInvoice"), where("invoiceBaseNumber", "!=", ""));
+    const piSnapshot = await getDocs(piQuery);
+    const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorInvoice", "!=", ""));
+    const suratSnapshot = await getDocs(suratQuery);
+
+    const usedBases = new Set<number>();
+    piSnapshot.docs.forEach((d) => {
+      const bn = d.data().invoiceBaseNumber;
+      if (bn) usedBases.add(parseInt(bn));
+    });
+    suratSnapshot.docs.forEach((d) => {
+      const ni = d.data().nomorInvoice;
+      if (ni) {
+        const parsed = parseInvoiceNumber(ni);
+        if (parsed) usedBases.add(parsed.baseNum);
+      }
+    });
+
+    let nextBase = 1;
+    while (usedBases.has(nextBase)) nextBase++;
+    return String(nextBase).padStart(4, "0");
+  };
+
+  const getPartialCountForPI = async (nomorPI: string): Promise<number> => {
+    const q = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
+    const snapshot = await getDocs(q);
+    let maxPartial = 0;
+    snapshot.docs.forEach((d) => {
+      const ni = d.data().nomorInvoice;
+      if (ni && ni.includes("-S")) {
+        const match = ni.match(/-S(\d+)-/);
+        if (match) {
+          const num = parseInt(match[1]);
+          if (num > maxPartial) maxPartial = num;
+        }
+      }
+    });
+    return maxPartial;
+  };
+
+  const generateInvoiceNumber = async (surat: SuratMuatInfo): Promise<string> => {
+    if (!selectedItem) return "";
+
+    const suratRef = doc(db, "suratPengangkutan", surat.id);
+    const suratSnap = await getDoc(suratRef);
+    const existingNomor = suratSnap.data()?.nomorInvoice;
+
+    if (existingNomor) {
+      const parsed = parseInvoiceNumber(existingNomor);
+      if (parsed) return existingNomor;
+    }
+
+    const piRef = doc(db, "proformaInvoice", selectedItem.id);
+    const piSnap = await getDoc(piRef);
+    let baseNumber = piSnap.data()?.invoiceBaseNumber;
+
+    if (!baseNumber) {
+      baseNumber = await getNextInvoiceBaseNumber();
+      await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
+    }
+
+    const totalOrdered = getTotalOrdered(selectedItem);
+    const totalLoaded = getTotalLoaded(selectedItem.nomorPI);
+    const isComplete = totalLoaded >= totalOrdered;
+
+    if (isComplete) {
+      const nomor = `BAGB-INV-${baseNumber}`;
+      await updateDoc(suratRef, { nomorInvoice: nomor });
+      return nomor;
+    }
+
+    const partialCount = await getPartialCountForPI(selectedItem.nomorPI);
+    const partialNum = partialCount + 1;
+    const nomor = `BAGB-INV-S${partialNum}-${baseNumber}`;
+    await updateDoc(suratRef, { nomorInvoice: nomor });
+    return nomor;
+  };
+
+  const handleRegenerateInvoice = async () => {
+    if (!selectedItem || !invoiceSurat) return;
+    setIsGeneratingInvoice(true);
+    try {
+      const piRef = doc(db, "proformaInvoice", selectedItem.id);
+      const piSnap = await getDoc(piRef);
+      const baseNumber = piSnap.data()?.invoiceBaseNumber;
+      if (baseNumber) {
+        const nomor = `BAGB-INV-${baseNumber}`;
+        const suratRef = doc(db, "suratPengangkutan", invoiceSurat.id);
+        await updateDoc(suratRef, { nomorInvoice: nomor });
+        setInvoiceNomor(nomor);
+        setShowRegenerateButton(false);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  };
+
+  const filteredData = data.filter((item) =>
     item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -408,7 +522,7 @@ export default function RekapProformaInvoicePage() {
       nomorPolisi: surat.nomorPolisi,
       driverUnit: surat.driverUnit,
       nomorSIM: surat.nomorSIM || "",
-      items: (surat.items || []).map((it: SuratMuatItem) => {
+      items: (surat.items || []).map((it) => {
         const pengambilan = it.pengambilanZAK || 0;
         const sisa = parseFloat(it.sisa || "0") || 0;
         return {
@@ -483,7 +597,7 @@ export default function RekapProformaInvoicePage() {
     setIsSubmitting(true);
     try {
       const oldItems = selectedSurat.items || [];
-      const newItems = editSuratForm.items.map((it: EditSuratItem) => ({
+      const newItems = editSuratForm.items.map((it) => ({
         nomorSubDO: it.nomorSubDO,
         nomorPO: it.nomorPO,
         jenisPupuk: it.jenisPupuk,
@@ -494,7 +608,7 @@ export default function RekapProformaInvoicePage() {
         sisa: it.sisa,
         fot: "",
       }));
-      const totalPengambilanKG = newItems.reduce((sum: number, it: any) => sum + it.totalKG, 0);
+      const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
       const updateData: any = {
         tanggal: editSuratForm.tanggal,
         nomorSeri: newNomorSeri,
@@ -516,7 +630,7 @@ export default function RekapProformaInvoicePage() {
         });
       }
 
-      const oldTotalKG = oldItems.reduce((sum: number, it: SuratMuatItem) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+      const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const delta = oldTotalKG - totalPengambilanKG;
       const piRef = doc(db, "proformaInvoice", selectedItem.id);
       const piSnap = await getDoc(piRef);
@@ -524,7 +638,7 @@ export default function RekapProformaInvoicePage() {
         const piData = piSnap.data();
         const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
         const newSisa = Math.max(0, currentSisa + delta);
-        const totalOrdered = selectedItem.produkItems.reduce((sum: number, p: ProdukItem) => sum + (p.kuantitas || 0), 0);
+        const totalOrdered = selectedItem.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
         let newStatus = "pending";
         if (newSisa <= 0) newStatus = "complete";
         else if (newSisa < totalOrdered) newStatus = "partial";
@@ -537,11 +651,11 @@ export default function RekapProformaInvoicePage() {
 
       const productMapOld: Record<string, number> = {};
       const productMapNew: Record<string, number> = {};
-      oldItems.forEach((it: SuratMuatItem) => {
+      oldItems.forEach((it) => {
         const key = it.jenisPupuk;
         productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
       });
-      newItems.forEach((it: any) => {
+      newItems.forEach((it) => {
         const key = it.jenisPupuk;
         productMapNew[key] = (productMapNew[key] || 0) + (it.totalKG || 0);
       });
@@ -587,14 +701,14 @@ export default function RekapProformaInvoicePage() {
   const handleDeleteSurat = async (surat: SuratMuatInfo) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus surat pengangkutan ${surat.nomorSeri}?`)) return;
     try {
-      const totalKG = (surat.items || []).reduce((sum: number, it: SuratMuatItem) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+      const totalKG = (surat.items || []).reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const piRef = doc(db, "proformaInvoice", selectedItem!.id);
       const piSnap = await getDoc(piRef);
       if (piSnap.exists()) {
         const piData = piSnap.data();
         const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
         const newSisa = currentSisa + totalKG;
-        const totalOrdered = selectedItem!.produkItems.reduce((sum: number, p: ProdukItem) => sum + (p.kuantitas || 0), 0);
+        const totalOrdered = selectedItem!.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
         let newStatus = "pending";
         if (newSisa >= totalOrdered) newStatus = "pending";
         else if (newSisa > 0) newStatus = "partial";
@@ -606,7 +720,7 @@ export default function RekapProformaInvoicePage() {
         });
       }
       const productMap: Record<string, number> = {};
-      (surat.items || []).forEach((it: SuratMuatItem) => {
+      (surat.items || []).forEach((it) => {
         const key = it.jenisPupuk;
         productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
       });
@@ -660,7 +774,7 @@ export default function RekapProformaInvoicePage() {
   };
 
   const handleExportExcel = () => {
-    const exportData = filteredData.map((item: ProformaInvoice) => ({
+    const exportData = filteredData.map((item) => ({
       "Tanggal": item.tanggal,
       "Nomor PI": item.nomorPI,
       "Nama Customer": item.namaCustomer,
@@ -685,7 +799,7 @@ export default function RekapProformaInvoicePage() {
   const handlePrintPDF = (item: ProformaInvoice) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-    const produkRows = (item.produkItems || []).map((p: ProdukItem, idx: number) => `
+    const produkRows = (item.produkItems || []).map((p, idx) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${idx + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600; height: 28px;">${p.namaProduk || ""}</td>
@@ -697,7 +811,7 @@ export default function RekapProformaInvoicePage() {
       </tr>
     `).join("");
     const emptyRowsCount = Math.max(0, 10 - (item.produkItems || []).length);
-    const emptyRows = Array.from({ length: emptyRowsCount }, (_, i: number) => `
+    const emptyRows = Array.from({ length: emptyRowsCount }, (_, i) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${(item.produkItems || []).length + i + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
@@ -908,7 +1022,7 @@ export default function RekapProformaInvoicePage() {
     if (!printWindow) return;
     const itemsHtml = (surat.items || [])
       .map(
-        (it: SuratMuatItem, idx: number) => `
+        (it, idx) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>
@@ -1055,14 +1169,29 @@ export default function RekapProformaInvoicePage() {
     printWindow.document.close();
   };
 
-  const handleOpenInvoice = (surat: SuratMuatInfo) => {
+  const handleOpenInvoice = async (surat: SuratMuatInfo) => {
     setInvoiceSurat(surat);
     setSelectedOrderTTD("");
+    setInvoiceNomor("");
+    setShowRegenerateButton(false);
     setIsInvoiceModalOpen(true);
+    setIsGeneratingInvoice(true);
+    try {
+      const nomor = await generateInvoiceNumber(surat);
+      setInvoiceNomor(nomor);
+      if (selectedItem) {
+        const status = getStatusPengangkutan(selectedItem);
+        setShowRegenerateButton(status === "complete" && nomor.includes("-S"));
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
   };
 
   const handlePrintInvoice = () => {
-    if (!invoiceSurat || !selectedItem) return;
+    if (!invoiceSurat || !selectedItem || !invoiceNomor) return;
     const surat = invoiceSurat;
     const pi = selectedItem;
 
@@ -1133,7 +1262,7 @@ export default function RekapProformaInvoicePage() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Invoice ${surat.nomorSeri}</title>
+        <title>Invoice ${invoiceNomor}</title>
         <style>
           @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
           @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
@@ -1185,13 +1314,13 @@ export default function RekapProformaInvoicePage() {
           <div class="info-section">
             <div class="info-row">
               <div class="customer-area">
-                <p class="customer-title">Kepada Yth. :</p>
+                <p class="customer-title">Dipesan Oleh :</p>
                 <p style="font-weight: 700;">${pi.namaCustomer || ""}</p>
                 <p>${(pi.alamatCustomer || "").split("\n").join("<br>")}</p>
                 ${pi.npwp ? `<p style="margin-top: 4px;">NP/WP: ${pi.npwp}</p>` : ""}
               </div>
               <div class="meta-box">
-                <p><span style="font-weight: 600;">INVOICE NO. :</span> ${surat.nomorSeri}</p>
+                <p><span style="font-weight: 600;">INVOICE NO. :</span> ${invoiceNomor}</p>
                 <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(surat.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
                 <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${pi.nomorPI || ""}</p>
               </div>
@@ -1359,8 +1488,8 @@ export default function RekapProformaInvoicePage() {
       width: "320px",
       render: (row: ProformaInvoice) => {
         const produkStatus = getProdukLoadStatus(row);
-        const isComplete = produkStatus.every((p: any) => p.status === "complete");
-        const isPartial = produkStatus.some((p: any) => p.status === "partial" || p.status === "complete");
+        const isComplete = produkStatus.every((p) => p.status === "complete");
+        const isPartial = produkStatus.some((p) => p.status === "partial" || p.status === "complete");
         const badge = isComplete
           ? { class: "bg-green-100 text-green-700", label: "Selesai Dimuat" }
           : isPartial
@@ -1372,7 +1501,7 @@ export default function RekapProformaInvoicePage() {
               {badge.label}
             </span>
             <div className="space-y-1">
-              {produkStatus.map((p: any, i: number) => (
+              {produkStatus.map((p, i) => (
                 <div key={i} className="text-xs text-gray-600">
                   <span className="font-semibold">{p.namaProduk}:</span>{' '}
                   <span className="font-mono">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
@@ -1470,7 +1599,7 @@ export default function RekapProformaInvoicePage() {
   const removeSuratItem = (idx: number) => {
     setEditSuratForm((prev) => ({
       ...prev,
-      items: prev.items.filter((_: EditSuratItem, i: number) => i !== idx),
+      items: prev.items.filter((_, i) => i !== idx),
     }));
   };
 
@@ -1530,7 +1659,7 @@ export default function RekapProformaInvoicePage() {
           Menampilkan {filteredData.length} dari {data.length} data
         </div>
 
-        <Table columns={columns} data={filteredData} isLoading={isLoading} emptyMessage="Belum ada data proforma invoice" keyExtractor={(row: ProformaInvoice) => row.id} onRowClick={handleDetail} />
+        <Table columns={columns} data={filteredData} isLoading={isLoading} emptyMessage="Belum ada data proforma invoice" keyExtractor={(row) => row.id} onRowClick={handleDetail} />
       </Card>
 
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="Detail Proforma Invoice" size="lg" footer={
@@ -1584,7 +1713,7 @@ export default function RekapProformaInvoicePage() {
                 })()}
               </div>
               <div className="space-y-2">
-                {getProdukLoadStatus(selectedItem).map((p: any, i: number) => (
+                {getProdukLoadStatus(selectedItem).map((p, i) => (
                   <div key={i} className="flex justify-between items-center text-sm">
                     <span className="font-medium text-gray-700">{p.namaProduk}</span>
                     <span className="font-mono text-gray-900">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
@@ -1610,18 +1739,18 @@ export default function RekapProformaInvoicePage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {getSuratMuatForPI(selectedItem.nomorPI).map((surat: SuratMuatInfo, idx: number) => (
+                    {getSuratMuatForPI(selectedItem.nomorPI).map((surat, idx) => (
                       <tr key={idx} className="border-b">
                         <td className="px-4 py-3 text-sm text-gray-900 border">{idx + 1}</td>
                         <td className="px-4 py-3 text-sm font-mono font-bold text-green-700 border">{surat.nomorSeri}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.tanggal}</td>
                         <td className="px-4 py-3 text-sm text-gray-800 border">
-                          {surat.items.map((it: SuratMuatItem, i: number) => (
+                          {surat.items.map((it, i) => (
                             <div key={i}>{it.jenisPupuk} ({it.pengambilanZAK} ZAK)</div>
                           ))}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono border">
-                          {surat.items.reduce((sum: number, it: SuratMuatItem) => sum + (it.pengambilanZAK || 0), 0).toLocaleString()}
+                          {surat.items.reduce((sum, it) => sum + (it.pengambilanZAK || 0), 0).toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right font-mono border">{surat.totalKG.toLocaleString()}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.nomorPolisi}</td>
@@ -1675,7 +1804,7 @@ export default function RekapProformaInvoicePage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {(selectedItem.produkItems || []).map((p: ProdukItem, idx: number) => (
+                  {(selectedItem.produkItems || []).map((p, idx) => (
                     <tr key={idx}>
                       <td className="px-4 py-3 text-sm text-gray-900">{idx + 1}</td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{p.namaProduk}</td>
@@ -1864,7 +1993,7 @@ export default function RekapProformaInvoicePage() {
           </div>
           <div className="space-y-4">
             <h4 className="text-sm font-semibold text-gray-700">Item Pengangkutan</h4>
-            {editSuratForm.items.map((item: EditSuratItem, idx: number) => (
+            {editSuratForm.items.map((item, idx) => (
               <div key={idx} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div className="flex items-center justify-between mb-3">
                   <h5 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h5>
@@ -1899,10 +2028,26 @@ export default function RekapProformaInvoicePage() {
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title="Print Invoice" size="md" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsInvoiceModalOpen(false)}>Batal</Button>
-          <Button variant="primary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD}>Print Invoice</Button>
+          <Button variant="primary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice}>Print Invoice</Button>
         </div>
       }>
         <div className="space-y-4">
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Invoice</p>
+            <p className="text-lg font-mono font-bold text-green-700">{invoiceNomor || "Memuat..."}</p>
+            {isGeneratingInvoice && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor invoice...</p>}
+          </div>
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+            <p className="text-sm text-blue-700"><span className="font-semibold">Dipesan Oleh:</span> {selectedItem?.namaCustomer || "-"}</p>
+          </div>
+          {showRegenerateButton && (
+            <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
+              <p className="text-sm text-yellow-800 mb-2">Status pemuatan lengkap. Gunakan format final tanpa suffix -S.</p>
+              <Button variant="secondary" size="sm" onClick={handleRegenerateInvoice} isLoading={isGeneratingInvoice}>
+                Generate Final Invoice
+              </Button>
+            </div>
+          )}
           <p className="text-sm text-gray-600">Pilih TTD untuk bagian <strong>Diorder Oleh</strong>:</p>
           <Select
             label="Pilih TTD"
