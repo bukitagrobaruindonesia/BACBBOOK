@@ -92,6 +92,9 @@ interface ProformaInvoice {
   sisaPengambilanKG?: number;
   statusPengangkutan?: string;
   invoiceBaseNumber?: string;
+  jumlahUangDibayar?: number;
+  tanggalPembayaran?: string;
+  statusPelunasan?: string;
 }
 
 interface StockItem {
@@ -183,6 +186,12 @@ export default function RekapProformaInvoicePage() {
   const [invoiceNomor, setInvoiceNomor] = useState("");
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [showRegenerateButton, setShowRegenerateButton] = useState(false);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({
+    jumlahUangDibayar: "",
+    tanggalPembayaran: "",
+    statusPelunasan: "",
+  });
 
   const [editForm, setEditForm] = useState({
     tanggal: "",
@@ -248,6 +257,9 @@ export default function RekapProformaInvoicePage() {
           sisaPengambilanKG: d.sisaPengambilanKG,
           statusPengangkutan: d.statusPengangkutan,
           invoiceBaseNumber: d.invoiceBaseNumber,
+          jumlahUangDibayar: d.jumlahUangDibayar || 0,
+          tanggalPembayaran: d.tanggalPembayaran || "",
+          statusPelunasan: d.statusPelunasan || "Belum Lunas",
         } as ProformaInvoice;
       });
       setData(items);
@@ -388,6 +400,20 @@ export default function RekapProformaInvoicePage() {
     if (status === "complete") return { class: "bg-green-100 text-green-700", label: "Selesai Dimuat" };
     if (status === "partial") return { class: "bg-yellow-100 text-yellow-700", label: "Sebagian Dimuat" };
     return { class: "bg-gray-100 text-gray-600", label: "Belum Dimuat" };
+  };
+
+  const getPaymentStatus = (item: ProformaInvoice) => {
+    const paid = item.jumlahUangDibayar || 0;
+    const total = item.jumlahTertagih || 0;
+    if (paid >= total && total > 0) return "Lunas";
+    if (paid > 0) return "Cicilan";
+    return "Belum Lunas";
+  };
+
+  const getPaymentBadge = (status: string) => {
+    if (status === "Lunas") return { class: "bg-green-100 text-green-700 border-green-200", label: "Lunas" };
+    if (status === "Cicilan") return { class: "bg-yellow-100 text-yellow-700 border-yellow-200", label: "Cicilan" };
+    return { class: "bg-red-100 text-red-700 border-red-200", label: "Belum Lunas" };
   };
 
   const getProdukLoadStatus = (item: ProformaInvoice) => {
@@ -855,6 +881,41 @@ export default function RekapProformaInvoicePage() {
     }
   };
 
+  const handleOpenPaymentEdit = (item: ProformaInvoice) => {
+    setSelectedItem(item);
+    setPaymentForm({
+      jumlahUangDibayar: String(item.jumlahUangDibayar || ""),
+      tanggalPembayaran: item.tanggalPembayaran || "",
+      statusPelunasan: item.statusPelunasan || getPaymentStatus(item),
+    });
+    setIsPaymentModalOpen(true);
+  };
+
+  const handleUpdatePayment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedItem) return;
+    setIsSubmitting(true);
+    try {
+      const paid = parseFloat(paymentForm.jumlahUangDibayar) || 0;
+      const total = selectedItem.jumlahTertagih || 0;
+      let status = "Belum Lunas";
+      if (paid >= total && total > 0) status = "Lunas";
+      else if (paid > 0) status = "Cicilan";
+      await updateDoc(doc(db, "proformaInvoice", selectedItem.id), {
+        jumlahUangDibayar: paid,
+        tanggalPembayaran: paymentForm.tanggalPembayaran.trim(),
+        statusPelunasan: status,
+        updatedAt: serverTimestamp(),
+      });
+      setIsPaymentModalOpen(false);
+      fetchData();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleExportExcel = () => {
     const exportData = filteredData.map((item) => ({
       "Tanggal": item.tanggal,
@@ -872,6 +933,9 @@ export default function RekapProformaInvoicePage() {
       "Jatuh Tempo": item.tanggalJatuhTempo,
       "Keterangan": item.keterangan,
       "Status Pengangkutan": getStatusPengangkutan(item),
+      "Status Pelunasan": item.statusPelunasan || getPaymentStatus(item),
+      "Jumlah Dibayar": item.jumlahUangDibayar || 0,
+      "Tanggal Pembayaran": item.tanggalPembayaran || "",
       "Sisa (KG)": item.sisaPengambilanKG || 0,
       "Dibuat Oleh": item.createdBy,
     }));
@@ -1365,7 +1429,7 @@ export default function RekapProformaInvoicePage() {
           .summary-label { text-align: left; font-weight: 600; }
           .summary-value { text-align: right; font-family: monospace; }
           .total-row { font-weight: 700; font-size: 10px; }
-          .terbilang-box { border: 1px solid #000; border-top: none; padding: 4px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+          .terbilang-box { border: 1px dashed #000; border-top: none; padding: 4px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
           .terbilang-label { font-size: 8px; font-weight: 600; margin-bottom: 1px; }
           .bottom-section { display: flex; justify-content: space-between; margin-top: 8px; }
           .left-boxes { width: 48%; }
@@ -1477,9 +1541,10 @@ export default function RekapProformaInvoicePage() {
               <div class="ttd-box">
                 <p style="font-weight: 600;">Diorder Oleh:</p>
                 <p>PT. Bukit Agrochemical Baru</p>
-                ${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 2px auto;" />` : `<div style="height: 35px;"></div>`}
-                ${orderTTD ? `<p style="font-weight: 700; border-top: 1px solid #000; padding-top: 2px; display: inline-block;">${orderTTD.nama}</p>` : `<p style="font-weight: 700;">_________________</p>`}
-                ${orderTTD ? `<p>${orderTTD.jabatan}</p>` : ""}
+                <div style="height: 8px;"></div>
+                ${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 0 auto 2px auto;" />` : `<div style="height: 35px;"></div>`}
+                ${orderTTD ? `<p style="font-weight: 700; border-top: 1px solid #000; padding-top: 2px; display: inline-block; margin: 0;">${orderTTD.nama}</p>` : `<p style="font-weight: 700; border-top: 1px solid #000; padding-top: 2px; display: inline-block; margin: 0;">_________________</p>`}
+                ${orderTTD ? `<p style="margin: 0;">${orderTTD.jabatan}</p>` : ""}
               </div>
             </div>
             <div class="right-signature">
@@ -1562,6 +1627,35 @@ export default function RekapProformaInvoicePage() {
       key: "namaCustomer",
       header: "Customer",
       render: (row: ProformaInvoice) => row.namaCustomer,
+    },
+    {
+      key: "statusPelunasan",
+      header: "Status Pelunasan",
+      width: "160px",
+      render: (row: ProformaInvoice) => {
+        const status = row.statusPelunasan || getPaymentStatus(row);
+        const badge = getPaymentBadge(status);
+        const paid = row.jumlahUangDibayar || 0;
+        const total = row.jumlahTertagih || 0;
+        return (
+          <div className="flex flex-col gap-1.5">
+            <button
+              onClick={(e) => { e.stopPropagation(); handleOpenPaymentEdit(row); }}
+              className={`px-2 py-1 rounded-md text-xs font-bold border transition-colors text-left ${badge.class}`}
+            >
+              {badge.label}
+            </button>
+            <div className="text-xs text-gray-600 font-mono">
+              {formatRupiah(paid)} / {formatRupiah(total)}
+            </div>
+            {row.tanggalPembayaran && (
+              <div className="text-xs text-gray-500">
+                {row.tanggalPembayaran}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "invoice",
@@ -1666,7 +1760,12 @@ export default function RekapProformaInvoicePage() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
             </svg>
           </button>
-          <button onClick={(e) => { e.stopPropagation(); handlePrintPDF(row); }} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print PDF">
+          <button 
+            onClick={(e) => { e.stopPropagation(); handlePrintPDF(row); }} 
+            disabled={(row.jumlahUangDibayar || 0) === 0}
+            className={`p-2 rounded-lg transition-colors ${(row.jumlahUangDibayar || 0) === 0 ? "text-gray-300 cursor-not-allowed" : "text-purple-600 hover:bg-purple-50"}`}
+            title={(row.jumlahUangDibayar || 0) === 0 ? "Belum dibayar - tidak dapat print" : "Print PDF"}
+          >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
             </svg>
@@ -1833,6 +1932,46 @@ export default function RekapProformaInvoicePage() {
                   </div>
                 ))}
               </div>
+            </div>
+            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold">Status Pelunasan</p>
+                {(() => {
+                  const status = selectedItem.statusPelunasan || getPaymentStatus(selectedItem);
+                  const badge = getPaymentBadge(status);
+                  return (
+                    <span className={`px-3 py-1 rounded-lg text-xs font-bold border ${badge.class}`}>
+                      {badge.label}
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-medium text-gray-700">Jumlah Dibayar</span>
+                  <span className="font-mono text-gray-900">{formatRupiah(selectedItem.jumlahUangDibayar || 0)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-medium text-gray-700">Jumlah Tertagih</span>
+                  <span className="font-mono text-gray-900">{formatRupiah(selectedItem.jumlahTertagih)}</span>
+                </div>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="font-medium text-gray-700">Sisa Pembayaran</span>
+                  <span className="font-mono text-gray-900">{formatRupiah(Math.max(0, (selectedItem.jumlahTertagih || 0) - (selectedItem.jumlahUangDibayar || 0)))}</span>
+                </div>
+                {selectedItem.tanggalPembayaran && (
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="font-medium text-gray-700">Tanggal Pembayaran</span>
+                    <span className="font-mono text-gray-900">{selectedItem.tanggalPembayaran}</span>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => handleOpenPaymentEdit(selectedItem)}
+                className="mt-3 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-xs font-semibold transition-colors"
+              >
+                Edit Pelunasan
+              </button>
             </div>
             {getSuratMuatForPI(selectedItem.nomorPI).length > 0 && (
               <div className="overflow-x-auto">
@@ -2193,6 +2332,69 @@ export default function RekapProformaInvoicePage() {
           )}
 
         </div>
+      </Modal>
+
+      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Edit Status Pelunasan" size="md" footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>Batal</Button>
+          <Button variant="primary" onClick={handleUpdatePayment} isLoading={isSubmitting}>Simpan</Button>
+        </div>
+      }>
+        <form onSubmit={handleUpdatePayment} className="space-y-4">
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor PI</p>
+            <p className="text-lg font-bold text-green-700">{selectedItem?.nomorPI}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Customer</p>
+            <p className="text-sm font-semibold text-gray-800">{selectedItem?.namaCustomer}</p>
+          </div>
+          <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-green-700">Jumlah Tertagih</span>
+              <span className="text-lg font-mono font-bold text-green-700">{selectedItem ? formatRupiah(selectedItem.jumlahTertagih) : "-"}</span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Uang yang telah Dibayar</label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={paymentForm.jumlahUangDibayar}
+              onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))}
+              placeholder="0.00"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
+            />
+          </div>
+          <Input
+            label="Tanggal Pembayaran / Pelunasan"
+            type="date"
+            value={paymentForm.tanggalPembayaran}
+            onChange={(e) => setPaymentForm((prev) => ({ ...prev, tanggalPembayaran: e.target.value }))}
+          />
+          <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
+            <p className="text-sm text-amber-700">
+              <span className="font-semibold">Status Otomatis: </span>
+              {selectedItem && (() => {
+                const paid = parseFloat(paymentForm.jumlahUangDibayar) || 0;
+                const total = selectedItem.jumlahTertagih || 0;
+                if (paid >= total && total > 0) return "Lunas";
+                if (paid > 0) return "Cicilan";
+                return "Belum Lunas";
+              })()}
+            </p>
+          </div>
+          {selectedItem && parseFloat(paymentForm.jumlahUangDibayar || "0") > 0 && (
+            <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+              <div className="flex justify-between items-center text-sm">
+                <span className="font-medium text-blue-700">Sisa Pembayaran</span>
+                <span className="font-mono font-semibold text-blue-700">
+                  {formatRupiah(Math.max(0, (selectedItem.jumlahTertagih || 0) - (parseFloat(paymentForm.jumlahUangDibayar) || 0)))}
+                </span>
+              </div>
+            </div>
+          )}
+        </form>
       </Modal>
     </div>
   );

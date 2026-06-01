@@ -743,7 +743,7 @@ export default function RiwayatTransaksiPage() {
                 <tr>
                   <th style="width: 30px;">NO</th>
                   ${!isGI ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
-                  <th style="width: 100px;">NOMOR PO</th>
+                  <th style="width: 100px;">NOMOR PI</th>
                   <th>JENIS PUPUK</th>
                   <th style="width: 60px;">PARTY</th>
                   <th style="width: 100px;">PENGAMBILAN<br>ZAK</th>

@@ -51,6 +51,7 @@ interface FormDataState {
   includePPN: boolean;
   ppnNominal: number;
   ongkosKirim: string;
+  jumlahUangDibayar: string;
   subtotal: number;
   jumlahTertagih: number;
   terbilang: string;
@@ -88,6 +89,7 @@ export default function InputProformaInvoicePage() {
     includePPN: false,
     ppnNominal: 0,
     ongkosKirim: "",
+    jumlahUangDibayar: "",
     subtotal: 0,
     jumlahTertagih: 0,
     terbilang: "",
@@ -352,6 +354,7 @@ export default function InputProformaInvoicePage() {
 
     const uangMuka = parseFloat(currentForm.uangMuka) || 0;
     const ongkosKirim = parseFloat(currentForm.ongkosKirim) || 0;
+    const jumlahUangDibayar = parseFloat(currentForm.jumlahUangDibayar) || 0;
     let ppn = 0;
     if (currentForm.includePPN) {
       ppn = subtotal * 0.11;
@@ -526,6 +529,7 @@ export default function InputProformaInvoicePage() {
         includePPN: formData.includePPN,
         ppnNominal: formData.ppnNominal,
         ongkosKirim: parseFloat(formData.ongkosKirim) || 0,
+        jumlahUangDibayar: parseFloat(formData.jumlahUangDibayar) || 0,
         subtotal: formData.subtotal,
         jumlahTertagih: formData.jumlahTertagih,
         terbilang: formData.terbilang,
@@ -553,6 +557,7 @@ export default function InputProformaInvoicePage() {
         includePPN: false,
         ppnNominal: 0,
         ongkosKirim: "",
+        jumlahUangDibayar: "",
         subtotal: 0,
         jumlahTertagih: 0,
         terbilang: "",
@@ -862,6 +867,16 @@ export default function InputProformaInvoicePage() {
                   <span className="text-sm font-mono font-semibold text-purple-700">{formatRupiah(parseFloat(formData.ongkosKirim) || 0)}</span>
                 </div>
               )}
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Uang yang telah Dibayar (Opsional)</label>
+                <input type="text" inputMode="decimal" name="jumlahUangDibayar" value={formData.jumlahUangDibayar} onChange={handleChange} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
+              </div>
+              {parseFloat(formData.jumlahUangDibayar) > 0 && (
+                <div className="flex items-center justify-between p-3 bg-teal-50 rounded-lg border border-teal-100">
+                  <span className="text-sm font-medium text-teal-700">Uang Dibayar</span>
+                  <span className="text-sm font-mono font-semibold text-teal-700">{formatRupiah(parseFloat(formData.jumlahUangDibayar) || 0)}</span>
+                </div>
+              )}
               <div className="flex items-center justify-between p-4 bg-green-50 rounded-xl border-2 border-green-200">
                 <span className="text-base font-bold text-green-800">Jumlah Tertagih</span>
                 <span className="text-lg font-mono font-bold text-green-700">{formatRupiah(formData.jumlahTertagih)}</span>
@@ -900,6 +915,7 @@ export default function InputProformaInvoicePage() {
               includePPN: false,
               ppnNominal: 0,
               ongkosKirim: "",
+              jumlahUangDibayar: "",
               subtotal: 0,
               jumlahTertagih: 0,
               terbilang: "",
