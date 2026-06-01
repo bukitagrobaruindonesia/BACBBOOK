@@ -59,7 +59,7 @@ interface SuratMuatInfo {
   totalKG: number;
   nomorPolisi: string;
   driverUnit: string;
-  nomorPI: string;
+  nomorPI: string | string[];
   nomorSIM?: string;
   jenisSurat?: string;
   subJenisDO?: string;
@@ -330,7 +330,8 @@ export default function RekapProformaInvoicePage() {
       const map: Record<string, SuratMuatInfo[]> = {};
       snapshot.docs.forEach((docSnap) => {
         const d = docSnap.data();
-        const piList: string[] = d.nomorPIList || [d.nomorPI] || [];
+        const rawPI = d.nomorPI;
+        const piList: string[] = d.nomorPIList || (rawPI ? (Array.isArray(rawPI) ? rawPI : [rawPI]) : []);
         const info: SuratMuatInfo = {
           id: docSnap.id,
           nomorSeri: d.nomorSeri || "",
@@ -339,7 +340,7 @@ export default function RekapProformaInvoicePage() {
           totalKG: d.totalPengambilanKG || 0,
           nomorPolisi: d.nomorPolisi || "",
           driverUnit: d.driverUnit || "",
-          nomorPI: d.nomorPI || "",
+          nomorPI: rawPI || "",
           nomorSIM: d.nomorSIM || "",
           jenisSurat: d.jenisSurat || "gudangInduk",
           subJenisDO: d.subJenisDO || null,
@@ -654,21 +655,27 @@ export default function RekapProformaInvoicePage() {
 
       const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const delta = oldTotalKG - totalPengambilanKG;
-      const piRef = doc(db, "proformaInvoice", selectedItem.id);
-      const piSnap = await getDoc(piRef);
-      if (piSnap.exists()) {
-        const piData = piSnap.data();
-        const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
-        const newSisa = Math.max(0, currentSisa + delta);
-        const totalOrdered = selectedItem.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
-        let newStatus = "pending";
-        if (newSisa <= 0) newStatus = "complete";
-        else if (newSisa < totalOrdered) newStatus = "partial";
-        await updateDoc(piRef, {
-          sisaPengambilanKG: newSisa,
-          statusPengangkutan: newStatus,
-          updatedAt: serverTimestamp(),
-        });
+
+      const piNomors = Array.isArray(selectedSurat.nomorPI) ? selectedSurat.nomorPI : [selectedSurat.nomorPI].filter(Boolean);
+      for (const piNomor of piNomors) {
+        const piRow = data.find((d) => d.nomorPI === piNomor);
+        if (!piRow) continue;
+        const piRef = doc(db, "proformaInvoice", piRow.id);
+        const piSnap = await getDoc(piRef);
+        if (piSnap.exists()) {
+          const piData = piSnap.data();
+          const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
+          const newSisa = Math.max(0, currentSisa + delta);
+          const totalOrdered = piRow.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+          let newStatus = "pending";
+          if (newSisa <= 0) newStatus = "complete";
+          else if (newSisa < totalOrdered) newStatus = "partial";
+          await updateDoc(piRef, {
+            sisaPengambilanKG: newSisa,
+            statusPengangkutan: newStatus,
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
 
       const productMapOld: Record<string, number> = {};
@@ -724,23 +731,30 @@ export default function RekapProformaInvoicePage() {
     if (!confirm(`Apakah Anda yakin ingin menghapus surat pengangkutan ${surat.nomorSeri}?`)) return;
     try {
       const totalKG = (surat.items || []).reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
-      const piRef = doc(db, "proformaInvoice", selectedItem!.id);
-      const piSnap = await getDoc(piRef);
-      if (piSnap.exists()) {
-        const piData = piSnap.data();
-        const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
-        const newSisa = currentSisa + totalKG;
-        const totalOrdered = selectedItem!.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
-        let newStatus = "pending";
-        if (newSisa >= totalOrdered) newStatus = "pending";
-        else if (newSisa > 0) newStatus = "partial";
-        else newStatus = "complete";
-        await updateDoc(piRef, {
-          sisaPengambilanKG: newSisa,
-          statusPengangkutan: newStatus,
-          updatedAt: serverTimestamp(),
-        });
+      const piNomors = Array.isArray(surat.nomorPI) ? surat.nomorPI : [surat.nomorPI].filter(Boolean);
+
+      for (const piNomor of piNomors) {
+        const piRow = data.find((d) => d.nomorPI === piNomor);
+        if (!piRow) continue;
+        const piRef = doc(db, "proformaInvoice", piRow.id);
+        const piSnap = await getDoc(piRef);
+        if (piSnap.exists()) {
+          const piData = piSnap.data();
+          const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
+          const newSisa = currentSisa + totalKG;
+          const totalOrdered = piRow.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+          let newStatus = "pending";
+          if (newSisa >= totalOrdered) newStatus = "pending";
+          else if (newSisa > 0) newStatus = "partial";
+          else newStatus = "complete";
+          await updateDoc(piRef, {
+            sisaPengambilanKG: newSisa,
+            statusPengangkutan: newStatus,
+            updatedAt: serverTimestamp(),
+          });
+        }
       }
+
       const productMap: Record<string, number> = {};
       (surat.items || []).forEach((it: SuratMuatItem) => {
         const key = it.jenisPupuk;
@@ -1043,13 +1057,14 @@ export default function RekapProformaInvoicePage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const isGI = !surat.jenisSurat || surat.jenisSurat === "gudangInduk";
+    const piDisplay = Array.isArray(surat.nomorPI) ? surat.nomorPI.join(", ") : surat.nomorPI;
     const itemsHtml = (surat.items || [])
       .map(
         (it, idx) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI ? (it.nomorPI || surat.nomorPI || "-") : (it.nomorPO || "-")}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI ? (it.nomorPI || piDisplay || "-") : (it.nomorPO || "-")}</td>
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
@@ -1112,6 +1127,7 @@ export default function RekapProformaInvoicePage() {
             <div class="info-row">
               <span class="info-label">Nomor Seri : ${surat.nomorSeri}</span>
             </div>
+            ${piDisplay ? `<div class="info-row"><span class="info-label">Nomor PI : ${piDisplay}</span></div>` : ""}
           </div>
           <div class="recipient-box">
             <p class="recipient-title">Kepada Yth :</p>
