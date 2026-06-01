@@ -631,7 +631,7 @@ export default function RekapProformaInvoicePage() {
         fot: "",
       }));
       const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
-      const updateData: Record<string, unknown> = {
+      const updateData = {
         tanggal: editSuratForm.tanggal,
         nomorSeri: newNomorSeri,
         nomorPolisi: editSuratForm.nomorPolisi.trim(),
