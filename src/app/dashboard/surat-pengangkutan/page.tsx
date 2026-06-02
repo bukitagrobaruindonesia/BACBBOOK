@@ -123,6 +123,7 @@ export default function SuratPengangkutanPage() {
   const [showJenisModal, setShowJenisModal] = useState(true);
   const [showSubJenisModal, setShowSubJenisModal] = useState(false);
   const [piLoadInfo, setPiLoadInfo] = useState<PILoadInfo | null>(null);
+  const [pendingNomorPI, setPendingNomorPI] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -151,6 +152,27 @@ export default function SuratPengangkutanPage() {
   }, []);
 
   useEffect(() => {
+    if (urlNomorPI) {
+      setPendingNomorPI(urlNomorPI);
+    }
+  }, [urlNomorPI]);
+
+  useEffect(() => {
+    if (pendingNomorPI && piList.length > 0 && !showJenisModal && !showSubJenisModal) {
+      if (
+        jenisSurat === "gudangInduk" ||
+        (jenisSurat === "do" && (subJenisDO === "mandiri" || subJenisDO === "dikuasakan"))
+      ) {
+        const pi = piList.find((p) => p.nomorPI === pendingNomorPI);
+        if (pi && !selectedPIs.find((sp) => sp.id === pi.id)) {
+          handlePISelect(pi);
+          setPendingNomorPI(null);
+        }
+      }
+    }
+  }, [pendingNomorPI, piList, jenisSurat, subJenisDO, showJenisModal, showSubJenisModal]);
+
+  useEffect(() => {
     if (selectedPIs.length > 0 && (jenisSurat === "gudangInduk" || subJenisDO === "mandiri" || subJenisDO === "dikuasakan")) {
       calculatePILoadInfo();
     } else {
@@ -160,34 +182,6 @@ export default function SuratPengangkutanPage() {
       }
     }
   }, [selectedPIs, stockList, jenisSurat, subJenisDO]);
-
-  useEffect(() => {
-    if (urlNomorPI && piList.length > 0 && jenisSurat === "gudangInduk") {
-      const pi = piList.find((p) => p.nomorPI === urlNomorPI);
-      if (pi && !selectedPIs.find((sp) => sp.id === pi.id)) {
-        handlePISelect(pi);
-      }
-    }
-  }, [urlNomorPI, piList, jenisSurat]);
-
-  useEffect(() => {
-    if (subJenisDO === "mandiri" && items.length === 0) {
-      setItems([
-        {
-          id: 1,
-          nomorSubDO: "",
-          nomorPO: "",
-          jenisPupuk: "",
-          party: "",
-          pengambilanZAK: "",
-          sisa: "",
-          bobotPerUnit: 50,
-          maxZAK: 0,
-          fot: "",
-        },
-      ]);
-    }
-  }, [subJenisDO]);
 
   const handleClickOutside = (e: MouseEvent) => {
     if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -234,12 +228,31 @@ export default function SuratPengangkutanPage() {
   };
 
   const generateNomorSeriDO = () => {
+    if (subJenisDO === "dikuasakan") {
+      const now = new Date();
+      const year = now.getFullYear();
+      const roman = getRomanMonth(now.getMonth() + 1);
+      const prefix = `BAGB-SP-DO/${year}/${roman}`;
+      const numbers: number[] = [];
+      existingSuratList.forEach((s) => {
+        if (s.nomorSeri.startsWith(prefix)) {
+          const parts = s.nomorSeri.split("/");
+          const last = parseInt(parts[parts.length - 1]);
+          if (!isNaN(last)) numbers.push(last);
+        }
+      });
+      numbers.sort((a, b) => a - b);
+      let nextUrut = 1;
+      for (const num of numbers) {
+        if (num === nextUrut) nextUrut++;
+        else if (num > nextUrut) break;
+      }
+      return `${prefix}/${String(nextUrut).padStart(4, "0")}`;
+    }
     const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
     const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
     if (!nomorSubDO) return "";
-    const perusahaan = subJenisDO === "mandiri"
-      ? formData.kepadaPerusahaan.trim()
-      : (selectedPIs[0]?.namaCustomer || "").trim();
+    const perusahaan = formData.kepadaPerusahaan.trim();
     if (!perusahaan) return "";
     const prefix = `BAGB-DO ${nomorSubDO} -SP PT ${perusahaan} - `;
     const existing = existingSuratList.filter((s) => s.nomorSeri.startsWith(prefix));
@@ -625,12 +638,12 @@ export default function SuratPengangkutanPage() {
       }
     });
 
-    if (jenisSurat === "do") {
+    if (jenisSurat === "do" && isMandiri) {
       const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
       if (!firstItem || !firstItem.nomorSubDO.trim()) {
         newErrors.nomorSubDO = "Nomor Sub DO wajib diisi untuk generate nomor seri";
       }
-      const perusahaan = isMandiri ? formData.kepadaPerusahaan.trim() : (selectedPIs[0]?.namaCustomer || "").trim();
+      const perusahaan = formData.kepadaPerusahaan.trim();
       if (!perusahaan) {
         newErrors.kepadaPerusahaan = "Nama perusahaan wajib diisi untuk generate nomor seri";
       }
@@ -651,8 +664,8 @@ export default function SuratPengangkutanPage() {
       const isDikuasakan = subJenisDO === "dikuasakan";
 
       const nomorSeri = generateNomorSeri();
-      if (!nomorSeri && !isGI) {
-        setErrors({ submit: "Gagal generate nomor seri. Pastikan Sub DO dan nama perusahaan terisi." });
+      if (!nomorSeri) {
+        setErrors({ submit: "Gagal generate nomor seri. Silakan cek kembali data." });
         setIsSubmitting(false);
         return;
       }
@@ -808,6 +821,7 @@ export default function SuratPengangkutanPage() {
     setPiLoadInfo(null);
     setSearchPI("");
     setErrors({});
+    setPendingNomorPI(null);
     if (urlNomorPI) {
       router.replace("/dashboard/surat-pengangkutan");
     }
@@ -815,22 +829,23 @@ export default function SuratPengangkutanPage() {
 
   const handlePrintPDF = () => {
     const nomorSeri = generateNomorSeri();
-    if (!nomorSeri && jenisSurat === "do") {
-      setErrors({ submit: "Gagal generate nomor seri untuk preview. Pastikan Sub DO dan nama perusahaan terisi." });
+    if (!nomorSeri) {
+      setErrors({ submit: "Gagal generate nomor seri untuk preview." });
       return;
     }
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const isGI = jenisSurat === "gudangInduk";
+    const isDikuasakan = subJenisDO === "dikuasakan";
     const itemsHtml = items
       .map(
         (item, idx) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
-          ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.nomorSubDO || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI ? (item.nomorPI || selectedPIs.map((p) => p.nomorPI).join(", ") || "-") : (item.nomorPO || "-")}</td>
+          ${!isGI && !isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.nomorSubDO || "-"}</td>` : ""}
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (item.nomorPI || selectedPIs.map((p) => p.nomorPI).join(", ") || "-") : (item.nomorPO || "-")}</td>
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${item.jenisPupuk || ""}</td>
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.party || "-"}</td>
+          ${!isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.party || "-"}</td>` : ""}
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.pengambilanZAK || "-"} ZAK</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.sisa || "-"}</td>
         </tr>
@@ -847,9 +862,9 @@ export default function SuratPengangkutanPage() {
             </div>`
       : `<div class="recipient-box">
               <p class="recipient-title">Kepada Yth :</p>
-              <p class="recipient-name">${formData.kepadaNama || ""}</p>
-              <p class="recipient-name">${formData.kepadaPerusahaan || ""}</p>
-              <p class="recipient-address">${(formData.kepadaAlamat || "").replace(/\n/g, "<br>")}</p>
+              <p class="recipient-name">${formData.kepadaNama || selectedPIs[0]?.namaCustomer || ""}</p>
+              <p class="recipient-name">${formData.kepadaPerusahaan || selectedPIs[0]?.namaCustomer || ""}</p>
+              <p class="recipient-address">${(formData.kepadaAlamat || selectedPIs[0]?.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
             </div>`;
     const html = `
       <!DOCTYPE html>
@@ -918,10 +933,10 @@ export default function SuratPengangkutanPage() {
               <thead>
                 <tr>
                   <th style="width: 30px;">NO</th>
-                  ${!isGI ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
-                  <th style="width: 100px;">NOMOR PO</th>
+                  ${!isGI && !isDikuasakan ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
+                  <th style="width: 100px;">${isGI || isDikuasakan ? "NOMOR PI" : "NOMOR PO"}</th>
                   <th>JENIS PUPUK</th>
-                  <th style="width: 60px;">PARTY</th>
+                  ${!isDikuasakan ? `<th style="width: 60px;">PARTY</th>` : ""}
                   <th style="width: 100px;">PENGAMBILAN<br>ZAK</th>
                   <th style="width: 60px;">SISA</th>
                 </tr>
@@ -931,7 +946,7 @@ export default function SuratPengangkutanPage() {
               </tbody>
             </table>
           </div>
-          ${isGI || subJenisDO === "mandiri" ? `
+          ${isGI || isMandiri ? `
           <div class="table-section">
             <div class="table-title">DATA UNIT ANGKUTAN</div>
             <table class="data-table">
@@ -1319,15 +1334,15 @@ export default function SuratPengangkutanPage() {
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {!isGI && (
+                  {!isGI && !isDikuasakan && (
                     <>
-                      <Input label="Nomor SUB DO" type="text" value={item.nomorSubDO} onChange={(e) => handleItemChange(item.id, "nomorSubDO", e.target.value)} placeholder={isMandiri ? "Wajib" : "Opsional"} error={errors[`nomorSubDO_${idx}`]} required={isMandiri} />
-                      <Input label="Nomor PO" type="text" value={item.nomorPO} onChange={(e) => handleItemChange(item.id, "nomorPO", e.target.value)} placeholder={isMandiri ? "Wajib" : "Opsional"} error={errors[`nomorPO_${idx}`]} required={isMandiri} />
+                      <Input label="Nomor SUB DO" type="text" value={item.nomorSubDO} onChange={(e) => handleItemChange(item.id, "nomorSubDO", e.target.value)} placeholder="Wajib" error={errors[`nomorSubDO_${idx}`]} required />
+                      <Input label="Nomor PO" type="text" value={item.nomorPO} onChange={(e) => handleItemChange(item.id, "nomorPO", e.target.value)} placeholder="Wajib" error={errors[`nomorPO_${idx}`]} required />
                     </>
                   )}
                   <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Otomatis dari PI" error={errors[`jenisPupuk_${idx}`]} required />
-                  {!isGI && (
-                    <Input label="Party" type="text" value={item.party} onChange={(e) => handleItemChange(item.id, "party", e.target.value)} placeholder={isMandiri ? "Wajib" : "Opsional"} error={errors[`party_${idx}`]} required={isMandiri} />
+                  {!isGI && !isDikuasakan && (
+                    <Input label="Party" type="text" value={item.party} onChange={(e) => handleItemChange(item.id, "party", e.target.value)} placeholder="Wajib" error={errors[`party_${idx}`]} required />
                   )}
                   <div>
                     <Input label={`Pengambilan (ZAK)${item.maxZAK > 0 ? ` - Max: ${item.maxZAK}` : ""}`} type="number" value={item.pengambilanZAK} onChange={(e) => handleItemChange(item.id, "pengambilanZAK", e.target.value)} placeholder={item.maxZAK > 0 ? `Max ${item.maxZAK} ZAK` : "Contoh: 100"} />
