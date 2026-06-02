@@ -95,6 +95,7 @@ interface ProformaInvoice {
   jumlahUangDibayar?: number;
   tanggalPembayaran?: string;
   statusPelunasan?: string;
+  riwayatPembayaran?: RiwayatPembayaran[];
 }
 
 interface StockItem {
@@ -128,6 +129,11 @@ interface TTDData {
   nama: string;
   jabatan: string;
   ttdImage: string;
+}
+
+interface RiwayatPembayaran {
+  tanggal: string;
+  jumlah: number;
 }
 
 type SuratMuatMap = Record<string, SuratMuatInfo[]>;
@@ -260,6 +266,7 @@ export default function RekapProformaInvoicePage() {
           jumlahUangDibayar: d.jumlahUangDibayar || 0,
           tanggalPembayaran: d.tanggalPembayaran || "",
           statusPelunasan: d.statusPelunasan || "Belum Lunas",
+          riwayatPembayaran: d.riwayatPembayaran || [],
         } as ProformaInvoice;
       });
       setData(items);
@@ -403,7 +410,7 @@ export default function RekapProformaInvoicePage() {
   };
 
   const getPaymentStatus = (item: ProformaInvoice) => {
-    const paid = item.jumlahUangDibayar || 0;
+    const paid = (item.riwayatPembayaran || []).reduce((sum, r) => sum + (r.jumlah || 0), 0) || item.jumlahUangDibayar || 0;
     const total = item.jumlahTertagih || 0;
     if (paid >= total && total > 0) return "Lunas";
     if (paid > 0) return "Cicilan";
@@ -884,8 +891,8 @@ export default function RekapProformaInvoicePage() {
   const handleOpenPaymentEdit = (item: ProformaInvoice) => {
     setSelectedItem(item);
     setPaymentForm({
-      jumlahUangDibayar: String(item.jumlahUangDibayar || ""),
-      tanggalPembayaran: item.tanggalPembayaran || "",
+      jumlahUangDibayar: "",
+      tanggalPembayaran: new Date().toISOString().split("T")[0],
       statusPelunasan: item.statusPelunasan || getPaymentStatus(item),
     });
     setIsPaymentModalOpen(true);
@@ -896,14 +903,19 @@ export default function RekapProformaInvoicePage() {
     if (!selectedItem) return;
     setIsSubmitting(true);
     try {
-      const paid = parseFloat(paymentForm.jumlahUangDibayar) || 0;
+      const newJumlah = parseFloat(paymentForm.jumlahUangDibayar) || 0;
+      const newTanggal = paymentForm.tanggalPembayaran.trim();
+      const existingRiwayat = selectedItem.riwayatPembayaran || [];
+      const updatedRiwayat = [...existingRiwayat, { tanggal: newTanggal, jumlah: newJumlah }];
+      const totalPaid = updatedRiwayat.reduce((sum, r) => sum + r.jumlah, 0);
       const total = selectedItem.jumlahTertagih || 0;
       let status = "Belum Lunas";
-      if (paid >= total && total > 0) status = "Lunas";
-      else if (paid > 0) status = "Cicilan";
+      if (totalPaid >= total && total > 0) status = "Lunas";
+      else if (totalPaid > 0) status = "Cicilan";
       await updateDoc(doc(db, "proformaInvoice", selectedItem.id), {
-        jumlahUangDibayar: paid,
-        tanggalPembayaran: paymentForm.tanggalPembayaran.trim(),
+        riwayatPembayaran: updatedRiwayat,
+        jumlahUangDibayar: totalPaid,
+        tanggalPembayaran: newTanggal,
         statusPelunasan: status,
         updatedAt: serverTimestamp(),
       });
@@ -1958,9 +1970,35 @@ export default function RekapProformaInvoicePage() {
                   );
                 })()}
               </div>
-              <div className="space-y-2">
+              <div className="mb-3">
+                <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Riwayat Pembayaran</p>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-amber-200">
+                      <th className="text-left py-1 px-2 text-xs font-semibold text-amber-700">No</th>
+                      <th className="text-left py-1 px-2 text-xs font-semibold text-amber-700">Tanggal</th>
+                      <th className="text-right py-1 px-2 text-xs font-semibold text-amber-700">Jumlah</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(selectedItem.riwayatPembayaran || []).length === 0 && (
+                      <tr>
+                        <td colSpan={3} className="py-2 text-center text-gray-500 text-xs">Belum ada pembayaran</td>
+                      </tr>
+                    )}
+                    {(selectedItem.riwayatPembayaran || []).map((r, i) => (
+                      <tr key={i} className="border-b border-amber-100">
+                        <td className="py-1 px-2 text-gray-700">{i + 1}</td>
+                        <td className="py-1 px-2 text-gray-700">{r.tanggal}</td>
+                        <td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="space-y-2 border-t border-amber-200 pt-2">
                 <div className="flex justify-between items-center text-sm">
-                  <span className="font-medium text-gray-700">Jumlah Dibayar</span>
+                  <span className="font-medium text-gray-700">Total Dibayar</span>
                   <span className="font-mono text-gray-900">{formatRupiah(selectedItem.jumlahUangDibayar || 0)}</span>
                 </div>
                 <div className="flex justify-between items-center text-sm">
@@ -1973,7 +2011,7 @@ export default function RekapProformaInvoicePage() {
                 </div>
                 {selectedItem.tanggalPembayaran && (
                   <div className="flex justify-between items-center text-sm">
-                    <span className="font-medium text-gray-700">Tanggal Pembayaran</span>
+                    <span className="font-medium text-gray-700">Pembayaran Terakhir</span>
                     <span className="font-mono text-gray-900">{selectedItem.tanggalPembayaran}</span>
                   </div>
                 )}
@@ -1982,7 +2020,7 @@ export default function RekapProformaInvoicePage() {
                 onClick={() => handleOpenPaymentEdit(selectedItem)}
                 className="mt-3 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-xs font-semibold transition-colors"
               >
-                Edit Pelunasan
+                Tambah Pembayaran
               </button>
             </div>
             {getSuratMuatForPI(selectedItem.nomorPI).length > 0 && (
@@ -2346,7 +2384,7 @@ export default function RekapProformaInvoicePage() {
         </div>
       </Modal>
 
-      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Edit Status Pelunasan" size="md" footer={
+      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Tambah Pembayaran" size="md" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>Batal</Button>
           <Button variant="primary" onClick={handleUpdatePayment} isLoading={isSubmitting}>Simpan</Button>
@@ -2367,31 +2405,67 @@ export default function RekapProformaInvoicePage() {
               <span className="text-lg font-mono font-bold text-green-700">{selectedItem ? formatRupiah(selectedItem.jumlahTertagih) : "-"}</span>
             </div>
           </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Uang yang telah Dibayar</label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={paymentForm.jumlahUangDibayar}
-              onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))}
-              placeholder="0.00"
-              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
-            />
+          {(selectedItem?.riwayatPembayaran || []).length > 0 && (
+            <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Riwayat Pembayaran</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200">
+                    <th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">No</th>
+                    <th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">Tanggal</th>
+                    <th className="text-right py-1 px-2 text-xs font-semibold text-gray-600">Jumlah</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedItem?.riwayatPembayaran?.map((r, i) => (
+                    <tr key={i} className="border-b border-gray-100">
+                      <td className="py-1 px-2 text-gray-700">{i + 1}</td>
+                      <td className="py-1 px-2 text-gray-700">{r.tanggal}</td>
+                      <td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t border-gray-300">
+                    <td colSpan={2} className="py-1 px-2 text-xs font-bold text-gray-700">Total Dibayar</td>
+                    <td className="py-1 px-2 text-right font-mono font-bold text-gray-900">{formatRupiah(selectedItem?.jumlahUangDibayar || 0)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+            <p className="text-sm font-semibold text-blue-700 mb-3">Pembayaran Baru</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Pembayaran</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={paymentForm.jumlahUangDibayar}
+                  onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))}
+                  placeholder="0.00"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
+                />
+              </div>
+              <Input
+                label="Tanggal Pembayaran"
+                type="date"
+                value={paymentForm.tanggalPembayaran}
+                onChange={(e) => setPaymentForm((prev) => ({ ...prev, tanggalPembayaran: e.target.value }))}
+              />
+            </div>
           </div>
-          <Input
-            label="Tanggal Pembayaran / Pelunasan"
-            type="date"
-            value={paymentForm.tanggalPembayaran}
-            onChange={(e) => setPaymentForm((prev) => ({ ...prev, tanggalPembayaran: e.target.value }))}
-          />
           <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
             <p className="text-sm text-amber-700">
               <span className="font-semibold">Status Otomatis: </span>
               {selectedItem && (() => {
-                const paid = parseFloat(paymentForm.jumlahUangDibayar) || 0;
+                const currentPaid = selectedItem.jumlahUangDibayar || 0;
+                const newPaid = parseFloat(paymentForm.jumlahUangDibayar) || 0;
+                const totalPaid = currentPaid + newPaid;
                 const total = selectedItem.jumlahTertagih || 0;
-                if (paid >= total && total > 0) return "Lunas";
-                if (paid > 0) return "Cicilan";
+                if (totalPaid >= total && total > 0) return "Lunas";
+                if (totalPaid > 0) return "Cicilan";
                 return "Belum Lunas";
               })()}
             </p>
@@ -2399,9 +2473,15 @@ export default function RekapProformaInvoicePage() {
           {selectedItem && parseFloat(paymentForm.jumlahUangDibayar || "0") > 0 && (
             <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
               <div className="flex justify-between items-center text-sm">
+                <span className="font-medium text-blue-700">Total Setelah Pembayaran</span>
+                <span className="font-mono font-semibold text-blue-700">
+                  {formatRupiah((selectedItem.jumlahUangDibayar || 0) + (parseFloat(paymentForm.jumlahUangDibayar) || 0))}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-sm mt-1">
                 <span className="font-medium text-blue-700">Sisa Pembayaran</span>
                 <span className="font-mono font-semibold text-blue-700">
-                  {formatRupiah(Math.max(0, (selectedItem.jumlahTertagih || 0) - (parseFloat(paymentForm.jumlahUangDibayar) || 0)))}
+                  {formatRupiah(Math.max(0, (selectedItem.jumlahTertagih || 0) - (selectedItem.jumlahUangDibayar || 0) - (parseFloat(paymentForm.jumlahUangDibayar) || 0)))}
                 </span>
               </div>
             </div>
