@@ -1014,7 +1014,6 @@ export default function RekapProformaInvoicePage() {
           .signature-row { display: flex; justify-content: space-between; margin-top: 30px; }
           .signature-box { width: 45%; text-align: center; }
           .signature-title { font-size: 9px; margin-bottom: 50px; }
-          .signature-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
           .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
           .signature-role { font-size: 9px; color: #333; margin-top: 2px; }
           .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
@@ -1089,7 +1088,7 @@ export default function RekapProformaInvoicePage() {
               </div>
               <div class="signature-box">
                 <p class="signature-title">${ttd.nama}<br>(Pihak Pertama)</p>
-                ${ttd.ttdImage ? `<img src="${ttd.ttdImage}" alt="TTD" class="signature-img" onerror="this.style.display='none'" />` : `<div style="height: 50px;"></div>`}
+                <div style="height: 50px;"></div>
                 <p class="signature-name">${ttd.nama}</p>
                 <p class="signature-role">${ttd.jabatan}</p>
               </div>
@@ -1457,7 +1456,6 @@ export default function RekapProformaInvoicePage() {
           .signature-row { display: flex; justify-content: space-between; margin-top: 20px; }
           .signature-box { width: 45%; text-align: center; }
           .signature-title { font-size: 9px; margin-bottom: 30px; }
-          .signature-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
           .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
           .footer-img { width: 100%; display: block; margin-top: 10px; }
           .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
