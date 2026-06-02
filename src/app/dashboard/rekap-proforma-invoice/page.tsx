@@ -1,5 +1,4 @@
 "use client";
-
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -25,7 +24,6 @@ import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
 import Card from "@/app/components/ui/Card";
 import { exportToExcel } from "@/app/utils/exportExcel";
-
 interface ProdukItem {
   namaProduk: string;
   fot: string;
@@ -38,7 +36,6 @@ interface ProdukItem {
   jumlahIsiBotol: number;
   totalHarga: number;
 }
-
 interface SuratMuatItem {
   nomorSubDO?: string;
   nomorPO?: string;
@@ -51,7 +48,6 @@ interface SuratMuatItem {
   sisa?: string;
   fot?: string;
 }
-
 interface SuratMuatInfo {
   id: string;
   nomorSeri: string;
@@ -65,7 +61,6 @@ interface SuratMuatInfo {
   jenisSurat?: string;
   subJenisDO?: string;
 }
-
 interface ProformaInvoice {
   id: string;
   tanggal: string;
@@ -98,7 +93,6 @@ interface ProformaInvoice {
   statusPelunasan?: string;
   riwayatPembayaran?: RiwayatPembayaran[];
 }
-
 interface StockItem {
   id: string;
   namaBarang: string;
@@ -108,7 +102,6 @@ interface StockItem {
   barangKeluarUnit: number;
   barangKeluarKG: number;
 }
-
 interface EditSuratItem {
   nomorSubDO: string;
   nomorPO: string;
@@ -119,19 +112,16 @@ interface EditSuratItem {
   sisa: string;
   maxZAK: number;
 }
-
 interface ExistingSurat {
   id: string;
   nomorSeri: string;
 }
-
 interface TTDData {
   id: string;
   nama: string;
   jabatan: string;
   ttdImage: string;
 }
-
 interface BeritaAcaraItem {
   no: number;
   tanggalMuat: string;
@@ -142,19 +132,15 @@ interface BeritaAcaraItem {
   driver: string;
   nopol: string;
 }
-
 interface RiwayatPembayaran {
   tanggal: string;
   jumlah: number;
 }
-
 type SuratMuatMap = Record<string, SuratMuatInfo[]>;
-
 const getRomanMonth = (month: number) => {
   const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
   return romans[month - 1] || "I";
 };
-
 const parseNomorSeri = (nomorSeri: string) => {
   const parts = nomorSeri.split("/");
   if (parts.length !== 4) return null;
@@ -165,12 +151,10 @@ const parseNomorSeri = (nomorSeri: string) => {
   if (prefix !== "BAGB-SP" || isNaN(year) || isNaN(urut)) return null;
   return { prefix, year, roman, urut };
 };
-
 const validateNomorSeriFormat = (value: string) => {
   const regex = /^BAGB-SP\/\d{4}\/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\/\d{4}$/;
   return regex.test(value.trim());
 };
-
 const parseInvoiceNumber = (nomor: string) => {
   const match = nomor.match(/^BAGB-INV(?:-S(\d+))?-(\d{4})$/);
   if (!match) return null;
@@ -180,7 +164,6 @@ const parseInvoiceNumber = (nomor: string) => {
     baseNum: parseInt(match[2]),
   };
 };
-
 export default function RekapProformaInvoicePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -216,7 +199,6 @@ export default function RekapProformaInvoicePage() {
   const [isGeneratingBast, setIsGeneratingBast] = useState(false);
   const [bastExists, setBastExists] = useState(false);
   const [invoiceExists, setInvoiceExists] = useState(false);
-
   const [editForm, setEditForm] = useState({
     tanggal: "",
     nomorPI: "",
@@ -230,7 +212,6 @@ export default function RekapProformaInvoicePage() {
     keterangan: "",
     produkItems: [] as ProdukItem[],
   });
-
   const [editSuratForm, setEditSuratForm] = useState({
     tanggal: "",
     nomorSeri: "",
@@ -239,7 +220,6 @@ export default function RekapProformaInvoicePage() {
     nomorSIM: "",
     items: [] as EditSuratItem[],
   });
-
   useEffect(() => {
     fetchData();
     fetchSuratMuat();
@@ -247,7 +227,6 @@ export default function RekapProformaInvoicePage() {
     fetchExistingSurat();
     fetchTTD();
   }, []);
-
   useEffect(() => {
     if (selectedItem) {
       checkBastExists(selectedItem.nomorPI);
@@ -257,7 +236,6 @@ export default function RekapProformaInvoicePage() {
       setInvoiceExists(false);
     }
   }, [selectedItem]);
-
   const fetchData = async () => {
     try {
       const q = query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc"));
@@ -304,7 +282,6 @@ export default function RekapProformaInvoicePage() {
       setIsLoading(false);
     }
   };
-
   const fetchStockGudang = async () => {
     try {
       const q = query(collection(db, "stockGudang"), orderBy("namaBarang", "asc"));
@@ -323,7 +300,6 @@ export default function RekapProformaInvoicePage() {
       console.error(error);
     }
   };
-
   const fetchExistingSurat = async () => {
     try {
       const q = query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc"));
@@ -337,7 +313,6 @@ export default function RekapProformaInvoicePage() {
       console.error(error);
     }
   };
-
   const fetchTTD = async () => {
     try {
       const q = query(collection(db, "ttd"), orderBy("nama", "asc"));
@@ -348,7 +323,6 @@ export default function RekapProformaInvoicePage() {
       console.error(error);
     }
   };
-
   const checkBastExists = async (nomorPI: string) => {
     try {
       const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
@@ -360,7 +334,6 @@ export default function RekapProformaInvoicePage() {
       setBastExists(false);
     }
   };
-
   const checkInvoiceExists = async (nomorPI: string) => {
     try {
       const piRow = data.find((d) => d.nomorPI === nomorPI);
@@ -383,7 +356,6 @@ export default function RekapProformaInvoicePage() {
       setInvoiceExists(false);
     }
   };
-
   const getNextBastNumber = async (): Promise<string> => {
     const now = new Date();
     const year = now.getFullYear();
@@ -413,7 +385,6 @@ export default function RekapProformaInvoicePage() {
     }
     return `${prefix}/${String(nextNum).padStart(4, "0")}`;
   };
-
   const checkNomorSeriExists = (value: string, excludeNomorSeri?: string) => {
     if (!value.trim()) {
       setNomorSeriError("");
@@ -434,7 +405,6 @@ export default function RekapProformaInvoicePage() {
     setNomorSeriError("");
     return false;
   };
-
   const fetchSuratMuat = async () => {
     try {
       const q = query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc"));
@@ -472,14 +442,12 @@ export default function RekapProformaInvoicePage() {
       console.error(error);
     }
   };
-
   const getStockForProduct = (namaProduk: string) => {
     return stockList.find((s) =>
       s.namaBarang.toUpperCase().includes(namaProduk.toUpperCase()) ||
       namaProduk.toUpperCase().includes(s.namaBarang.toUpperCase())
     );
   };
-
   const getSuratMuatForPI = (nomorPI: string): SuratMuatInfo[] => {
     const results: SuratMuatInfo[] = [];
     Object.values(suratMuatMap).forEach((list) => {
@@ -498,16 +466,13 @@ export default function RekapProformaInvoicePage() {
     });
     return results;
   };
-
   const getTotalOrdered = (item: ProformaInvoice) => {
     return item.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
   };
-
   const getTotalLoaded = (nomorPI: string) => {
     const suratList = getSuratMuatForPI(nomorPI);
     return suratList.reduce((sum: number, s: SuratMuatInfo) => sum + (s.totalKG || 0), 0);
   };
-
   const getStatusPengangkutan = (item: ProformaInvoice) => {
     const totalOrdered = getTotalOrdered(item);
     const totalLoaded = getTotalLoaded(item.nomorPI);
@@ -515,13 +480,11 @@ export default function RekapProformaInvoicePage() {
     if (totalLoaded > 0) return "partial";
     return item.statusPengangkutan || "pending";
   };
-
   const getStatusBadge = (status: string) => {
     if (status === "complete") return { class: "bg-green-100 text-green-700", label: "Selesai Dimuat" };
     if (status === "partial") return { class: "bg-yellow-100 text-yellow-700", label: "Sebagian Dimuat" };
     return { class: "bg-gray-100 text-gray-600", label: "Belum Dimuat" };
   };
-
   const getPaymentStatus = (item: ProformaInvoice) => {
     const paid = (item.riwayatPembayaran || []).reduce((sum, r) => sum + (r.jumlah || 0), 0) || item.jumlahUangDibayar || 0;
     const total = item.jumlahTertagih || 0;
@@ -529,13 +492,11 @@ export default function RekapProformaInvoicePage() {
     if (paid > 0) return "Cicilan";
     return "Belum Lunas";
   };
-
   const getPaymentBadge = (status: string) => {
     if (status === "Lunas") return { class: "bg-green-100 text-green-700 border-green-200", label: "Lunas" };
     if (status === "Cicilan") return { class: "bg-yellow-100 text-yellow-700 border-yellow-200", label: "Cicilan" };
     return { class: "bg-red-100 text-red-700 border-red-200", label: "Belum Lunas" };
   };
-
   const getProdukLoadStatus = (item: ProformaInvoice) => {
     const suratList = getSuratMuatForPI(item.nomorPI);
     return item.produkItems.map((prod) => {
@@ -558,13 +519,11 @@ export default function RekapProformaInvoicePage() {
       return { namaProduk: prod.namaProduk, ordered, loaded, remaining, status };
     });
   };
-
   const getNextInvoiceBaseNumber = async (): Promise<string> => {
     const piQuery = query(collection(db, "proformaInvoice"), where("invoiceBaseNumber", "!=", ""));
     const piSnapshot = await getDocs(piQuery);
     const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorInvoice", "!=", ""));
     const suratSnapshot = await getDocs(suratQuery);
-
     const usedBases: number[] = [];
     piSnapshot.docs.forEach((d) => {
       const bn = d.data().invoiceBaseNumber;
@@ -577,7 +536,6 @@ export default function RekapProformaInvoicePage() {
         if (parsed) usedBases.push(parsed.baseNum);
       }
     });
-
     usedBases.sort((a, b) => a - b);
     let nextBase = 1;
     for (const num of usedBases) {
@@ -589,7 +547,6 @@ export default function RekapProformaInvoicePage() {
     }
     return String(nextBase).padStart(4, "0");
   };
-
   const getPartialCountForPI = async (nomorPI: string): Promise<number> => {
     const q = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
     const snapshot = await getDocs(q);
@@ -614,35 +571,28 @@ export default function RekapProformaInvoicePage() {
     }
     return nextPartial - 1;
   };
-
   const generateInvoiceNumber = async (surat: SuratMuatInfo): Promise<string> => {
     if (!selectedItem) return "";
-
     const suratRef = doc(db, "suratPengangkutan", surat.id);
     const suratSnap = await getDoc(suratRef);
     const existingNomor = suratSnap.data()?.nomorInvoice;
-
     if (existingNomor) {
       const parsed = parseInvoiceNumber(existingNomor);
       if (parsed) return existingNomor;
     }
-
     const piRef = doc(db, "proformaInvoice", selectedItem.id);
     const piSnap = await getDoc(piRef);
     let baseNumber = piSnap.data()?.invoiceBaseNumber;
-
     if (!baseNumber) {
       baseNumber = await getNextInvoiceBaseNumber();
       await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
     }
-
     const partialCount = await getPartialCountForPI(selectedItem.nomorPI);
     const partialNum = partialCount + 1;
     const nomor = `BAGB-INV-S${partialNum}-${baseNumber}`;
     await updateDoc(suratRef, { nomorInvoice: nomor });
     return nomor;
   };
-
   const handleRegenerateInvoice = async () => {
     if (!selectedItem || !invoiceSurat) return;
     setIsGeneratingInvoice(true);
@@ -663,7 +613,6 @@ export default function RekapProformaInvoicePage() {
       setIsGeneratingInvoice(false);
     }
   };
-
   const handleOpenFullInvoice = async (row: ProformaInvoice) => {
     setSelectedItem(row);
     setInvoiceSurat(null);
@@ -688,7 +637,6 @@ export default function RekapProformaInvoicePage() {
       setIsGeneratingInvoice(false);
     }
   };
-
   const handleOpenInvoice = async (surat: SuratMuatInfo) => {
     setInvoiceSurat(surat);
     setSelectedOrderTTD("");
@@ -709,7 +657,6 @@ export default function RekapProformaInvoicePage() {
       setIsGeneratingInvoice(false);
     }
   };
-
   const handleResetBast = async (nomorPI: string) => {
     if (!confirm("Reset Berita Acara? Nomor seri akan dikembalikan ke pool.")) return;
     try {
@@ -729,7 +676,6 @@ export default function RekapProformaInvoicePage() {
       console.error(error);
     }
   };
-
   const handleResetInvoice = async (nomorPI: string) => {
     if (!confirm("Reset Invoice? Nomor seri akan dikembalikan ke pool.")) return;
     try {
@@ -762,22 +708,18 @@ export default function RekapProformaInvoicePage() {
       console.error(error);
     }
   };
-
   const filteredData = data.filter((item) =>
     item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
   const formatRupiah = (num: number) => {
     if (!num && num !== 0) return "Rp -";
     return "Rp " + num.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
-
   const handleDetail = (item: ProformaInvoice) => {
     setSelectedItem(item);
     setIsDetailModalOpen(true);
   };
-
   const handleEdit = (item: ProformaInvoice) => {
     setSelectedItem(item);
     setEditForm({
@@ -795,7 +737,6 @@ export default function RekapProformaInvoicePage() {
     });
     setIsEditModalOpen(true);
   };
-
   const handleEditSurat = (surat: SuratMuatInfo) => {
     setSelectedSurat(surat);
     setNomorSeriError("");
@@ -822,7 +763,6 @@ export default function RekapProformaInvoicePage() {
     });
     setIsEditSuratModalOpen(true);
   };
-
   const handleUpdateFull = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItem) return;
@@ -841,7 +781,6 @@ export default function RekapProformaInvoicePage() {
       let ppn = 0;
       if (editForm.includePPN) ppn = subtotal * 0.11;
       const jumlahTertagih = subtotal - uangMuka + ppn + ongkosKirim;
-
       await updateDoc(doc(db, "proformaInvoice", selectedItem.id), {
         tanggal: editForm.tanggal,
         nomorPI: editForm.nomorPI.trim(),
@@ -867,16 +806,13 @@ export default function RekapProformaInvoicePage() {
       setIsSubmitting(false);
     }
   };
-
   const handleUpdateSurat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSurat || !selectedItem) return;
-
     const newNomorSeri = editSuratForm.nomorSeri.trim();
     if (checkNomorSeriExists(newNomorSeri, selectedSurat.nomorSeri)) {
       return;
     }
-
     setIsSubmitting(true);
     try {
       const oldItems = selectedSurat.items || [];
@@ -903,7 +839,6 @@ export default function RekapProformaInvoicePage() {
         updatedAt: serverTimestamp(),
       };
       await updateDoc(doc(db, "suratPengangkutan", selectedSurat.id), updateData);
-
       const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", selectedSurat.nomorSeri));
       const transaksiSnapshot = await getDocs(transaksiQuery);
       if (!transaksiSnapshot.empty) {
@@ -912,10 +847,8 @@ export default function RekapProformaInvoicePage() {
           nomorSeri: newNomorSeri,
         });
       }
-
       const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const delta = oldTotalKG - totalPengambilanKG;
-
       const piNomors = Array.isArray(selectedSurat.nomorPI) ? selectedSurat.nomorPI : [selectedSurat.nomorPI].filter(Boolean);
       for (const piNomor of piNomors) {
         const piRow = data.find((d) => d.nomorPI === piNomor);
@@ -937,7 +870,6 @@ export default function RekapProformaInvoicePage() {
           });
         }
       }
-
       const productMapOld: Record<string, number> = {};
       const productMapNew: Record<string, number> = {};
       oldItems.forEach((it) => {
@@ -986,13 +918,11 @@ export default function RekapProformaInvoicePage() {
       setIsSubmitting(false);
     }
   };
-
   const handleDeleteSurat = async (surat: SuratMuatInfo) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus surat pengangkutan ${surat.nomorSeri}?`)) return;
     try {
       const totalKG = (surat.items || []).reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const piNomors = Array.isArray(surat.nomorPI) ? surat.nomorPI : [surat.nomorPI].filter(Boolean);
-
       for (const piNomor of piNomors) {
         const piRow = data.find((d) => d.nomorPI === piNomor);
         if (!piRow) continue;
@@ -1014,7 +944,6 @@ export default function RekapProformaInvoicePage() {
           });
         }
       }
-
       const productMap: Record<string, number> = {};
       (surat.items || []).forEach((it: SuratMuatItem) => {
         const key = it.jenisPupuk;
@@ -1058,7 +987,6 @@ export default function RekapProformaInvoicePage() {
       console.error(error);
     }
   };
-
   const handleDelete = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus data ini? Semua surat pengangkutan, berita acara, invoice, dan riwayat transaksi terkait juga akan dihapus.")) return;
     setIsLoading(true);
@@ -1069,19 +997,14 @@ export default function RekapProformaInvoicePage() {
         return;
       }
       const nomorPI = piDoc.nomorPI;
-
       const suratDocsMap = new Map<string, any>();
-
       const suratQuery1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
       const suratSnap1 = await getDocs(suratQuery1);
       suratSnap1.docs.forEach((d) => suratDocsMap.set(d.id, d));
-
       const suratQuery2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", nomorPI));
       const suratSnap2 = await getDocs(suratQuery2);
       suratSnap2.docs.forEach((d) => suratDocsMap.set(d.id, d));
-
       const deletedSuratSeriSet = new Set<string>();
-
       for (const [, suratDoc] of suratDocsMap) {
         const suratData = suratDoc.data();
         const items = suratData.items || [];
@@ -1113,11 +1036,9 @@ export default function RekapProformaInvoicePage() {
           deletedSuratSeriSet.add(suratData.nomorSeri);
         }
       }
-
       for (const [docId] of suratDocsMap) {
         await deleteDoc(doc(db, "suratPengangkutan", docId));
       }
-
       const deletedSuratSeri = Array.from(deletedSuratSeriSet);
       if (deletedSuratSeri.length > 0) {
         for (let i = 0; i < deletedSuratSeri.length; i += 10) {
@@ -1129,33 +1050,27 @@ export default function RekapProformaInvoicePage() {
           }
         }
       }
-
       const transaksiQuery1 = query(collection(db, "transaksiBarangKeluar"), where("nomorPI", "==", nomorPI));
       const transaksiSnap1 = await getDocs(transaksiQuery1);
       for (const d of transaksiSnap1.docs) {
         await deleteDoc(doc(db, "transaksiBarangKeluar", d.id));
       }
-
       const transaksiQuery2 = query(collection(db, "transaksiBarangKeluar"), where("nomorPIList", "array-contains", nomorPI));
       const transaksiSnap2 = await getDocs(transaksiQuery2);
       for (const d of transaksiSnap2.docs) {
         await deleteDoc(doc(db, "transaksiBarangKeluar", d.id));
       }
-
       const baQuery1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
       const baSnap1 = await getDocs(baQuery1);
       for (const d of baSnap1.docs) {
         await deleteDoc(doc(db, "beritaAcara", d.id));
       }
-
       const baQuery2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", nomorPI));
       const baSnap2 = await getDocs(baQuery2);
       for (const d of baSnap2.docs) {
         await deleteDoc(doc(db, "beritaAcara", d.id));
       }
-
       await deleteDoc(doc(db, "proformaInvoice", id));
-
       await fetchData();
       await fetchSuratMuat();
       await fetchStockGudang();
@@ -1167,7 +1082,6 @@ export default function RekapProformaInvoicePage() {
       setIsLoading(false);
     }
   };
-
   const handleOpenBast = async (item: ProformaInvoice) => {
     setSelectedItem(item);
     setBastTTDId("");
@@ -1183,7 +1097,6 @@ export default function RekapProformaInvoicePage() {
       setIsGeneratingBast(false);
     }
   };
-
   const handlePrintBast = async () => {
     if (!selectedItem || !bastTTDId || !bastNomorSeri) return;
     const ttd = ttdList.find((t) => t.id === bastTTDId);
@@ -1359,7 +1272,6 @@ export default function RekapProformaInvoicePage() {
     }
     setIsBastModalOpen(false);
   };
-
   const handleOpenPaymentEdit = (item: ProformaInvoice) => {
     setSelectedItem(item);
     setPaymentForm({
@@ -1369,7 +1281,6 @@ export default function RekapProformaInvoicePage() {
     });
     setIsPaymentModalOpen(true);
   };
-
   const handleUpdatePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedItem) return;
@@ -1399,7 +1310,6 @@ export default function RekapProformaInvoicePage() {
       setIsSubmitting(false);
     }
   };
-
   const handleExportExcel = () => {
     const exportData = filteredData.map((item) => ({
       "Tanggal": item.tanggal,
@@ -1425,7 +1335,6 @@ export default function RekapProformaInvoicePage() {
     }));
     exportToExcel(exportData, `Rekap_Proforma_Invoice_${new Date().toISOString().split("T")[0]}`, "Rekap PI");
   };
-
   const handlePrintPDF = (item: ProformaInvoice) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -1646,7 +1555,6 @@ export default function RekapProformaInvoicePage() {
     printWindow.document.write(html);
     printWindow.document.close();
   };
-
   const handlePrintSuratPDF = (surat: SuratMuatInfo) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -1777,7 +1685,7 @@ export default function RekapProformaInvoicePage() {
           <div class="signature-row">
             <div class="signature-box">
               <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-              <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" />
+              <img src="/Picture2.png" alt="TTD" style="max-height:55px;width:auto;display:block;margin:0 auto;" onerror="this.style.display='none'" />
               <p class="signature-name">HENDRA PRAMASYANTO</p>
             </div>
             <div class="signature-box">
@@ -1794,7 +1702,6 @@ export default function RekapProformaInvoicePage() {
     printWindow.document.write(html);
     printWindow.document.close();
   };
-
   const handlePrintInvoice = () => {
     if (!selectedItem || !invoiceNomor) return;
     const pi = selectedItem;
@@ -1802,7 +1709,6 @@ export default function RekapProformaInvoicePage() {
     const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
     const lastSurat = allSuratForPI.length > 0 ? allSuratForPI[allSuratForPI.length - 1] : null;
     const invoiceDate = lastSurat ? lastSurat.tanggal : pi.tanggal;
-
     const invoiceItems = pi.produkItems.map((produk, idx) => {
       let loadedQty = 0;
       if (invoiceSurat) {
@@ -1845,13 +1751,11 @@ export default function RekapProformaInvoicePage() {
         subTotal,
       };
     });
-
     const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
     const dppNilaiLain = 0;
     const ongkosKirim = pi.ongkosKirim || 0;
     const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
     const totalPembayaran = totalSubTotal + dppNilaiLain + ongkosKirim + ppn;
-
     const itemsHtml = invoiceItems.map((it) => `
       <tr>
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
@@ -1865,7 +1769,6 @@ export default function RekapProformaInvoicePage() {
         <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${formatRupiah(it.subTotal)}</td>
       </tr>
     `).join("");
-
     const emptyRows = Array.from({ length: Math.max(0, 8 - invoiceItems.length) }, (_, i) => `
       <tr>
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${invoiceItems.length + i + 1}</td>
@@ -1879,10 +1782,8 @@ export default function RekapProformaInvoicePage() {
         <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
       </tr>
     `).join("");
-
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-
     const html = `
       <!DOCTYPE html>
       <html>
@@ -2048,14 +1949,12 @@ export default function RekapProformaInvoicePage() {
     printWindow.document.close();
     setIsInvoiceModalOpen(false);
   };
-
   const numberToWords = (num: number): string => {
     if (num === 0) return "NOL RUPIAH";
     const ones = ["", "SATU", "DUA", "TIGA", "EMPAT", "LIMA", "ENAM", "TUJUH", "DELAPAN", "SEMBILAN"];
     const teens = ["SEPULUH", "SEBELAS", "DUA BELAS", "TIGA BELAS", "EMPAT BELAS", "LIMA BELAS", "ENAM BELAS", "TUJUH BELAS", "DELAPAN BELAS", "SEMBILAN BELAS"];
     const tens = ["", "", "DUA PULUH", "TIGA PULUH", "EMPAT PULUH", "LIMA PULUH", "ENAM PULUH", "TUJUH PULUH", "DELAPAN PULUH", "SEMBILAN PULUH"];
     const thousands = ["", "RIBU", "JUTA", "MILIAR", "TRILIUN"];
-
     const convertThreeDigits = (n: number): string => {
       let result = "";
       const hundreds = Math.floor(n / 100);
@@ -2076,7 +1975,6 @@ export default function RekapProformaInvoicePage() {
       }
       return result.trim();
     };
-
     if (num < 0) return "MINUS " + numberToWords(-num);
     let result = "";
     let i = 0;
@@ -2094,7 +1992,6 @@ export default function RekapProformaInvoicePage() {
     }
     return result.trim() + " RUPIAH";
   };
-
   const columns = [
     {
       key: "tanggal",
@@ -2274,7 +2171,6 @@ export default function RekapProformaInvoicePage() {
       ),
     },
   ];
-
   const handleSuratItemChange = (idx: number, field: string, value: string) => {
     setEditSuratForm((prev) => {
       const newItems = [...prev.items];
@@ -2295,27 +2191,23 @@ export default function RekapProformaInvoicePage() {
       return { ...prev, items: newItems };
     });
   };
-
   const addSuratItem = () => {
     setEditSuratForm((prev) => ({
       ...prev,
       items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0 }],
     }));
   };
-
   const removeSuratItem = (idx: number) => {
     setEditSuratForm((prev) => ({
       ...prev,
       items: prev.items.filter((_, i) => i !== idx),
     }));
   };
-
   const handleNomorSeriChangeEdit = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setEditSuratForm((prev) => ({ ...prev, nomorSeri: value }));
     checkNomorSeriExists(value, selectedSurat?.nomorSeri);
   };
-
   const handleEditProdukChange = (index: number, field: string, value: string) => {
     setEditForm((prev) => {
       const newItems = [...prev.produkItems];
@@ -2323,14 +2215,12 @@ export default function RekapProformaInvoicePage() {
       return { ...prev, produkItems: newItems };
     });
   };
-
   const addEditProdukItem = () => {
     setEditForm((prev) => ({
       ...prev,
       produkItems: [...prev.produkItems, { namaProduk: "", fot: "", produsen: "", kuantitas: 0, satuan: "KG", hargaSatuan: 0, hargaPerZakDus: 0, bobotPerUnit: 50, jumlahIsiBotol: 1, totalHarga: 0 }],
     }));
   };
-
   const removeEditProdukItem = (index: number) => {
     if (editForm.produkItems.length > 1) {
       setEditForm((prev) => ({
@@ -2339,11 +2229,9 @@ export default function RekapProformaInvoicePage() {
       }));
     }
   };
-
   return (
     <div className="space-y-6">
       <Header title="Rekap Proforma Invoice" subtitle="Kelola dan lihat riwayat proforma invoice beserta status pengangkutan" />
-
       <Card>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="relative w-full sm:w-96">
@@ -2361,14 +2249,11 @@ export default function RekapProformaInvoicePage() {
             </Button>
           </div>
         </div>
-
         <div className="text-sm text-gray-500 mb-4">
           Menampilkan {filteredData.length} dari {data.length} data
         </div>
-
         <Table columns={columns} data={filteredData} isLoading={isLoading} emptyMessage="Belum ada data proforma invoice" keyExtractor={(row) => row.id} onRowClick={handleDetail} />
       </Card>
-
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="Detail Proforma Invoice" size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
@@ -2676,7 +2561,6 @@ export default function RekapProformaInvoicePage() {
           </div>
         )}
       </Modal>
-
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Proforma Invoice" size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Batal</Button>
@@ -2771,7 +2655,6 @@ export default function RekapProformaInvoicePage() {
           </div>
         </form>
       </Modal>
-
       <Modal isOpen={isEditSuratModalOpen} onClose={() => setIsEditSuratModalOpen(false)} title={`Edit Surat Muat - ${selectedSurat?.nomorSeri}`} size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditSuratModalOpen(false)}>Batal</Button>
@@ -2835,7 +2718,6 @@ export default function RekapProformaInvoicePage() {
           </div>
         </form>
       </Modal>
-
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title="Print Invoice" size="md" footer={
         <div className="flex justify-end gap-3">
           {invoiceExists && (
@@ -2894,10 +2776,8 @@ export default function RekapProformaInvoicePage() {
               })()}
             </div>
           )}
-
         </div>
       </Modal>
-
       <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Tambah Pembayaran" size="md" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>Batal</Button>
@@ -3002,7 +2882,6 @@ export default function RekapProformaInvoicePage() {
           )}
         </form>
       </Modal>
-
       <Modal isOpen={isBastModalOpen} onClose={() => setIsBastModalOpen(false)} title="Preview Berita Acara Serah Terima" size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsBastModalOpen(false)}>Batal</Button>
