@@ -1558,11 +1558,11 @@ export default function RekapProformaInvoicePage() {
           .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
           .notes-section { margin-top: 10px; font-size: 9px; }
           .notes-section p { margin-bottom: 2px; }
-          .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; }
-          .signature-box { width: 45%; text-align: center; }
-          .signature-title { font-size: 9px; margin-bottom: 45px; }
-          .signature-img { max-height: 105px; width: auto; object-fit: contain; margin: 0 auto; display: block; }
-          .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
+          .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; align-items: flex-end; }
+          .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+          .signature-title { font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4; }
+          .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
+          .signature-name { font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
           .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
           .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
           .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
@@ -1639,12 +1639,14 @@ export default function RekapProformaInvoicePage() {
           <div class="signature-row">
             <div class="signature-box">
               <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-              <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" />
+              <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
+                <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" />
+              </div>
               <p class="signature-name">HENDRA PRAMASYANTO</p>
             </div>
             <div class="signature-box">
               <p class="signature-title">Diangkut oleh,<br>Driver</p>
-              <div style="height: 50px;"></div>
+              <div style="min-height: 60px; margin-bottom: 4px;"></div>
               <p class="signature-name">${surat.driverUnit || ""}</p>
             </div>
           </div>
