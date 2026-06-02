@@ -95,6 +95,10 @@ const getRomanMonth = (month: number) => {
   return romans[month - 1] || "I";
 };
 
+const isGudangIndukFOT = (fot: string) => {
+  return fot.trim().toUpperCase().includes("GUDANG INDUK");
+};
+
 const parseNomorSeriGI = (nomorSeri: string) => {
   const parts = nomorSeri.split("/");
   if (parts.length !== 4) return null;
@@ -381,6 +385,10 @@ export default function SuratPengangkutanPage() {
 
       selectedPIs.forEach((pi) => {
         pi.produkItems.forEach((prod) => {
+          const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+          const isGIProduct = isGudangIndukFOT(fot);
+          if (jenisSurat === "gudangInduk" && !isGIProduct) return;
+          if (jenisSurat === "do" && isGIProduct) return;
           const key = prod.namaProduk;
           const bobot = getBobotPerUnit(prod.namaProduk);
           if (!produkMap[key]) {
