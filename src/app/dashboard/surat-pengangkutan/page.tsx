@@ -335,11 +335,34 @@ export default function SuratPengangkutanPage() {
     }
     try {
       const allNomorPIs = selectedPIs.map((p) => p.nomorPI);
-      const q = query(
+
+      const allSuratDocs: any[] = [];
+
+      const q1 = query(
         collection(db, "suratPengangkutan"),
         where("nomorPI", "in", allNomorPIs)
       );
-      const snapshot = await getDocs(q);
+      const snap1 = await getDocs(q1);
+      snap1.docs.forEach((d) => {
+        if (!allSuratDocs.find((existing) => existing.id === d.id)) {
+          allSuratDocs.push(d);
+        }
+      });
+
+      for (let i = 0; i < allNomorPIs.length; i += 10) {
+        const batch = allNomorPIs.slice(i, i + 10);
+        const q2 = query(
+          collection(db, "suratPengangkutan"),
+          where("nomorPI", "array-contains-any", batch)
+        );
+        const snap2 = await getDocs(q2);
+        snap2.docs.forEach((d) => {
+          if (!allSuratDocs.find((existing) => existing.id === d.id)) {
+            allSuratDocs.push(d);
+          }
+        });
+      }
+
       let totalLoadedKG = 0;
       const produkMap: Record<string, ProdukAggregate> = {};
 
@@ -367,7 +390,7 @@ export default function SuratPengangkutanPage() {
         });
       });
 
-      snapshot.docs.forEach((docSnap) => {
+      allSuratDocs.forEach((docSnap) => {
         const data = docSnap.data();
         const suratItems = data.items || [];
         suratItems.forEach((item: { jenisPupuk: string; pengambilanZAK: number | string; bobotPerUnit: number }) => {
@@ -1224,7 +1247,7 @@ export default function SuratPengangkutanPage() {
               </div>
             )}
 
-            {isGI && piLoadInfo && (
+            {selectedPIs.length > 0 && piLoadInfo && (
               <div className="grid grid-cols-3 gap-4">
                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
                   <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total Dipesan</p>
@@ -1241,7 +1264,7 @@ export default function SuratPengangkutanPage() {
               </div>
             )}
 
-            {isGI && piLoadInfo && piLoadInfo.produkList.length > 0 && (
+            {selectedPIs.length > 0 && piLoadInfo && piLoadInfo.produkList.length > 0 && (
               <div className="mt-4">
                 <h4 className="text-sm font-semibold text-gray-700 mb-2">Detail Per Produk</h4>
                 <div className="space-y-2">
