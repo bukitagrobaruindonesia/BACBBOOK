@@ -13,6 +13,7 @@ import {
   where,
   serverTimestamp,
   getDoc,
+  addDoc,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -131,6 +132,17 @@ interface TTDData {
   ttdImage: string;
 }
 
+interface BeritaAcaraItem {
+  no: number;
+  tanggalMuat: string;
+  namaProduk: string;
+  fot: string;
+  qty: string;
+  noSJ: string;
+  driver: string;
+  nopol: string;
+}
+
 interface RiwayatPembayaran {
   tanggal: string;
   jumlah: number;
@@ -198,6 +210,11 @@ export default function RekapProformaInvoicePage() {
     tanggalPembayaran: "",
     statusPelunasan: "",
   });
+
+  const [isBastModalOpen, setIsBastModalOpen] = useState(false);
+  const [bastTTDId, setBastTTDId] = useState("");
+  const [bastNomorSeri, setBastNomorSeri] = useState("");
+  const [isGeneratingBast, setIsGeneratingBast] = useState(false);
 
   const [editForm, setEditForm] = useState({
     tanggal: "",
@@ -319,6 +336,27 @@ export default function RekapProformaInvoicePage() {
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const getNextBastNumber = async (): Promise<string> => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const roman = getRomanMonth(now.getMonth() + 1);
+    const prefix = `BAGB/BAB/${roman}/${year}`;
+    const q = query(
+      collection(db, "beritaAcara"),
+      where("nomorSeri", ">=", prefix),
+      where("nomorSeri", "<=", prefix + "\uf8ff"),
+      orderBy("nomorSeri", "desc")
+    );
+    const snapshot = await getDocs(q);
+    let max = 0;
+    snapshot.docs.forEach((d) => {
+      const parts = d.data().nomorSeri?.split("/") || [];
+      const last = parseInt(parts[parts.length - 1]);
+      if (!isNaN(last) && last > max) max = last;
+    });
+    return `${prefix}/${String(max + 1).padStart(4, "0")}`;
   };
 
   const checkNomorSeriExists = (value: string, excludeNomorSeri?: string) => {
@@ -886,6 +924,198 @@ export default function RekapProformaInvoicePage() {
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const handleOpenBast = async (item: ProformaInvoice) => {
+    setSelectedItem(item);
+    setBastTTDId("");
+    setBastNomorSeri("");
+    setIsGeneratingBast(true);
+    setIsBastModalOpen(true);
+    try {
+      const nomor = await getNextBastNumber();
+      setBastNomorSeri(nomor);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsGeneratingBast(false);
+    }
+  };
+
+  const handlePrintBast = async () => {
+    if (!selectedItem || !bastTTDId || !bastNomorSeri) return;
+    const ttd = ttdList.find((t) => t.id === bastTTDId);
+    if (!ttd) return;
+    const suratList = getSuratMuatForPI(selectedItem.nomorPI);
+    const bastItems: BeritaAcaraItem[] = [];
+    let no = 1;
+    suratList.forEach((surat) => {
+      (surat.items || []).forEach((it) => {
+        const piProd = selectedItem.produkItems.find((p) =>
+          p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
+          it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
+        );
+        bastItems.push({
+          no: no++,
+          tanggalMuat: surat.tanggal,
+          namaProduk: piProd?.namaProduk || it.jenisPupuk || "",
+          fot: piProd?.fot || "",
+          qty: `${it.pengambilanZAK || 0} ZAK`,
+          noSJ: surat.nomorSeri,
+          driver: surat.driverUnit || "",
+          nopol: surat.nomorPolisi || "",
+        });
+      });
+    });
+    const now = new Date();
+    const hari = now.toLocaleDateString("id-ID", { weekday: "long" });
+    const tanggalLengkap = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+    const rowsHtml = bastItems.map((it) => `
+      <tr>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.tanggalMuat}</td>
+        <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.namaProduk}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.fot || "-"}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.qty}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.noSJ}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.driver}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nopol}</td>
+      </tr>
+    `).join("");
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Berita Acara ${bastNomorSeri}</title>
+        <style>
+          @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
+          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
+          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; }
+          .header-img { width: 100%; display: block; margin-bottom: 0; }
+          .title-bar { text-align: center; margin: 8px 0 12px 0; }
+          .title-bar h1 { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline; }
+          .title-bar p { font-size: 11px; font-weight: 600; }
+          .content { padding: 0 4px; }
+          .opening { margin-bottom: 12px; font-size: 10px; }
+          .party-section { margin-bottom: 10px; }
+          .party-title { font-weight: 700; margin-bottom: 4px; font-size: 10px; }
+          .party-table { width: 100%; margin-bottom: 8px; font-size: 10px; }
+          .party-table td { padding: 2px 0; vertical-align: top; }
+          .party-label { width: 100px; font-weight: 600; }
+          .party-value { font-weight: 500; }
+          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; }
+          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; }
+          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
+          .closing { margin-bottom: 16px; font-size: 10px; text-align: justify; }
+          .signature-row { display: flex; justify-content: space-between; margin-top: 30px; }
+          .signature-box { width: 45%; text-align: center; }
+          .signature-title { font-size: 9px; margin-bottom: 50px; }
+          .signature-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
+          .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
+          .signature-role { font-size: 9px; color: #333; margin-top: 2px; }
+          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+          @media print { .print-bar { display: none !important; } }
+        </style>
+      </head>
+      <body>
+        <div class="print-bar no-print">
+          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+        <div class="page">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <div class="title-bar">
+            <h1>BERITA ACARA SERAH TERIMA BARANG</h1>
+            <p>${bastNomorSeri}</p>
+          </div>
+          <div class="content">
+            <p class="opening">Kami yang bertanda tangan di bawah ini, pada hari ${hari}, ${tanggalLengkap}</p>
+            <div class="party-section">
+              <p class="party-title">Selanjutnya disebut Pihak Pertama.</p>
+              <table class="party-table">
+                <tr>
+                  <td class="party-label">Nama</td>
+                  <td>: ${ttd.nama}</td>
+                </tr>
+                <tr>
+                  <td class="party-label">Perusahaan</td>
+                  <td>: PT Bukit Agrochemical Baru</td>
+                </tr>
+                <tr>
+                  <td class="party-label">Jabatan</td>
+                  <td>: ${ttd.jabatan}</td>
+                </tr>
+              </table>
+            </div>
+            <div class="party-section">
+              <p class="party-title">Selanjutnya yang disebut Pihak Kedua.</p>
+              <table class="party-table">
+                <tr>
+                  <td class="party-label">Nama</td>
+                  <td>: ${selectedItem.namaCustomer}</td>
+                </tr>
+                <tr>
+                  <td class="party-label">Alamat</td>
+                  <td>: ${(selectedItem.alamatCustomer || "").replace(/\n/g, " ")}</td>
+                </tr>
+              </table>
+            </div>
+            <p class="opening">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width: 30px;">No</th>
+                  <th style="width: 80px;">Tanggal Muat</th>
+                  <th>Nama Produk</th>
+                  <th style="width: 80px;">FOT / No DO</th>
+                  <th style="width: 70px;">QTY</th>
+                  <th style="width: 120px;">No SJ</th>
+                  <th style="width: 90px;">Driver</th>
+                  <th style="width: 80px;">Nopol</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml}</tbody>
+            </table>
+            <p class="closing">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
+            <div class="signature-row">
+              <div class="signature-box">
+                <p class="signature-title">${selectedItem.namaCustomer}<br>(Pihak Kedua)</p>
+                <div style="height: 50px;"></div>
+                <p class="signature-name">${selectedItem.namaCustomer}</p>
+              </div>
+              <div class="signature-box">
+                <p class="signature-title">${ttd.nama}<br>(Pihak Pertama)</p>
+                ${ttd.ttdImage ? `<img src="${ttd.ttdImage}" alt="TTD" class="signature-img" onerror="this.style.display='none'" />` : `<div style="height: 50px;"></div>`}
+                <p class="signature-name">${ttd.nama}</p>
+                <p class="signature-role">${ttd.jabatan}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    try {
+      await addDoc(collection(db, "beritaAcara"), {
+        nomorSeri: bastNomorSeri,
+        nomorPI: selectedItem.nomorPI,
+        namaCustomer: selectedItem.namaCustomer,
+        tanggal: new Date().toISOString().split("T")[0],
+        pihakPertama: { nama: ttd.nama, jabatan: ttd.jabatan, perusahaan: "PT Bukit Agrochemical Baru" },
+        pihakKedua: { nama: selectedItem.namaCustomer, alamat: selectedItem.alamatCustomer },
+        items: bastItems,
+        createdAt: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error(error);
+    }
+    setIsBastModalOpen(false);
   };
 
   const handleOpenPaymentEdit = (item: ProformaInvoice) => {
@@ -1957,6 +2187,27 @@ export default function RekapProformaInvoicePage() {
                 ))}
               </div>
             </div>
+            {(() => {
+              const status = getStatusPengangkutan(selectedItem);
+              return status === "complete" ? (
+                <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-indigo-600 uppercase tracking-wide font-semibold">Berita Acara Serah Terima</p>
+                    <span className="px-2 py-1 rounded-md text-xs font-bold bg-indigo-100 text-indigo-700">Siap Dibuat</span>
+                  </div>
+                  <p className="text-sm text-gray-700 mb-3">Seluruh muatan telah selesai dimuat. Buat Berita Acara Serah Terima Barang.</p>
+                  <button
+                    onClick={() => handleOpenBast(selectedItem)}
+                    className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Buat Berita Acara
+                  </button>
+                </div>
+              ) : null;
+            })()}
             <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
               <div className="flex items-center justify-between mb-3">
                 <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold">Status Pelunasan</p>
@@ -2487,6 +2738,106 @@ export default function RekapProformaInvoicePage() {
             </div>
           )}
         </form>
+      </Modal>
+
+      <Modal isOpen={isBastModalOpen} onClose={() => setIsBastModalOpen(false)} title="Preview Berita Acara Serah Terima" size="lg" footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={() => setIsBastModalOpen(false)}>Batal</Button>
+          <Button variant="primary" onClick={handlePrintBast} disabled={!bastTTDId || !bastNomorSeri || isGeneratingBast} isLoading={isGeneratingBast}>Print Berita Acara</Button>
+        </div>
+      }>
+        <div className="space-y-4">
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Berita Acara</p>
+            <p className="text-lg font-mono font-bold text-indigo-700">{bastNomorSeri || "Memuat..."}</p>
+            {isGeneratingBast && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor seri...</p>}
+          </div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor PI</p>
+            <p className="text-sm font-semibold text-gray-800">{selectedItem?.nomorPI}</p>
+          </div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Customer (Pihak Kedua)</p>
+            <p className="text-sm font-semibold text-gray-800">{selectedItem?.namaCustomer}</p>
+            <p className="text-xs text-gray-500 mt-1">{selectedItem?.alamatCustomer}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-600 mb-2">Pilih Tanda Tangan Pihak Pertama:</p>
+            <Select
+              label="Pilih TTD"
+              value={bastTTDId}
+              onChange={(e) => setBastTTDId(e.target.value)}
+              options={[
+                { value: "", label: "Pilih tanda tangan..." },
+                ...ttdList.map((ttd) => ({
+                  value: ttd.id,
+                  label: `${ttd.nama} - ${ttd.jabatan}`,
+                })),
+              ]}
+            />
+          </div>
+          {bastTTDId && (() => {
+            const ttd = ttdList.find((t) => t.id === bastTTDId);
+            if (!ttd) return null;
+            return (
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-4">
+                <img src={ttd.ttdImage} alt="TTD" className="h-16 object-contain bg-white rounded-lg border border-gray-200" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{ttd.nama}</p>
+                  <p className="text-xs text-gray-500">{ttd.jabatan}</p>
+                  <p className="text-xs text-gray-500">PT Bukit Agrochemical Baru</p>
+                </div>
+              </div>
+            );
+          })()}
+          {selectedItem && bastNomorSeri && (
+            <div className="overflow-x-auto">
+              <p className="text-sm font-semibold text-gray-700 mb-2">Preview Daftar Muatan</p>
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-indigo-50">
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">No</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">Tanggal Muat</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">Nama Produk</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">FOT</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">QTY</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">No SJ</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">Driver</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">Nopol</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const suratList = getSuratMuatForPI(selectedItem.nomorPI);
+                    let no = 1;
+                    const rows: React.ReactNode[] = [];
+                    suratList.forEach((surat) => {
+                      (surat.items || []).forEach((it) => {
+                        const piProd = selectedItem.produkItems.find((p) =>
+                          p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
+                          it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
+                        );
+                        rows.push(
+                          <tr key={`${surat.id}-${no}`} className="border-b">
+                            <td className="px-3 py-2 text-gray-900 border">{no++}</td>
+                            <td className="px-3 py-2 text-gray-600 border">{surat.tanggal}</td>
+                            <td className="px-3 py-2 text-gray-800 font-medium border">{piProd?.namaProduk || it.jenisPupuk || ""}</td>
+                            <td className="px-3 py-2 text-gray-600 border">{piProd?.fot || "-"}</td>
+                            <td className="px-3 py-2 text-gray-900 border">{it.pengambilanZAK || 0} ZAK</td>
+                            <td className="px-3 py-2 text-gray-800 font-mono border">{surat.nomorSeri}</td>
+                            <td className="px-3 py-2 text-gray-600 border">{surat.driverUnit || "-"}</td>
+                            <td className="px-3 py-2 text-gray-600 border">{surat.nomorPolisi || "-"}</td>
+                          </tr>
+                        );
+                      });
+                    });
+                    return rows;
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );
