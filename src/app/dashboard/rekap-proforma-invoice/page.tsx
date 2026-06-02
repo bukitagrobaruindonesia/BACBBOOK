@@ -1049,6 +1049,7 @@ export default function RekapProformaInvoicePage() {
 
       const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
       const suratSnapshot = await getDocs(suratQuery);
+      const deletedSuratSeri: string[] = [];
       for (const suratDoc of suratSnapshot.docs) {
         const suratData = suratDoc.data();
         const items = suratData.items || [];
@@ -1076,12 +1077,24 @@ export default function RekapProformaInvoicePage() {
             }
           }
         }
-        const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", suratData.nomorSeri));
+        if (suratData.nomorSeri) {
+          deletedSuratSeri.push(suratData.nomorSeri);
+        }
+        await deleteDoc(doc(db, "suratPengangkutan", suratDoc.id));
+      }
+
+      for (const seri of deletedSuratSeri) {
+        const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", seri));
         const transaksiSnapshot = await getDocs(transaksiQuery);
         for (const transaksiDoc of transaksiSnapshot.docs) {
           await deleteDoc(doc(db, "transaksiBarangKeluar", transaksiDoc.id));
         }
-        await deleteDoc(doc(db, "suratPengangkutan", suratDoc.id));
+      }
+
+      const transaksiByPIQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorPI", "==", nomorPI));
+      const transaksiByPISnapshot = await getDocs(transaksiByPIQuery);
+      for (const transaksiDoc of transaksiByPISnapshot.docs) {
+        await deleteDoc(doc(db, "transaksiBarangKeluar", transaksiDoc.id));
       }
 
       const baQuery = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
@@ -1090,10 +1103,6 @@ export default function RekapProformaInvoicePage() {
         await deleteDoc(doc(db, "beritaAcara", baDoc.id));
       }
 
-      await updateDoc(doc(db, "proformaInvoice", id), {
-        invoiceBaseNumber: null,
-        updatedAt: serverTimestamp(),
-      });
       await deleteDoc(doc(db, "proformaInvoice", id));
       fetchData();
       fetchSuratMuat();

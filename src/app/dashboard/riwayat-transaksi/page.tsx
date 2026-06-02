@@ -892,6 +892,17 @@ export default function RiwayatTransaksiPage() {
       ),
     },
     {
+      key: "nomorPI",
+      header: "Nomor PI",
+      width: "150px",
+      render: (row: UnifiedTransaksi) => {
+        const piDisplay = row.nomorPI || (row.nomorPIList && row.nomorPIList.length > 0 ? row.nomorPIList.join(", ") : "-");
+        return (
+          <span className="font-mono font-bold text-blue-700 bg-blue-50 px-2 py-1 rounded text-xs">{piDisplay}</span>
+        );
+      },
+    },
+    {
       key: "namaBarang",
       header: "Nama Barang / Info",
       render: (row: UnifiedTransaksi) => (
