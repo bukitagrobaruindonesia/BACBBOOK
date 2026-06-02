@@ -222,14 +222,22 @@ export default function SuratPengangkutanPage() {
     const roman = getRomanMonth(now.getMonth() + 1);
     const prefixBase = subJenisDO === "mandiri" ? "BAGB-SP-DO" : "BAGB-SP";
     const prefix = `${prefixBase}/${year}/${roman}`;
-    let maxUrut = 0;
+    const numbers: number[] = [];
     existingSuratList.forEach((s) => {
       const parsed = parseNomorSeri(s.nomorSeri);
       if (parsed && parsed.year === year && parsed.roman === roman && parsed.prefix === prefixBase) {
-        if (parsed.urut > maxUrut) maxUrut = parsed.urut;
+        numbers.push(parsed.urut);
       }
     });
-    const nextUrut = maxUrut + 1;
+    numbers.sort((a, b) => a - b);
+    let nextUrut = 1;
+    for (const num of numbers) {
+      if (num === nextUrut) {
+        nextUrut++;
+      } else if (num > nextUrut) {
+        break;
+      }
+    }
     return `${prefix}/${String(nextUrut).padStart(4, "0")}`;
   };
 

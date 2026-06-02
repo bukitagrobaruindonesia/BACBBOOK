@@ -347,16 +347,25 @@ export default function RekapProformaInvoicePage() {
       collection(db, "beritaAcara"),
       where("nomorSeri", ">=", prefix),
       where("nomorSeri", "<=", prefix + "\uf8ff"),
-      orderBy("nomorSeri", "desc")
+      orderBy("nomorSeri", "asc")
     );
     const snapshot = await getDocs(q);
-    let max = 0;
+    const numbers: number[] = [];
     snapshot.docs.forEach((d) => {
       const parts = d.data().nomorSeri?.split("/") || [];
       const last = parseInt(parts[parts.length - 1]);
-      if (!isNaN(last) && last > max) max = last;
+      if (!isNaN(last)) numbers.push(last);
     });
-    return `${prefix}/${String(max + 1).padStart(4, "0")}`;
+    numbers.sort((a, b) => a - b);
+    let nextNum = 1;
+    for (const num of numbers) {
+      if (num === nextNum) {
+        nextNum++;
+      } else if (num > nextNum) {
+        break;
+      }
+    }
+    return `${prefix}/${String(nextNum).padStart(4, "0")}`;
   };
 
   const checkNomorSeriExists = (value: string, excludeNomorSeri?: string) => {
@@ -490,39 +499,54 @@ export default function RekapProformaInvoicePage() {
     const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorInvoice", "!=", ""));
     const suratSnapshot = await getDocs(suratQuery);
 
-    const usedBases = new Set<number>();
+    const usedBases: number[] = [];
     piSnapshot.docs.forEach((d) => {
       const bn = d.data().invoiceBaseNumber;
-      if (bn) usedBases.add(parseInt(bn));
+      if (bn) usedBases.push(parseInt(bn));
     });
     suratSnapshot.docs.forEach((d) => {
       const ni = d.data().nomorInvoice;
       if (ni) {
         const parsed = parseInvoiceNumber(ni);
-        if (parsed) usedBases.add(parsed.baseNum);
+        if (parsed) usedBases.push(parsed.baseNum);
       }
     });
 
+    usedBases.sort((a, b) => a - b);
     let nextBase = 1;
-    while (usedBases.has(nextBase)) nextBase++;
+    for (const num of usedBases) {
+      if (num === nextBase) {
+        nextBase++;
+      } else if (num > nextBase) {
+        break;
+      }
+    }
     return String(nextBase).padStart(4, "0");
   };
 
   const getPartialCountForPI = async (nomorPI: string): Promise<number> => {
     const q = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
     const snapshot = await getDocs(q);
-    let maxPartial = 0;
+    const partials: number[] = [];
     snapshot.docs.forEach((d) => {
       const ni = d.data().nomorInvoice;
       if (ni && ni.includes("-S")) {
         const match = ni.match(/-S(\d+)-/);
         if (match) {
-          const num = parseInt(match[1]);
-          if (num > maxPartial) maxPartial = num;
+          partials.push(parseInt(match[1]));
         }
       }
     });
-    return maxPartial;
+    partials.sort((a, b) => a - b);
+    let nextPartial = 1;
+    for (const num of partials) {
+      if (num === nextPartial) {
+        nextPartial++;
+      } else if (num > nextPartial) {
+        break;
+      }
+    }
+    return nextPartial - 1;
   };
 
   const generateInvoiceNumber = async (surat: SuratMuatInfo): Promise<string> => {
