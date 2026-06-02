@@ -2,16 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  collection,
-  getDocs,
-  query,
-  orderBy,
-  doc,
-  deleteDoc,
-  updateDoc,
-  serverTimestamp,
-  getDoc,
-  where,
+  collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp, getDoc, where,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -227,11 +218,7 @@ export default function RiwayatTransaksiPage() {
         if (item.fot && item.fot.trim()) fotSet.add(item.fot.trim().toUpperCase());
       });
       setFotList(Array.from(fotSet).sort());
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
+    } catch (error) { console.error(error); } finally { setIsLoading(false); }
   };
 
   const fetchStockGudang = async () => {
@@ -248,9 +235,7 @@ export default function RiwayatTransaksiPage() {
         barangKeluarKG: doc.data().barangKeluarKG || 0,
       } as StockItem));
       setStockList(data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const fetchProformaInvoice = async () => {
@@ -265,9 +250,7 @@ export default function RiwayatTransaksiPage() {
         statusPengangkutan: doc.data().statusPengangkutan,
       } as ProformaInvoiceItem));
       setPiList(data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const fetchExistingSurat = async () => {
@@ -279,16 +262,11 @@ export default function RiwayatTransaksiPage() {
         nomorSeri: doc.data().nomorSeri || "",
       } as ExistingSurat));
       setExistingSuratList(data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const checkNomorSeriExists = (value: string, excludeNomorSeri?: string) => {
-    if (!value.trim()) {
-      setNomorSeriError("");
-      return false;
-    }
+    if (!value.trim()) { setNomorSeriError(""); return false; }
     if (!validateNomorSeriFormat(value)) {
       setNomorSeriError("Format nomor seri tidak valid. Gunakan format: BAGB-SP/2026/V/0001");
       return true;
@@ -402,11 +380,7 @@ export default function RiwayatTransaksiPage() {
       }
       setIsEditModalOpen(false);
       fetchData();
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
   };
 
   const handleUpdateRegular = async () => {
@@ -442,9 +416,7 @@ export default function RiwayatTransaksiPage() {
 
   const handleUpdateSuratPengangkutan = async () => {
     const newNomorSeri = editSuratForm.nomorSeri.trim();
-    if (checkNomorSeriExists(newNomorSeri, selectedItem!.nomorSeri)) {
-      throw new Error("Nomor seri sudah ada");
-    }
+    if (checkNomorSeriExists(newNomorSeri, selectedItem!.nomorSeri)) { throw new Error("Nomor seri sudah ada"); }
 
     const oldItems = selectedItem!.items || [];
     const newItems = editSuratForm.items.map((it) => ({
@@ -614,9 +586,7 @@ export default function RiwayatTransaksiPage() {
       await deleteDoc(doc(db, collectionName, item.id));
       fetchData();
       fetchExistingSurat();
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const handleExportExcel = () => {
@@ -648,7 +618,6 @@ export default function RiwayatTransaksiPage() {
   const handlePrintSuratPDF = (item: UnifiedTransaksi) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-
     const isGI = item.jenis === "suratPengangkutanGudangInduk";
     const piDisplay = item.nomorPIList && item.nomorPIList.length > 0
       ? item.nomorPIList.join(", ")
@@ -680,9 +649,9 @@ export default function RiwayatTransaksiPage() {
           @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
-          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; }
+          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
           .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; }
+          .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .info-section { margin-bottom: 12px; }
           .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
           .info-label { font-weight: 600; }
@@ -693,18 +662,18 @@ export default function RiwayatTransaksiPage() {
           .salutation { font-size: 10px; margin-bottom: 8px; }
           .salutation p { margin-bottom: 2px; }
           .table-section { margin-bottom: 10px; }
-          .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; }
+          .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .data-table { width: 100%; border-collapse: collapse; }
-          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; }
+          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
           .notes-section { margin-top: 10px; font-size: 9px; }
           .notes-section p { margin-bottom: 2px; }
-          .signature-row { display: flex; justify-content: space-between; margin-top: 20px; }
+          .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; }
           .signature-box { width: 45%; text-align: center; }
           .signature-title { font-size: 9px; margin-bottom: 30px; }
-          .signature-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
+          .signature-img { max-height: 70px; width: auto; object-fit: contain; margin: 0 auto; display: block; }
           .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
-          .footer-img { width: 100%; display: block; margin-top: 10px; }
+          .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
           .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
           .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
           @media print { .print-bar { display: none !important; } }
@@ -724,7 +693,6 @@ export default function RiwayatTransaksiPage() {
             <div class="info-row">
               <span class="info-label">Nomor Seri : ${item.nomorSeri || "-"}</span>
             </div>
-            
           </div>
           <div class="recipient-box">
             <p class="recipient-title">Kepada Yth :</p>
@@ -1009,12 +977,8 @@ export default function RiwayatTransaksiPage() {
         const zak = parseFloat(value) || 0;
         const maxZAK = item.maxZAK || 0;
         if (maxZAK > 0) {
-          if (zak >= maxZAK) {
-            item.pengambilanZAK = String(maxZAK);
-            item.sisa = "0";
-          } else {
-            item.sisa = String(Math.max(0, maxZAK - zak));
-          }
+          if (zak >= maxZAK) { item.pengambilanZAK = String(maxZAK); item.sisa = "0"; }
+          else { item.sisa = String(Math.max(0, maxZAK - zak)); }
         }
       }
       newItems[idx] = item;
@@ -1030,10 +994,7 @@ export default function RiwayatTransaksiPage() {
   };
 
   const removeSuratItem = (idx: number) => {
-    setEditSuratForm((prev) => ({
-      ...prev,
-      items: prev.items.filter((_, i) => i !== idx),
-    }));
+    setEditSuratForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
   };
 
   const handleNomorSeriChangeEdit = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1271,17 +1232,10 @@ export default function RiwayatTransaksiPage() {
               <Input label="Tanggal" type="date" value={editSuratForm.tanggal} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, tanggal: e.target.value }))} required />
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
-                <input
-                  type="text"
-                  value={editSuratForm.nomorSeri}
-                  onChange={handleNomorSeriChangeEdit}
-                  className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all font-mono text-sm ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`}
-                />
+                <input type="text" value={editSuratForm.nomorSeri} onChange={handleNomorSeriChangeEdit} className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all font-mono text-sm ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`} />
                 {nomorSeriError && (
                   <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                     {nomorSeriError}
                   </p>
                 )}
@@ -1298,9 +1252,7 @@ export default function RiwayatTransaksiPage() {
                     <h5 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h5>
                     {editSuratForm.items.length > 1 && (
                       <button type="button" onClick={() => removeSuratItem(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       </button>
                     )}
                   </div>
@@ -1315,9 +1267,7 @@ export default function RiwayatTransaksiPage() {
                 </div>
               ))}
               <Button type="button" variant="outline" size="sm" onClick={addSuratItem}>
-                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                 Tambah Item
               </Button>
             </div>

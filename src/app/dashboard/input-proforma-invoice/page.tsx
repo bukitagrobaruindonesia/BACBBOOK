@@ -23,6 +23,7 @@ interface ProdukItem {
   hargaPerZakDus: string;
   bobotPerUnit: number;
   jumlahIsiBotol: number;
+  includePPN: boolean;
 }
 
 interface TTDData {
@@ -48,7 +49,6 @@ interface FormDataState {
   npwp: string;
   metodePembayaran: string;
   uangMuka: string;
-  includePPN: boolean;
   ppnNominal: number;
   ongkosKirim: string;
   jumlahUangDibayar: string;
@@ -86,7 +86,6 @@ export default function InputProformaInvoicePage() {
     npwp: "",
     metodePembayaran: "Transfer",
     uangMuka: "",
-    includePPN: false,
     ppnNominal: 0,
     ongkosKirim: "",
     jumlahUangDibayar: "",
@@ -99,19 +98,14 @@ export default function InputProformaInvoicePage() {
   });
 
   const [produkItems, setProdukItems] = useState<ProdukItem[]>([
-    { id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1 },
+    { id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false },
   ]);
 
   const produkItemsRef = useRef<ProdukItem[]>(produkItems);
   const formDataRef = useRef<FormDataState>(formData);
 
-  useEffect(() => {
-    produkItemsRef.current = produkItems;
-  }, [produkItems]);
-
-  useEffect(() => {
-    formDataRef.current = formData;
-  }, [formData]);
+  useEffect(() => { produkItemsRef.current = produkItems; }, [produkItems]);
+  useEffect(() => { formDataRef.current = formData; }, [formData]);
 
   useEffect(() => {
     fetchStockGudang();
@@ -144,9 +138,7 @@ export default function InputProformaInvoicePage() {
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as StockGudang));
       setStockList(data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const fetchTTD = async () => {
@@ -155,9 +147,7 @@ export default function InputProformaInvoicePage() {
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as TTDData));
       setTtdList(data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const fetchExistingPI = async () => {
@@ -169,23 +159,16 @@ export default function InputProformaInvoicePage() {
         return (data.nomorPI || "").toString().trim().toUpperCase();
       }).filter((pi) => pi !== "");
       setExistingPIList(nomorPIs);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const fetchCustomers = async () => {
     try {
       const q = query(collection(db, "customers"), orderBy("namaCustomer", "asc"));
       const snapshot = await getDocs(q);
-      const data = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      } as CustomerData));
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as CustomerData));
       setCustomerList(data);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const saveCustomerToHistory = async (nama: string, alamat: string, npwp: string) => {
@@ -200,9 +183,7 @@ export default function InputProformaInvoicePage() {
         try {
           await updateDoc(doc(db, "customers", existing.id), updateData);
           fetchCustomers();
-        } catch (error) {
-          console.error(error);
-        }
+        } catch (error) { console.error(error); }
       }
       return;
     }
@@ -215,9 +196,7 @@ export default function InputProformaInvoicePage() {
         updatedAt: serverTimestamp(),
       });
       fetchCustomers();
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const handleDeleteCustomer = async (id: string) => {
@@ -225,9 +204,7 @@ export default function InputProformaInvoicePage() {
     try {
       await deleteDoc(doc(db, "customers", id));
       fetchCustomers();
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const handleEditCustomer = (customer: CustomerData) => {
@@ -251,9 +228,7 @@ export default function InputProformaInvoicePage() {
       setEditCustomerAddress("");
       setEditCustomerNpwp("");
       fetchCustomers();
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const filteredCustomers = customerList.filter((c) =>
@@ -274,18 +249,10 @@ export default function InputProformaInvoicePage() {
     }));
     setShowCustomerDropdown(false);
     if (errors.namaCustomer) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.namaCustomer;
-        return newErrors;
-      });
+      setErrors((prev) => { const newErrors = { ...prev }; delete newErrors.namaCustomer; return newErrors; });
     }
     if (errors.alamatCustomer) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.alamatCustomer;
-        return newErrors;
-      });
+      setErrors((prev) => { const newErrors = { ...prev }; delete newErrors.alamatCustomer; return newErrors; });
     }
   };
 
@@ -301,7 +268,6 @@ export default function InputProformaInvoicePage() {
     const teens = ["SEPULUH", "SEBELAS", "DUA BELAS", "TIGA BELAS", "EMPAT BELAS", "LIMA BELAS", "ENAM BELAS", "TUJUH BELAS", "DELAPAN BELAS", "SEMBILAN BELAS"];
     const tens = ["", "", "DUA PULUH", "TIGA PULUH", "EMPAT PULUH", "LIMA PULUH", "ENAM PULUH", "TUJUH PULUH", "DELAPAN PULUH", "SEMBILAN PULUH"];
     const thousands = ["", "RIBU", "JUTA", "MILIAR", "TRILIUN"];
-
     const convertThreeDigits = (n: number): string => {
       let result = "";
       const hundreds = Math.floor(n / 100);
@@ -322,7 +288,6 @@ export default function InputProformaInvoicePage() {
       }
       return result.trim();
     };
-
     if (num < 0) return "MINUS " + numberToWords(-num);
     let result = "";
     let i = 0;
@@ -344,28 +309,28 @@ export default function InputProformaInvoicePage() {
   const calculateTotals = useCallback(() => {
     const currentItems = produkItemsRef.current;
     const currentForm = formDataRef.current;
-
     let subtotal = 0;
+    let ppnTotal = 0;
     currentItems.forEach((item) => {
       const qty = parseFloat(item.kuantitas) || 0;
       const price = parseFloat(item.hargaSatuan) || 0;
-      subtotal += qty * price;
+      const baseTotal = qty * price;
+      if (item.includePPN) {
+        const itemPPN = baseTotal * 0.11;
+        ppnTotal += itemPPN;
+        subtotal += baseTotal + itemPPN;
+      } else {
+        subtotal += baseTotal;
+      }
     });
-
     const uangMuka = parseFloat(currentForm.uangMuka) || 0;
     const ongkosKirim = parseFloat(currentForm.ongkosKirim) || 0;
-    const jumlahUangDibayar = parseFloat(currentForm.jumlahUangDibayar) || 0;
-    let ppn = 0;
-    if (currentForm.includePPN) {
-      ppn = subtotal * 0.11;
-    }
-    const jumlahTertagih = subtotal - uangMuka + ppn + ongkosKirim;
+    const jumlahTertagih = subtotal - uangMuka + ongkosKirim;
     const terbilang = numberToWords(Math.round(jumlahTertagih));
-
     setFormData((prev) => ({
       ...prev,
       subtotal,
-      ppnNominal: ppn,
+      ppnNominal: ppnTotal,
       jumlahTertagih,
       terbilang,
     }));
@@ -380,21 +345,13 @@ export default function InputProformaInvoicePage() {
       setFormData((prev) => ({ ...prev, [name]: value }));
     }
     if (errors[name]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
+      setErrors((prev) => { const newErrors = { ...prev }; delete newErrors[name]; return newErrors; });
     }
     if (name === "nomorPI") {
       if (checkDuplicatePI(value)) {
         setErrors((prev) => ({ ...prev, nomorPI: `Nomor PI "${value.trim().toUpperCase()}" sudah terdaftar di database` }));
       } else {
-        setErrors((prev) => {
-          const newErrors = { ...prev };
-          delete newErrors.nomorPI;
-          return newErrors;
-        });
+        setErrors((prev) => { const newErrors = { ...prev }; delete newErrors.nomorPI; return newErrors; });
       }
     }
     setTimeout(() => calculateTotals(), 0);
@@ -405,11 +362,7 @@ export default function InputProformaInvoicePage() {
     setFormData((prev) => ({ ...prev, namaCustomer: value, alamatCustomer: "", npwp: "" }));
     setShowCustomerDropdown(true);
     if (errors.namaCustomer) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.namaCustomer;
-        return newErrors;
-      });
+      setErrors((prev) => { const newErrors = { ...prev }; delete newErrors.namaCustomer; return newErrors; });
     }
   };
 
@@ -418,12 +371,12 @@ export default function InputProformaInvoicePage() {
     return String(price * (item.bobotPerUnit || 1));
   };
 
-  const handleProdukChange = (id: string, field: string, value: string) => {
+  const handleProdukChange = (id: string, field: string, value: string | boolean) => {
     setProdukItems((prev) => {
       return prev.map((item) => {
         if (item.id === id) {
           const newItem = { ...item, [field]: value };
-          if (field === "namaProduk") {
+          if (field === "namaProduk" && typeof value === "string") {
             const stock = stockList.find((s) => s.namaBarang === value);
             if (stock) {
               newItem.fot = stock.fot || "";
@@ -440,10 +393,10 @@ export default function InputProformaInvoicePage() {
               newItem.hargaPerZakDus = calculateHargaPerZakDus(newItem);
             }
           }
-          if (field === "hargaSatuan") {
+          if (field === "hargaSatuan" && typeof value === "string") {
             newItem.hargaPerZakDus = calculateHargaPerZakDus(newItem);
           }
-          if (field === "satuan") {
+          if (field === "satuan" && typeof value === "string") {
             if (newItem.hargaSatuan) {
               newItem.hargaPerZakDus = calculateHargaPerZakDus(newItem);
             }
@@ -460,7 +413,7 @@ export default function InputProformaInvoicePage() {
     const newId = Date.now().toString();
     setProdukItems((prev) => [
       ...prev,
-      { id: newId, namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1 },
+      { id: newId, namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false },
     ]);
   };
 
@@ -474,7 +427,16 @@ export default function InputProformaInvoicePage() {
   const getItemTotal = (item: ProdukItem): number => {
     const qty = parseFloat(item.kuantitas) || 0;
     const price = parseFloat(item.hargaSatuan) || 0;
-    return qty * price;
+    const base = qty * price;
+    if (item.includePPN) return base * 1.11;
+    return base;
+  };
+
+  const getItemPPN = (item: ProdukItem): number => {
+    const qty = parseFloat(item.kuantitas) || 0;
+    const price = parseFloat(item.hargaSatuan) || 0;
+    if (item.includePPN) return qty * price * 0.11;
+    return 0;
   };
 
   const validateForm = () => {
@@ -485,13 +447,11 @@ export default function InputProformaInvoicePage() {
     if (!formData.namaCustomer.trim()) newErrors.namaCustomer = "Nama customer wajib diisi";
     if (!formData.alamatCustomer.trim()) newErrors.alamatCustomer = "Alamat customer wajib diisi";
     if (!formData.selectedTTD) newErrors.selectedTTD = "Tanda tangan wajib dipilih";
-
     produkItems.forEach((item, index) => {
       if (!item.namaProduk) newErrors[`produk_${index}`] = `Produk baris ${index + 1} wajib dipilih`;
       if (!item.kuantitas || parseFloat(item.kuantitas) <= 0) newErrors[`kuantitas_${index}`] = `Kuantitas baris ${index + 1} harus lebih dari 0`;
       if (!item.hargaSatuan || parseFloat(item.hargaSatuan) <= 0) newErrors[`harga_${index}`] = `Harga baris ${index + 1} harus lebih dari 0`;
     });
-
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -499,13 +459,10 @@ export default function InputProformaInvoicePage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) return;
-
     setIsSubmitting(true);
     setSuccessMessage("");
-
     try {
       const selectedTTD = ttdList.find((t) => t.id === formData.selectedTTD);
-
       await addDoc(collection(db, "proformaInvoice"), {
         tanggal: formData.tanggal,
         nomorPI: formData.nomorPI.trim(),
@@ -524,9 +481,11 @@ export default function InputProformaInvoicePage() {
           bobotPerUnit: item.bobotPerUnit,
           jumlahIsiBotol: item.jumlahIsiBotol,
           totalHarga: getItemTotal(item),
+          includePPN: item.includePPN,
+          ppnNominal: getItemPPN(item),
         })),
         uangMuka: parseFloat(formData.uangMuka) || 0,
-        includePPN: formData.includePPN,
+        includePPN: produkItems.some((p) => p.includePPN),
         ppnNominal: formData.ppnNominal,
         ongkosKirim: parseFloat(formData.ongkosKirim) || 0,
         jumlahUangDibayar: parseFloat(formData.jumlahUangDibayar) || 0,
@@ -542,9 +501,7 @@ export default function InputProformaInvoicePage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-
       await saveCustomerToHistory(formData.namaCustomer, formData.alamatCustomer, formData.npwp);
-
       setSuccessMessage("Proforma Invoice berhasil disimpan!");
       setFormData({
         tanggal: new Date().toISOString().split("T")[0],
@@ -554,7 +511,6 @@ export default function InputProformaInvoicePage() {
         npwp: "",
         metodePembayaran: "Transfer",
         uangMuka: "",
-        includePPN: false,
         ppnNominal: 0,
         ongkosKirim: "",
         jumlahUangDibayar: "",
@@ -565,9 +521,7 @@ export default function InputProformaInvoicePage() {
         keterangan: "",
         selectedTTD: "",
       });
-      setProdukItems([
-        { id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1 },
-      ]);
+      setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
       generateTanggalJatuhTempo();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
@@ -580,18 +534,12 @@ export default function InputProformaInvoicePage() {
 
   const stockOptions = [
     { value: "", label: "Pilih produk..." },
-    ...stockList.map((stock) => ({
-      value: stock.namaBarang,
-      label: `${stock.namaBarang} (${stock.kodeBarang})`,
-    })),
+    ...stockList.map((stock) => ({ value: stock.namaBarang, label: `${stock.namaBarang} (${stock.kodeBarang})` })),
   ];
 
   const ttdOptions = [
     { value: "", label: "Pilih tanda tangan..." },
-    ...ttdList.map((ttd) => ({
-      value: ttd.id,
-      label: `${ttd.nama} - ${ttd.jabatan}`,
-    })),
+    ...ttdList.map((ttd) => ({ value: ttd.id, label: `${ttd.nama} - ${ttd.jabatan}` })),
   ];
 
   const satuanOptions = [
@@ -609,7 +557,6 @@ export default function InputProformaInvoicePage() {
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <Header title="Input Proforma Invoice" subtitle="Buat proforma invoice baru untuk customer" />
-
       {successMessage && (
         <div className="p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3 text-green-700">
           <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -618,7 +565,6 @@ export default function InputProformaInvoicePage() {
           <span className="font-medium">{successMessage}</span>
         </div>
       )}
-
       {errors.submit && (
         <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
           <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -627,7 +573,6 @@ export default function InputProformaInvoicePage() {
           <span className="font-medium">{errors.submit}</span>
         </div>
       )}
-
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card title="Informasi Customer">
@@ -644,92 +589,48 @@ export default function InputProformaInvoicePage() {
                   </div>
                 )}
               </div>
-
               <div ref={customerInputRef} className="relative">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Nama Customer <span className="text-red-500">*</span>
-                </label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Nama Customer <span className="text-red-500">*</span></label>
                 <div className="relative">
-                  <input
-                    type="text"
-                    name="namaCustomer"
-                    value={formData.namaCustomer}
-                    onChange={handleCustomerNameChange}
-                    onFocus={() => setShowCustomerDropdown(true)}
-                    placeholder="Ketik nama customer..."
-                    autoComplete="off"
-                    className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white ${errors.namaCustomer ? "border-red-500" : "border-gray-300"}`}
-                  />
+                  <input type="text" name="namaCustomer" value={formData.namaCustomer} onChange={handleCustomerNameChange} onFocus={() => setShowCustomerDropdown(true)} placeholder="Ketik nama customer..." autoComplete="off" className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white ${errors.namaCustomer ? "border-red-500" : "border-gray-300"}`} />
                   {formData.namaCustomer && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setFormData((prev) => ({ ...prev, namaCustomer: "", alamatCustomer: "", npwp: "" }));
-                        setShowCustomerDropdown(false);
-                      }}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
+                    <button type="button" onClick={() => { setFormData((prev) => ({ ...prev, namaCustomer: "", alamatCustomer: "", npwp: "" })); setShowCustomerDropdown(false); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                   )}
                 </div>
                 {errors.namaCustomer && <p className="mt-1 text-sm text-red-600">{errors.namaCustomer}</p>}
-
                 {showCustomerDropdown && customerDropdownOptions.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                     {customerDropdownOptions.map((customer) => (
-                      <button
-                        key={customer.id}
-                        type="button"
-                        onClick={() => handleSelectCustomer(customer)}
-                        className="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors border-b border-gray-100 last:border-b-0"
-                      >
+                      <button key={customer.id} type="button" onClick={() => handleSelectCustomer(customer)} className="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors border-b border-gray-100 last:border-b-0">
                         <p className="text-sm font-medium text-gray-900">{customer.namaCustomer}</p>
                         <p className="text-xs text-gray-500 truncate">{customer.alamatCustomer}</p>
                       </button>
                     ))}
                   </div>
                 )}
-
                 {showCustomerDropdown && formData.namaCustomer && customerDropdownOptions.length === 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4 text-center">
                     <p className="text-sm text-gray-500">Customer baru - alamat akan disimpan setelah submit</p>
                   </div>
                 )}
               </div>
-
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-                  Alamat Customer <span className="text-red-500">*</span>
-                </label>
-                <textarea
-                  name="alamatCustomer"
-                  value={formData.alamatCustomer}
-                  onChange={handleChange}
-                  rows={3}
-                  placeholder="Masukkan alamat lengkap customer"
-                  className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none ${errors.alamatCustomer ? "border-red-500" : "border-gray-300"}`}
-                />
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Alamat Customer <span className="text-red-500">*</span></label>
+                <textarea name="alamatCustomer" value={formData.alamatCustomer} onChange={handleChange} rows={3} placeholder="Masukkan alamat lengkap customer" className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none ${errors.alamatCustomer ? "border-red-500" : "border-gray-300"}`} />
                 {errors.alamatCustomer && <p className="mt-1 text-sm text-red-600">{errors.alamatCustomer}</p>}
               </div>
-
               <Input label="NPWP (Opsional)" type="text" name="npwp" value={formData.npwp} onChange={handleChange} placeholder="Contoh: 123456789012345" />
-
               <div className="flex items-center gap-3">
                 <Button type="button" variant="secondary" size="sm" onClick={() => setIsCustomerModalOpen(true)}>
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                  </svg>
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                   Riwayat Customer
                 </Button>
               </div>
-
               <Select label="Metode Pembayaran" name="metodePembayaran" value={formData.metodePembayaran} onChange={handleChange} options={[{ value: "Transfer", label: "Transfer" }, { value: "Cash", label: "Cash" }]} required />
             </div>
           </Card>
-
           <Card title="Tanda Tangan">
             <div className="space-y-4">
               <Select label="Pilih Tanda Tangan" name="selectedTTD" value={formData.selectedTTD} onChange={handleChange} options={ttdOptions} error={errors.selectedTTD} required />
@@ -751,7 +652,6 @@ export default function InputProformaInvoicePage() {
             </div>
           </Card>
         </div>
-
         <Card title="Daftar Produk">
           <div className="space-y-4">
             <div className="overflow-x-auto">
@@ -766,6 +666,7 @@ export default function InputProformaInvoicePage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-24">Satuan</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Harga Satuan</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Harga Per ZAK/DUS</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase tracking-wider w-24">PPN 11%</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Total Harga</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase tracking-wider w-16">Aksi</th>
                   </tr>
@@ -776,9 +677,7 @@ export default function InputProformaInvoicePage() {
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{index + 1}</td>
                       <td className="px-4 py-3">
                         <select value={item.namaProduk} onChange={(e) => handleProdukChange(item.id, "namaProduk", e.target.value)} className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`produk_${index}`] ? "border-red-500" : "border-gray-300"}`}>
-                          {stockOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
+                          {stockOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                         </select>
                         {errors[`produk_${index}`] && <p className="mt-1 text-xs text-red-600">{errors[`produk_${index}`]}</p>}
                       </td>
@@ -794,26 +693,21 @@ export default function InputProformaInvoicePage() {
                       </td>
                       <td className="px-4 py-3">
                         <select value={item.satuan} onChange={(e) => handleProdukChange(item.id, "satuan", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                          {satuanOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value}>{opt.label}</option>
-                          ))}
+                          {satuanOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                         </select>
                       </td>
                       <td className="px-4 py-3">
                         <input type="text" inputMode="decimal" value={item.hargaSatuan} onChange={(e) => handleProdukChange(item.id, "hargaSatuan", e.target.value)} placeholder="0.00" className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`harga_${index}`] ? "border-red-500" : "border-gray-300"}`} />
                         {errors[`harga_${index}`] && <p className="mt-1 text-xs text-red-600">{errors[`harga_${index}`]}</p>}
                       </td>
-                      <td className="px-4 py-3 text-sm font-mono text-gray-700">
-                        {item.hargaPerZakDus ? formatRupiah(parseFloat(item.hargaPerZakDus)) : "-"}
+                      <td className="px-4 py-3 text-sm font-mono text-gray-700">{item.hargaPerZakDus ? formatRupiah(parseFloat(item.hargaPerZakDus)) : "-"}</td>
+                      <td className="px-4 py-3 text-center">
+                        <input type="checkbox" checked={item.includePPN} onChange={(e) => handleProdukChange(item.id, "includePPN", e.target.checked)} className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer" />
                       </td>
-                      <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">
-                        {formatRupiah(getItemTotal(item))}
-                      </td>
+                      <td className="px-4 py-3 text-sm font-mono font-medium text-gray-900">{formatRupiah(getItemTotal(item))}</td>
                       <td className="px-4 py-3 text-center">
                         <button type="button" onClick={() => removeProdukItem(item.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors" disabled={produkItems.length === 1}>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                       </td>
                     </tr>
@@ -822,14 +716,11 @@ export default function InputProformaInvoicePage() {
               </table>
             </div>
             <Button type="button" variant="secondary" onClick={addProdukItem}>
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
               Tambah Produk
             </Button>
           </div>
         </Card>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card title="Kalkulasi Harga">
             <div className="space-y-4">
@@ -837,13 +728,9 @@ export default function InputProformaInvoicePage() {
                 <span className="text-sm font-medium text-gray-700">Subtotal</span>
                 <span className="text-sm font-mono font-semibold text-gray-900">{formatRupiah(formData.subtotal)}</span>
               </div>
-              <div className="flex items-center gap-3">
-                <input type="checkbox" id="includePPN" name="includePPN" checked={formData.includePPN} onChange={handleChange} className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" />
-                <label htmlFor="includePPN" className="text-sm font-medium text-gray-700">Include PPN 11%</label>
-              </div>
-              {formData.includePPN && (
+              {formData.ppnNominal > 0 && (
                 <div className="flex items-center justify-between p-3 bg-amber-50 rounded-lg border border-amber-100">
-                  <span className="text-sm font-medium text-amber-700">PPN 11%</span>
+                  <span className="text-sm font-medium text-amber-700">Total PPN 11%</span>
                   <span className="text-sm font-mono font-semibold text-amber-700">{formatRupiah(formData.ppnNominal)}</span>
                 </div>
               )}
@@ -883,7 +770,6 @@ export default function InputProformaInvoicePage() {
               </div>
             </div>
           </Card>
-
           <Card title="Informasi Tambahan">
             <div className="space-y-4">
               <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
@@ -901,55 +787,30 @@ export default function InputProformaInvoicePage() {
             </div>
           </Card>
         </div>
-
         <div className="flex items-center justify-end gap-4 pt-4">
           <Button type="button" variant="outline" onClick={() => {
             setFormData({
               tanggal: new Date().toISOString().split("T")[0],
-              nomorPI: "",
-              namaCustomer: "",
-              alamatCustomer: "",
-              npwp: "",
-              metodePembayaran: "Transfer",
-              uangMuka: "",
-              includePPN: false,
-              ppnNominal: 0,
-              ongkosKirim: "",
-              jumlahUangDibayar: "",
-              subtotal: 0,
-              jumlahTertagih: 0,
-              terbilang: "",
-              tanggalJatuhTempo: "",
-              keterangan: "",
-              selectedTTD: "",
+              nomorPI: "", namaCustomer: "", alamatCustomer: "", npwp: "",
+              metodePembayaran: "Transfer", uangMuka: "", ppnNominal: 0,
+              ongkosKirim: "", jumlahUangDibayar: "", subtotal: 0,
+              jumlahTertagih: 0, terbilang: "", tanggalJatuhTempo: "",
+              keterangan: "", selectedTTD: "",
             });
-            setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1 }]);
+            setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
             generateTanggalJatuhTempo();
             setErrors({});
-          }}>
-            Reset Form
-          </Button>
-          <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting} disabled={checkDuplicatePI(formData.nomorPI)}>
-            Simpan Proforma Invoice
-          </Button>
+          }}>Reset Form</Button>
+          <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting} disabled={checkDuplicatePI(formData.nomorPI)}>Simpan Proforma Invoice</Button>
         </div>
       </form>
-
-      <Modal isOpen={isCustomerModalOpen} onClose={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); setCustomerSearch(""); }} title="Riwayat Customer" size="lg" footer={
-        <Button variant="outline" onClick={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); setCustomerSearch(""); }}>Tutup</Button>
-      }>
+      <Modal isOpen={isCustomerModalOpen} onClose={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); setCustomerSearch(""); }} title="Riwayat Customer" size="lg" footer={<Button variant="outline" onClick={() => { setIsCustomerModalOpen(false); setEditingCustomer(null); setCustomerSearch(""); }}>Tutup</Button>}>
         <div className="space-y-4">
           <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input type="text" placeholder="Cari nama atau alamat customer..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
           </div>
-
-          <div className="text-sm text-gray-500">
-            Menampilkan {filteredCustomers.length} dari {customerList.length} customer
-          </div>
-
+          <div className="text-sm text-gray-500">Menampilkan {filteredCustomers.length} dari {customerList.length} customer</div>
           <div className="overflow-x-auto max-h-96 overflow-y-auto">
             <table className="w-full">
               <thead className="sticky top-0 bg-white">
@@ -963,70 +824,26 @@ export default function InputProformaInvoicePage() {
               <tbody className="divide-y divide-gray-100">
                 {filteredCustomers.map((customer) => (
                   <tr key={customer.id} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                      {editingCustomer?.id === customer.id ? (
-                        <input type="text" value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                      ) : (
-                        customer.namaCustomer
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {editingCustomer?.id === customer.id ? (
-                        <input type="text" value={editCustomerAddress} onChange={(e) => setEditCustomerAddress(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                      ) : (
-                        customer.alamatCustomer
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {editingCustomer?.id === customer.id ? (
-                        <input type="text" value={editCustomerNpwp} onChange={(e) => setEditCustomerNpwp(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" />
-                      ) : (
-                        customer.npwp || "-"
-                      )}
-                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900">{editingCustomer?.id === customer.id ? <input type="text" value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /> : customer.namaCustomer}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{editingCustomer?.id === customer.id ? <input type="text" value={editCustomerAddress} onChange={(e) => setEditCustomerAddress(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /> : customer.alamatCustomer}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{editingCustomer?.id === customer.id ? <input type="text" value={editCustomerNpwp} onChange={(e) => setEditCustomerNpwp(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /> : customer.npwp || "-"}</td>
                     <td className="px-4 py-3 text-center">
                       {editingCustomer?.id === customer.id ? (
                         <div className="flex items-center justify-center gap-2">
-                          <button onClick={handleSaveEditCustomer} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Simpan">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                          <button onClick={() => setEditingCustomer(null)} className="p-1.5 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors" title="Batal">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                          </button>
+                          <button onClick={handleSaveEditCustomer} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Simpan"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg></button>
+                          <button onClick={() => setEditingCustomer(null)} className="p-1.5 text-gray-500 hover:bg-gray-50 rounded-lg transition-colors" title="Batal"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
                         </div>
                       ) : (
                         <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => handleSelectCustomer(customer)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Pilih">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                          </button>
-                          <button onClick={() => handleEditCustomer(customer)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button onClick={() => handleDeleteCustomer(customer.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
+                          <button onClick={() => handleSelectCustomer(customer)} className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Pilih"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg></button>
+                          <button onClick={() => handleEditCustomer(customer)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button>
+                          <button onClick={() => handleDeleteCustomer(customer.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                         </div>
                       )}
                     </td>
                   </tr>
                 ))}
-                {filteredCustomers.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">
-                      Belum ada data customer
-                    </td>
-                  </tr>
-                )}
+                {filteredCustomers.length === 0 && (<tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">Belum ada data customer</td></tr>)}
               </tbody>
             </table>
           </div>
