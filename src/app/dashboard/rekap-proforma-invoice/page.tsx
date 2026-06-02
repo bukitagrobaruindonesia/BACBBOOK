@@ -1041,7 +1041,7 @@ export default function RekapProformaInvoicePage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Apakah Anda yakin ingin menghapus data ini? Semua surat pengangkutan, berita acara, dan invoice terkait juga akan dihapus.")) return;
+    if (!confirm("Apakah Anda yakin ingin menghapus data ini? Semua surat pengangkutan, berita acara, invoice, dan riwayat transaksi terkait juga akan dihapus.")) return;
     try {
       const piDoc = data.find((d) => d.id === id);
       if (!piDoc) return;
@@ -1090,6 +1090,10 @@ export default function RekapProformaInvoicePage() {
         await deleteDoc(doc(db, "beritaAcara", baDoc.id));
       }
 
+      await updateDoc(doc(db, "proformaInvoice", id), {
+        invoiceBaseNumber: null,
+        updatedAt: serverTimestamp(),
+      });
       await deleteDoc(doc(db, "proformaInvoice", id));
       fetchData();
       fetchSuratMuat();
