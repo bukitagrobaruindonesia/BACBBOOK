@@ -95,7 +95,7 @@ const getRomanMonth = (month: number) => {
   return romans[month - 1] || "I";
 };
 
-const parseNomorSeri = (nomorSeri: string) => {
+const parseNomorSeriGI = (nomorSeri: string) => {
   const parts = nomorSeri.split("/");
   if (parts.length !== 4) return null;
   const prefix = parts[0];
@@ -104,11 +104,6 @@ const parseNomorSeri = (nomorSeri: string) => {
   const urut = parseInt(parts[3]);
   if (prefix !== "BAGB-SP" || isNaN(year) || isNaN(urut)) return null;
   return { prefix, year, roman, urut };
-};
-
-const validateNomorSeriFormat = (value: string) => {
-  const regex = /^BAGB-SP\/\d{4}\/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\/\d{4}$/;
-  return regex.test(value.trim());
 };
 
 export default function SuratPengangkutanPage() {
@@ -127,11 +122,7 @@ export default function SuratPengangkutanPage() {
   const [subJenisDO, setSubJenisDO] = useState<"mandiri" | "dikuasakan" | "">("");
   const [showJenisModal, setShowJenisModal] = useState(true);
   const [showSubJenisModal, setShowSubJenisModal] = useState(false);
-  const [nomorSeri, setNomorSeri] = useState("");
-  const [nomorSeriError, setNomorSeriError] = useState("");
   const [piLoadInfo, setPiLoadInfo] = useState<PILoadInfo | null>(null);
-  const [nomorDO, setNomorDO] = useState("");
-  const [nomorDOError, setNomorDOError] = useState("");
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -225,8 +216,8 @@ export default function SuratPengangkutanPage() {
     const prefix = `BAGB-SP/${year}/${roman}`;
     const numbers: number[] = [];
     existingSuratList.forEach((s) => {
-      const parsed = parseNomorSeri(s.nomorSeri);
-      if (parsed && parsed.year === year && parsed.roman === roman && parsed.prefix === "BAGB-SP") {
+      const parsed = parseNomorSeriGI(s.nomorSeri);
+      if (parsed && parsed.year === year && parsed.roman === roman) {
         numbers.push(parsed.urut);
       }
     });
@@ -243,16 +234,14 @@ export default function SuratPengangkutanPage() {
   };
 
   const generateNomorSeriDO = () => {
-    if (!nomorDO.trim()) {
-      setNomorSeriError("Nomor DO wajib diisi untuk generate nomor seri");
-      return;
-    }
-    const perusahaan = subJenisDO === "mandiri" ? formData.kepadaPerusahaan : (selectedPIs[0]?.namaCustomer || "");
-    if (!perusahaan.trim()) {
-      setNomorSeriError("Nama perusahaan wajib tersedia untuk generate nomor seri DO");
-      return;
-    }
-    const prefix = `BAGB-DO ${nomorDO.trim()} -SP PT ${perusahaan.trim()} - `;
+    const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
+    const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
+    if (!nomorSubDO) return "";
+    const perusahaan = subJenisDO === "mandiri"
+      ? formData.kepadaPerusahaan.trim()
+      : (selectedPIs[0]?.namaCustomer || "").trim();
+    if (!perusahaan) return "";
+    const prefix = `BAGB-DO ${nomorSubDO} -SP PT ${perusahaan} - `;
     const existing = existingSuratList.filter((s) => s.nomorSeri.startsWith(prefix));
     const numbers = existing.map((s) => {
       const lastPart = s.nomorSeri.slice(prefix.length);
@@ -264,53 +253,16 @@ export default function SuratPengangkutanPage() {
       if (num === nextUrut) nextUrut++;
       else if (num > nextUrut) break;
     }
-    const generated = `${prefix}${String(nextUrut).padStart(4, "0")}`;
-    setNomorSeri(generated);
-    checkNomorSeriExists(generated);
+    return `${prefix}${String(nextUrut).padStart(4, "0")}`;
   };
 
   const generateNomorSeri = () => {
     if (jenisSurat === "gudangInduk") {
-      const generated = getNextNomorSeriGI();
-      setNomorSeri(generated);
-      checkNomorSeriExists(generated);
+      return getNextNomorSeriGI();
     } else if (jenisSurat === "do") {
-      generateNomorSeriDO();
+      return generateNomorSeriDO();
     }
-  };
-
-  const checkNomorSeriExists = (value: string) => {
-    if (!value.trim()) {
-      setNomorSeriError("");
-      return false;
-    }
-    if (jenisSurat === "gudangInduk" && !validateNomorSeriFormat(value)) {
-      setNomorSeriError("Format nomor seri tidak valid. Gunakan format: BAGB-SP/2026/V/0001");
-      return true;
-    }
-    const exists = existingSuratList.some((s) => s.nomorSeri.trim().toUpperCase() === value.trim().toUpperCase());
-    if (exists) {
-      setNomorSeriError("Nomor seri sudah ada dalam database. Silakan gunakan nomor seri lain.");
-      return true;
-    }
-    setNomorSeriError("");
-    return false;
-  };
-
-  const handleNomorSeriChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setNomorSeri(value);
-    checkNomorSeriExists(value);
-  };
-
-  const handleNomorDOChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setNomorDO(value);
-    if (!value.trim()) {
-      setNomorDOError("Nomor DO wajib diisi");
-    } else {
-      setNomorDOError("");
-    }
+    return "";
   };
 
   const fetchProformaInvoice = async () => {
@@ -618,13 +570,6 @@ export default function SuratPengangkutanPage() {
       if (!formData.nomorPolisi.trim()) newErrors.nomorPolisi = "Nomor polisi wajib diisi";
     }
 
-    if (!nomorSeri.trim()) newErrors.nomorSeri = "Nomor seri wajib diisi";
-    if (nomorSeriError) newErrors.nomorSeri = nomorSeriError;
-
-    if (jenisSurat === "do") {
-      if (!nomorDO.trim()) newErrors.nomorDO = "Nomor DO wajib diisi";
-    }
-
     if (isGI || isDikuasakan) {
       if (selectedPIs.length === 0) newErrors.nomorPI = "Minimal 1 Nomor PI wajib dipilih";
     }
@@ -657,6 +602,17 @@ export default function SuratPengangkutanPage() {
       }
     });
 
+    if (jenisSurat === "do") {
+      const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
+      if (!firstItem || !firstItem.nomorSubDO.trim()) {
+        newErrors.nomorSubDO = "Nomor Sub DO wajib diisi untuk generate nomor seri";
+      }
+      const perusahaan = isMandiri ? formData.kepadaPerusahaan.trim() : (selectedPIs[0]?.namaCustomer || "").trim();
+      if (!perusahaan) {
+        newErrors.kepadaPerusahaan = "Nama perusahaan wajib diisi untuk generate nomor seri";
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -670,6 +626,13 @@ export default function SuratPengangkutanPage() {
       const isGI = jenisSurat === "gudangInduk";
       const isMandiri = subJenisDO === "mandiri";
       const isDikuasakan = subJenisDO === "dikuasakan";
+
+      const nomorSeri = generateNomorSeri();
+      if (!nomorSeri && !isGI) {
+        setErrors({ submit: "Gagal generate nomor seri. Pastikan Sub DO dan nama perusahaan terisi." });
+        setIsSubmitting(false);
+        return;
+      }
 
       const totalPengambilanKG = items.reduce((sum, item) => {
         const zak = parseFloat(item.pengambilanZAK) || 0;
@@ -694,7 +657,7 @@ export default function SuratPengangkutanPage() {
           nomorPI: item.nomorPI || null,
         })),
         totalPengambilanKG: totalPengambilanKG,
-        nomorSeri: nomorSeri.trim(),
+        nomorSeri: nomorSeri,
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -773,7 +736,7 @@ export default function SuratPengangkutanPage() {
       const transaksiData: Record<string, unknown> = {
         tanggal: formData.tanggal,
         jenis: isGI ? "suratPengangkutanGudangInduk" : "suratPengangkutanDO",
-        nomorSeri: nomorSeri.trim(),
+        nomorSeri: nomorSeri,
         items: suratData.items,
         totalPengambilanKG: totalPengambilanKG,
         createdBy: user?.nama || "",
@@ -792,9 +755,8 @@ export default function SuratPengangkutanPage() {
       }
 
       await addDoc(collection(db, "transaksiBarangKeluar"), transaksiData);
-      setSuccessMessage("Surat pengangkutan berhasil dibuat!");
+      setSuccessMessage(`Surat pengangkutan berhasil dibuat! Nomor Seri: ${nomorSeri}`);
       resetForm();
-      generateNomorSeri();
       fetchExistingSurat();
       fetchStockGudang();
       setTimeout(() => setSuccessMessage(""), 5000);
@@ -823,15 +785,17 @@ export default function SuratPengangkutanPage() {
     setPiLoadInfo(null);
     setSearchPI("");
     setErrors({});
-    setNomorSeriError("");
-    setNomorDO("");
-    setNomorDOError("");
     if (urlNomorPI) {
       router.replace("/dashboard/surat-pengangkutan");
     }
   };
 
   const handlePrintPDF = () => {
+    const nomorSeri = generateNomorSeri();
+    if (!nomorSeri && jenisSurat === "do") {
+      setErrors({ submit: "Gagal generate nomor seri untuk preview. Pastikan Sub DO dan nama perusahaan terisi." });
+      return;
+    }
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const isGI = jenisSurat === "gudangInduk";
@@ -1007,7 +971,7 @@ export default function SuratPengangkutanPage() {
           </div>
           <div className="grid grid-cols-1 gap-4">
             <button
-              onClick={() => { setJenisSurat("gudangInduk"); setShowJenisModal(false); setShowSubJenisModal(false); generateNomorSeri(); }}
+              onClick={() => { setJenisSurat("gudangInduk"); setShowJenisModal(false); setShowSubJenisModal(false); }}
               className="p-6 border-2 border-green-200 rounded-xl hover:border-green-500 hover:bg-green-50 transition-all text-left group"
             >
               <div className="flex items-center gap-4">
@@ -1167,42 +1131,6 @@ export default function SuratPengangkutanPage() {
               error={errors.namaKabupaten}
               required
             />
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={nomorSeri}
-                  onChange={handleNomorSeriChange}
-                  placeholder="Masukkan nomor seri surat pengangkutan"
-                  className={`flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all font-mono text-sm ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`}
-                />
-                <Button type="button" variant="outline" size="sm" onClick={generateNomorSeri}>
-                  Generate
-                </Button>
-              </div>
-              {nomorSeriError && (
-                <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  {nomorSeriError}
-                </p>
-              )}
-            </div>
-            {jenisSurat === "do" && (
-              <div className="md:col-span-2">
-                <Input
-                  label="Nomor DO"
-                  type="text"
-                  value={nomorDO}
-                  onChange={handleNomorDOChange}
-                  placeholder="Masukkan nomor DO"
-                  error={nomorDOError || errors.nomorDO}
-                  required
-                />
-              </div>
-            )}
           </div>
         </Card>
 
@@ -1420,7 +1348,7 @@ export default function SuratPengangkutanPage() {
         )}
 
         <div className="flex items-center justify-end gap-4 pt-4">
-          <Button type="button" variant="outline" onClick={() => { resetForm(); generateNomorSeri(); }}>
+          <Button type="button" variant="outline" onClick={resetForm}>
             Reset Form
           </Button>
           <Button type="button" variant="secondary" onClick={handlePrintPDF}>
@@ -1429,7 +1357,7 @@ export default function SuratPengangkutanPage() {
             </svg>
             Preview PDF
           </Button>
-          <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting} disabled={!!nomorSeriError || !!nomorDOError}>
+          <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting}>
             Simpan Surat Pengangkutan
           </Button>
         </div>
