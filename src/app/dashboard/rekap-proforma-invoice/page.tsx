@@ -351,9 +351,11 @@ export default function RekapProformaInvoicePage() {
 
   const checkBastExists = async (nomorPI: string) => {
     try {
-      const q = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
-      const snap = await getDocs(q);
-      setBastExists(!snap.empty);
+      const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
+      const snap1 = await getDocs(q1);
+      const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", nomorPI));
+      const snap2 = await getDocs(q2);
+      setBastExists(!snap1.empty || !snap2.empty);
     } catch {
       setBastExists(false);
     }
@@ -366,11 +368,15 @@ export default function RekapProformaInvoicePage() {
         setInvoiceExists(true);
         return;
       }
-      const suratQ = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
-      const suratSnap = await getDocs(suratQ);
+      const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
+      const suratSnap1 = await getDocs(suratQ1);
+      const suratQ2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", nomorPI));
+      const suratSnap2 = await getDocs(suratQ2);
       let hasInvoice = false;
-      suratSnap.forEach((d) => {
-        if (d.data().nomorInvoice) hasInvoice = true;
+      [suratSnap1, suratSnap2].forEach((snap) => {
+        snap.forEach((d) => {
+          if (d.data().nomorInvoice) hasInvoice = true;
+        });
       });
       setInvoiceExists(hasInvoice);
     } catch {
@@ -707,9 +713,14 @@ export default function RekapProformaInvoicePage() {
   const handleResetBast = async (nomorPI: string) => {
     if (!confirm("Reset Berita Acara? Nomor seri akan dikembalikan ke pool.")) return;
     try {
-      const q = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
-      const snap = await getDocs(q);
-      for (const d of snap.docs) {
+      const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
+      const snap1 = await getDocs(q1);
+      for (const d of snap1.docs) {
+        await deleteDoc(doc(db, "beritaAcara", d.id));
+      }
+      const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", nomorPI));
+      const snap2 = await getDocs(q2);
+      for (const d of snap2.docs) {
         await deleteDoc(doc(db, "beritaAcara", d.id));
       }
       setBastExists(false);
@@ -729,9 +740,17 @@ export default function RekapProformaInvoicePage() {
           updatedAt: serverTimestamp(),
         });
       }
-      const suratQ = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
-      const suratSnap = await getDocs(suratQ);
-      for (const d of suratSnap.docs) {
+      const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
+      const suratSnap1 = await getDocs(suratQ1);
+      for (const d of suratSnap1.docs) {
+        await updateDoc(doc(db, "suratPengangkutan", d.id), {
+          nomorInvoice: null,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      const suratQ2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", nomorPI));
+      const suratSnap2 = await getDocs(suratQ2);
+      for (const d of suratSnap2.docs) {
         await updateDoc(doc(db, "suratPengangkutan", d.id), {
           nomorInvoice: null,
           updatedAt: serverTimestamp(),
@@ -1051,14 +1070,21 @@ export default function RekapProformaInvoicePage() {
       }
       const nomorPI = piDoc.nomorPI;
 
-      const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
-      const suratSnapshot = await getDocs(suratQuery);
-      const deletedSuratSeri: string[] = [];
+      const suratDocsMap = new Map<string, any>();
 
-      for (const suratDoc of suratSnapshot.docs) {
+      const suratQuery1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
+      const suratSnap1 = await getDocs(suratQuery1);
+      suratSnap1.docs.forEach((d) => suratDocsMap.set(d.id, d));
+
+      const suratQuery2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", nomorPI));
+      const suratSnap2 = await getDocs(suratQuery2);
+      suratSnap2.docs.forEach((d) => suratDocsMap.set(d.id, d));
+
+      const deletedSuratSeriSet = new Set<string>();
+
+      for (const [, suratDoc] of suratDocsMap) {
         const suratData = suratDoc.data();
         const items = suratData.items || [];
-
         for (const item of items) {
           const stock = getStockForProduct(item.jenisPupuk);
           if (stock) {
@@ -1083,31 +1109,49 @@ export default function RekapProformaInvoicePage() {
             }
           }
         }
-
         if (suratData.nomorSeri) {
-          deletedSuratSeri.push(suratData.nomorSeri);
-        }
-        await deleteDoc(doc(db, "suratPengangkutan", suratDoc.id));
-      }
-
-      for (const seri of deletedSuratSeri) {
-        const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", seri));
-        const transaksiSnapshot = await getDocs(transaksiQuery);
-        for (const transaksiDoc of transaksiSnapshot.docs) {
-          await deleteDoc(doc(db, "transaksiBarangKeluar", transaksiDoc.id));
+          deletedSuratSeriSet.add(suratData.nomorSeri);
         }
       }
 
-      const transaksiByPIQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorPI", "==", nomorPI));
-      const transaksiByPISnapshot = await getDocs(transaksiByPIQuery);
-      for (const transaksiDoc of transaksiByPISnapshot.docs) {
-        await deleteDoc(doc(db, "transaksiBarangKeluar", transaksiDoc.id));
+      for (const [docId] of suratDocsMap) {
+        await deleteDoc(doc(db, "suratPengangkutan", docId));
       }
 
-      const baQuery = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
-      const baSnapshot = await getDocs(baQuery);
-      for (const baDoc of baSnapshot.docs) {
-        await deleteDoc(doc(db, "beritaAcara", baDoc.id));
+      const deletedSuratSeri = Array.from(deletedSuratSeriSet);
+      if (deletedSuratSeri.length > 0) {
+        for (let i = 0; i < deletedSuratSeri.length; i += 10) {
+          const batch = deletedSuratSeri.slice(i, i + 10);
+          const q = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "in", batch));
+          const snap = await getDocs(q);
+          for (const d of snap.docs) {
+            await deleteDoc(doc(db, "transaksiBarangKeluar", d.id));
+          }
+        }
+      }
+
+      const transaksiQuery1 = query(collection(db, "transaksiBarangKeluar"), where("nomorPI", "==", nomorPI));
+      const transaksiSnap1 = await getDocs(transaksiQuery1);
+      for (const d of transaksiSnap1.docs) {
+        await deleteDoc(doc(db, "transaksiBarangKeluar", d.id));
+      }
+
+      const transaksiQuery2 = query(collection(db, "transaksiBarangKeluar"), where("nomorPIList", "array-contains", nomorPI));
+      const transaksiSnap2 = await getDocs(transaksiQuery2);
+      for (const d of transaksiSnap2.docs) {
+        await deleteDoc(doc(db, "transaksiBarangKeluar", d.id));
+      }
+
+      const baQuery1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
+      const baSnap1 = await getDocs(baQuery1);
+      for (const d of baSnap1.docs) {
+        await deleteDoc(doc(db, "beritaAcara", d.id));
+      }
+
+      const baQuery2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", nomorPI));
+      const baSnap2 = await getDocs(baQuery2);
+      for (const d of baSnap2.docs) {
+        await deleteDoc(doc(db, "beritaAcara", d.id));
       }
 
       await deleteDoc(doc(db, "proformaInvoice", id));
