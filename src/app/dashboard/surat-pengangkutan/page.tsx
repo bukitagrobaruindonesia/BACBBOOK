@@ -657,6 +657,31 @@ export default function SuratPengangkutanPage() {
       }
     }
 
+    items.forEach((item, idx) => {
+      if (!item.jenisPupuk.trim()) return;
+      let fot = "";
+      for (const pi of selectedPIs) {
+        const prod = pi.produkItems.find((p) =>
+          p.namaProduk.toUpperCase().includes(item.jenisPupuk.toUpperCase()) ||
+          item.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
+        );
+        if (prod) {
+          fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+          break;
+        }
+      }
+      if (!fot) {
+        fot = (getStockFotForProduct(item.jenisPupuk) || "").trim();
+      }
+      const giFOT = isGudangIndukFOT(fot);
+      if (jenisSurat === "gudangInduk" && !giFOT) {
+        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT selain Gudang Induk, tidak dapat diproses di Surat Gudang Induk`;
+      }
+      if (jenisSurat === "do" && giFOT) {
+        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT Gudang Induk, tidak dapat diproses di Surat DO`;
+      }
+    });
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
