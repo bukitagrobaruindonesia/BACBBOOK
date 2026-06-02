@@ -1429,7 +1429,7 @@ export default function RekapProformaInvoicePage() {
           .summary-label { text-align: left; font-weight: 600; }
           .summary-value { text-align: right; font-family: monospace; }
           .total-row { font-weight: 700; font-size: 10px; }
-          .terbilang-box { border: 1px dashed #000; border-top: none; padding: 4px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+          .terbilang-box { border: 1px dashed #000; padding: 4px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
           .terbilang-label { font-size: 8px; font-weight: 600; margin-bottom: 1px; }
           .bottom-section { display: flex; justify-content: space-between; margin-top: 8px; }
           .left-boxes { width: 48%; }
