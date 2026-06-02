@@ -102,12 +102,12 @@ const parseNomorSeri = (nomorSeri: string) => {
   const year = parseInt(parts[1]);
   const roman = parts[2];
   const urut = parseInt(parts[3]);
-  if ((prefix !== "BAGB-SP" && prefix !== "BAGB-SP-DO") || isNaN(year) || isNaN(urut)) return null;
+  if (prefix !== "BAGB-SP" || isNaN(year) || isNaN(urut)) return null;
   return { prefix, year, roman, urut };
 };
 
 const validateNomorSeriFormat = (value: string) => {
-  const regex = /^(BAGB-SP|BAGB-SP-DO)\/\d{4}\/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\/\d{4}$/;
+  const regex = /^BAGB-SP\/\d{4}\/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\/\d{4}$/;
   return regex.test(value.trim());
 };
 
@@ -130,6 +130,8 @@ export default function SuratPengangkutanPage() {
   const [nomorSeri, setNomorSeri] = useState("");
   const [nomorSeriError, setNomorSeriError] = useState("");
   const [piLoadInfo, setPiLoadInfo] = useState<PILoadInfo | null>(null);
+  const [nomorDO, setNomorDO] = useState("");
+  const [nomorDOError, setNomorDOError] = useState("");
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -162,7 +164,7 @@ export default function SuratPengangkutanPage() {
       calculatePILoadInfo();
     } else {
       setPiLoadInfo(null);
-      if (jenisSurat === "gudangInduk" || subJenisDO === "mandiri") {
+      if (jenisSurat === "gudangInduk" || subJenisDO === "mandiri" || subJenisDO === "dikuasakan") {
         setItems([]);
       }
     }
@@ -216,16 +218,15 @@ export default function SuratPengangkutanPage() {
     }
   };
 
-  const getNextNomorSeri = () => {
+  const getNextNomorSeriGI = () => {
     const now = new Date();
     const year = now.getFullYear();
     const roman = getRomanMonth(now.getMonth() + 1);
-    const prefixBase = subJenisDO === "mandiri" ? "BAGB-SP-DO" : "BAGB-SP";
-    const prefix = `${prefixBase}/${year}/${roman}`;
+    const prefix = `BAGB-SP/${year}/${roman}`;
     const numbers: number[] = [];
     existingSuratList.forEach((s) => {
       const parsed = parseNomorSeri(s.nomorSeri);
-      if (parsed && parsed.year === year && parsed.roman === roman && parsed.prefix === prefixBase) {
+      if (parsed && parsed.year === year && parsed.roman === roman && parsed.prefix === "BAGB-SP") {
         numbers.push(parsed.urut);
       }
     });
@@ -241,13 +242,50 @@ export default function SuratPengangkutanPage() {
     return `${prefix}/${String(nextUrut).padStart(4, "0")}`;
   };
 
+  const generateNomorSeriDO = () => {
+    if (!nomorDO.trim()) {
+      setNomorSeriError("Nomor DO wajib diisi untuk generate nomor seri");
+      return;
+    }
+    const perusahaan = subJenisDO === "mandiri" ? formData.kepadaPerusahaan : (selectedPIs[0]?.namaCustomer || "");
+    if (!perusahaan.trim()) {
+      setNomorSeriError("Nama perusahaan wajib tersedia untuk generate nomor seri DO");
+      return;
+    }
+    const prefix = `BAGB-DO ${nomorDO.trim()} -SP PT ${perusahaan.trim()} - `;
+    const existing = existingSuratList.filter((s) => s.nomorSeri.startsWith(prefix));
+    const numbers = existing.map((s) => {
+      const lastPart = s.nomorSeri.slice(prefix.length);
+      return parseInt(lastPart) || 0;
+    });
+    numbers.sort((a, b) => a - b);
+    let nextUrut = 1;
+    for (const num of numbers) {
+      if (num === nextUrut) nextUrut++;
+      else if (num > nextUrut) break;
+    }
+    const generated = `${prefix}${String(nextUrut).padStart(4, "0")}`;
+    setNomorSeri(generated);
+    checkNomorSeriExists(generated);
+  };
+
+  const generateNomorSeri = () => {
+    if (jenisSurat === "gudangInduk") {
+      const generated = getNextNomorSeriGI();
+      setNomorSeri(generated);
+      checkNomorSeriExists(generated);
+    } else if (jenisSurat === "do") {
+      generateNomorSeriDO();
+    }
+  };
+
   const checkNomorSeriExists = (value: string) => {
     if (!value.trim()) {
       setNomorSeriError("");
       return false;
     }
-    if (!validateNomorSeriFormat(value)) {
-      setNomorSeriError("Format nomor seri tidak valid. Gunakan format: BAGB-SP/2026/V/0001 atau BAGB-SP-DO/2026/V/0001");
+    if (jenisSurat === "gudangInduk" && !validateNomorSeriFormat(value)) {
+      setNomorSeriError("Format nomor seri tidak valid. Gunakan format: BAGB-SP/2026/V/0001");
       return true;
     }
     const exists = existingSuratList.some((s) => s.nomorSeri.trim().toUpperCase() === value.trim().toUpperCase());
@@ -265,10 +303,14 @@ export default function SuratPengangkutanPage() {
     checkNomorSeriExists(value);
   };
 
-  const generateNomorSeri = () => {
-    const generated = getNextNomorSeri();
-    setNomorSeri(generated);
-    checkNomorSeriExists(generated);
+  const handleNomorDOChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNomorDO(value);
+    if (!value.trim()) {
+      setNomorDOError("Nomor DO wajib diisi");
+    } else {
+      setNomorDOError("");
+    }
   };
 
   const fetchProformaInvoice = async () => {
@@ -343,7 +385,6 @@ export default function SuratPengangkutanPage() {
       const allNomorPIs = selectedPIs.map((p) => p.nomorPI);
       const q = query(
         collection(db, "suratPengangkutan"),
-        where("jenisSurat", "==", "gudangInduk"),
         where("nomorPI", "in", allNomorPIs)
       );
       const snapshot = await getDocs(q);
@@ -492,7 +533,7 @@ export default function SuratPengangkutanPage() {
       const searchLower = searchPI.toLowerCase();
       const matchSearch = pi.nomorPI.toLowerCase().includes(searchLower) || pi.namaCustomer.toLowerCase().includes(searchLower);
       if (!matchSearch) return false;
-      if (jenisSurat === "gudangInduk" || subJenisDO === "mandiri") {
+      if (jenisSurat === "gudangInduk" || subJenisDO === "mandiri" || subJenisDO === "dikuasakan") {
         const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
         let totalLoaded = 0;
         if (piLoadInfo && piLoadInfo.nomorPIs.includes(pi.nomorPI)) {
@@ -568,21 +609,27 @@ export default function SuratPengangkutanPage() {
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
     if (!formData.namaKabupaten.trim()) newErrors.namaKabupaten = "Nama kabupaten wajib diisi";
 
-    const isFullForm = jenisSurat === "gudangInduk" || subJenisDO === "mandiri";
+    const isGI = jenisSurat === "gudangInduk";
+    const isMandiri = subJenisDO === "mandiri";
     const isDikuasakan = subJenisDO === "dikuasakan";
 
-    if (isFullForm) {
+    if (isGI || isMandiri) {
       if (!formData.driverUnit.trim()) newErrors.driverUnit = "Driver unit wajib diisi";
       if (!formData.nomorPolisi.trim()) newErrors.nomorPolisi = "Nomor polisi wajib diisi";
-      if (!nomorSeri.trim()) newErrors.nomorSeri = "Nomor seri wajib diisi";
-      if (nomorSeriError) newErrors.nomorSeri = nomorSeriError;
     }
 
-    if (jenisSurat === "gudangInduk" || isDikuasakan) {
+    if (!nomorSeri.trim()) newErrors.nomorSeri = "Nomor seri wajib diisi";
+    if (nomorSeriError) newErrors.nomorSeri = nomorSeriError;
+
+    if (jenisSurat === "do") {
+      if (!nomorDO.trim()) newErrors.nomorDO = "Nomor DO wajib diisi";
+    }
+
+    if (isGI || isDikuasakan) {
       if (selectedPIs.length === 0) newErrors.nomorPI = "Minimal 1 Nomor PI wajib dipilih";
     }
 
-    if (subJenisDO === "mandiri") {
+    if (isMandiri) {
       if (!formData.kepadaNama.trim()) newErrors.kepadaNama = "Nama penerima wajib diisi";
       if (!formData.kepadaPerusahaan.trim()) newErrors.kepadaPerusahaan = "Nama perusahaan wajib diisi";
       if (!formData.kepadaAlamat.trim()) newErrors.kepadaAlamat = "Alamat wajib diisi";
@@ -594,7 +641,7 @@ export default function SuratPengangkutanPage() {
 
     items.forEach((item, idx) => {
       if (!item.jenisPupuk.trim()) newErrors[`jenisPupuk_${idx}`] = "Jenis pupuk wajib diisi";
-      if (subJenisDO === "mandiri") {
+      if (isMandiri) {
         if (!item.nomorSubDO.trim()) newErrors[`nomorSubDO_${idx}`] = "Nomor Sub DO wajib diisi";
         if (!item.nomorPO.trim()) newErrors[`nomorPO_${idx}`] = "Nomor PO wajib diisi";
         if (!item.party.trim()) newErrors[`party_${idx}`] = "Party wajib diisi";
@@ -620,7 +667,8 @@ export default function SuratPengangkutanPage() {
     setIsSubmitting(true);
     setSuccessMessage("");
     try {
-      const isFullForm = jenisSurat === "gudangInduk" || subJenisDO === "mandiri";
+      const isGI = jenisSurat === "gudangInduk";
+      const isMandiri = subJenisDO === "mandiri";
       const isDikuasakan = subJenisDO === "dikuasakan";
 
       const totalPengambilanKG = items.reduce((sum, item) => {
@@ -646,19 +694,33 @@ export default function SuratPengangkutanPage() {
           nomorPI: item.nomorPI || null,
         })),
         totalPengambilanKG: totalPengambilanKG,
+        nomorSeri: nomorSeri.trim(),
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
-      if (isFullForm) {
-        suratData.nomorSeri = nomorSeri.trim();
+      if (isGI || isMandiri) {
         suratData.nomorPolisi = formData.nomorPolisi.trim();
         suratData.driverUnit = formData.driverUnit.trim();
         suratData.nomorSIM = formData.nomorSIM.trim() || null;
       }
 
-      if (jenisSurat === "gudangInduk" && selectedPIs.length > 0) {
+      if (isMandiri) {
+        suratData.kepadaNama = formData.kepadaNama.trim();
+        suratData.kepadaPerusahaan = formData.kepadaPerusahaan.trim();
+        suratData.kepadaAlamat = formData.kepadaAlamat.trim();
+      }
+
+      if (isDikuasakan && selectedPIs.length > 0) {
+        suratData.nomorPI = selectedPIs.map((p) => p.nomorPI);
+        suratData.namaCustomer = selectedPIs.map((p) => p.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
+        suratData.kepadaNama = selectedPIs[0].namaCustomer || "";
+        suratData.kepadaPerusahaan = selectedPIs[0].namaCustomer || "";
+        suratData.kepadaAlamat = selectedPIs[0].alamatCustomer || "";
+      }
+
+      if (selectedPIs.length > 0) {
         suratData.nomorPI = selectedPIs.map((p) => p.nomorPI);
         suratData.namaCustomer = selectedPIs.map((p) => p.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
         for (const pi of selectedPIs) {
@@ -681,56 +743,44 @@ export default function SuratPengangkutanPage() {
             updatedAt: serverTimestamp(),
           });
         }
-        for (const item of items) {
-          const stockMatch = getStockForProduct(item.jenisPupuk);
-          if (stockMatch) {
-            const stockRef = doc(db, "stockGudang", stockMatch.id);
-            const stockSnap = await getDoc(stockRef);
-            if (stockSnap.exists()) {
-              const currentData = stockSnap.data();
-              const currentStokUnit = currentData.stokAkhirUnit || 0;
-              const currentStokKG = currentData.stokAkhirKG || 0;
-              const minusUnit = parseFloat(item.pengambilanZAK) || 0;
-              const minusKG = minusUnit * item.bobotPerUnit;
-              await updateDoc(stockRef, {
-                barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
-                barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
-                stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
-                stokAkhirKG: Math.max(0, currentStokKG - minusKG),
-                updatedAt: serverTimestamp(),
-              });
+        if (isGI) {
+          for (const item of items) {
+            const stockMatch = getStockForProduct(item.jenisPupuk);
+            if (stockMatch) {
+              const stockRef = doc(db, "stockGudang", stockMatch.id);
+              const stockSnap = await getDoc(stockRef);
+              if (stockSnap.exists()) {
+                const currentData = stockSnap.data();
+                const currentStokUnit = currentData.stokAkhirUnit || 0;
+                const currentStokKG = currentData.stokAkhirKG || 0;
+                const minusUnit = parseFloat(item.pengambilanZAK) || 0;
+                const minusKG = minusUnit * item.bobotPerUnit;
+                await updateDoc(stockRef, {
+                  barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
+                  barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
+                  stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
+                  stokAkhirKG: Math.max(0, currentStokKG - minusKG),
+                  updatedAt: serverTimestamp(),
+                });
+              }
             }
           }
         }
-      }
-
-      if (subJenisDO === "mandiri") {
-        suratData.kepadaNama = formData.kepadaNama.trim();
-        suratData.kepadaPerusahaan = formData.kepadaPerusahaan.trim();
-        suratData.kepadaAlamat = formData.kepadaAlamat.trim();
-      }
-
-      if (isDikuasakan && selectedPIs.length > 0) {
-        suratData.nomorPI = selectedPIs.map((p) => p.nomorPI);
-        suratData.namaCustomer = selectedPIs.map((p) => p.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
-        suratData.kepadaNama = selectedPIs[0].namaCustomer || "";
-        suratData.kepadaPerusahaan = selectedPIs[0].namaCustomer || "";
-        suratData.kepadaAlamat = selectedPIs[0].alamatCustomer || "";
       }
 
       await addDoc(collection(db, "suratPengangkutan"), suratData);
 
       const transaksiData: Record<string, unknown> = {
         tanggal: formData.tanggal,
-        jenis: jenisSurat === "gudangInduk" ? "suratPengangkutanGudangInduk" : "suratPengangkutanDO",
+        jenis: isGI ? "suratPengangkutanGudangInduk" : "suratPengangkutanDO",
+        nomorSeri: nomorSeri.trim(),
         items: suratData.items,
         totalPengambilanKG: totalPengambilanKG,
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
       };
 
-      if (isFullForm) {
-        transaksiData.nomorSeri = nomorSeri.trim();
+      if (isGI || isMandiri) {
         transaksiData.nomorPolisi = formData.nomorPolisi;
         transaksiData.driverUnit = formData.driverUnit;
         transaksiData.nomorSIM = formData.nomorSIM || null;
@@ -744,7 +794,7 @@ export default function SuratPengangkutanPage() {
       await addDoc(collection(db, "transaksiBarangKeluar"), transaksiData);
       setSuccessMessage("Surat pengangkutan berhasil dibuat!");
       resetForm();
-      if (isFullForm) generateNomorSeri();
+      generateNomorSeri();
       fetchExistingSurat();
       fetchStockGudang();
       setTimeout(() => setSuccessMessage(""), 5000);
@@ -774,6 +824,8 @@ export default function SuratPengangkutanPage() {
     setSearchPI("");
     setErrors({});
     setNomorSeriError("");
+    setNomorDO("");
+    setNomorDOError("");
     if (urlNomorPI) {
       router.replace("/dashboard/surat-pengangkutan");
     }
@@ -892,6 +944,7 @@ export default function SuratPengangkutanPage() {
               </tbody>
             </table>
           </div>
+          ${isGI || subJenisDO === "mandiri" ? `
           <div class="table-section">
             <div class="table-title">DATA UNIT ANGKUTAN</div>
             <table class="data-table">
@@ -911,6 +964,7 @@ export default function SuratPengangkutanPage() {
               </tbody>
             </table>
           </div>
+          ` : ""}
           <div class="notes-section">
             <p style="font-weight: 700;">Notes :</p>
             <p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
@@ -926,7 +980,7 @@ export default function SuratPengangkutanPage() {
             <div class="signature-box">
               <p class="signature-title">Diangkut oleh,<br>Driver</p>
               <div style="height: 50px;"></div>
-              <p class="signature-name">${formData.driverUnit}</p>
+              <p class="signature-name">${formData.driverUnit || ""}</p>
             </div>
           </div>
           <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
@@ -1005,7 +1059,7 @@ export default function SuratPengangkutanPage() {
           </div>
           <div className="grid grid-cols-1 gap-4">
             <button
-              onClick={() => { setSubJenisDO("mandiri"); setShowSubJenisModal(false); generateNomorSeri(); }}
+              onClick={() => { setSubJenisDO("mandiri"); setShowSubJenisModal(false); }}
               className="p-6 border-2 border-indigo-200 rounded-xl hover:border-indigo-500 hover:bg-indigo-50 transition-all text-left group"
             >
               <div className="flex items-center gap-4">
@@ -1032,7 +1086,7 @@ export default function SuratPengangkutanPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-900 text-lg">DO Dikuasakan</h3>
-                  <p className="text-sm text-gray-500">Tanpa nomor seri dan data unit angkutan. Dasar pengangkutan otomatis dari PI. Penerima otomatis dari data PI.</p>
+                  <p className="text-sm text-gray-500">Dasar pengangkutan otomatis dari PI. Penerima otomatis dari data PI.</p>
                 </div>
               </div>
             </button>
@@ -1048,9 +1102,11 @@ export default function SuratPengangkutanPage() {
     );
   }
 
-  const isFullForm = jenisSurat === "gudangInduk" || subJenisDO === "mandiri";
+  const isGI = jenisSurat === "gudangInduk";
+  const isMandiri = subJenisDO === "mandiri";
   const isDikuasakan = subJenisDO === "dikuasakan";
-  const pageTitle = jenisSurat === "gudangInduk" ? "Gudang Induk" : subJenisDO === "mandiri" ? "DO Mandiri" : "DO Dikuasakan";
+  const showUnitAngkutan = isGI || isMandiri;
+  const pageTitle = isGI ? "Gudang Induk" : isMandiri ? "DO Mandiri" : "DO Dikuasakan";
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -1111,29 +1167,40 @@ export default function SuratPengangkutanPage() {
               error={errors.namaKabupaten}
               required
             />
-            {isFullForm && (
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={nomorSeri}
+                  onChange={handleNomorSeriChange}
+                  placeholder="Masukkan nomor seri surat pengangkutan"
+                  className={`flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all font-mono text-sm ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`}
+                />
+                <Button type="button" variant="outline" size="sm" onClick={generateNomorSeri}>
+                  Generate
+                </Button>
+              </div>
+              {nomorSeriError && (
+                <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {nomorSeriError}
+                </p>
+              )}
+            </div>
+            {jenisSurat === "do" && (
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={nomorSeri}
-                    onChange={handleNomorSeriChange}
-                    placeholder="Masukkan nomor seri surat pengangkutan"
-                    className={`flex-1 px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all font-mono text-sm ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`}
-                  />
-                  <Button type="button" variant="outline" size="sm" onClick={generateNomorSeri}>
-                    Generate
-                  </Button>
-                </div>
-                {nomorSeriError && (
-                  <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    {nomorSeriError}
-                  </p>
-                )}
+                <Input
+                  label="Nomor DO"
+                  type="text"
+                  value={nomorDO}
+                  onChange={handleNomorDOChange}
+                  placeholder="Masukkan nomor DO"
+                  error={nomorDOError || errors.nomorDO}
+                  required
+                />
               </div>
             )}
           </div>
@@ -1180,9 +1247,7 @@ export default function SuratPengangkutanPage() {
                         >
                           <p className="font-semibold text-gray-800">{pi.nomorPI}</p>
                           <p className="text-sm text-gray-500">{pi.namaCustomer} | {pi.tanggal}</p>
-                          {isFullForm && (
-                            <p className="text-xs text-green-600 mt-1">Total: {totalOrdered.toLocaleString()} KG | Sisa: {sisa.toLocaleString()} KG</p>
-                          )}
+                          <p className="text-xs text-green-600 mt-1">Total: {totalOrdered.toLocaleString()} KG | Sisa: {sisa.toLocaleString()} KG</p>
                         </button>
                       );
                     })
@@ -1231,7 +1296,7 @@ export default function SuratPengangkutanPage() {
               </div>
             )}
 
-            {isFullForm && piLoadInfo && (
+            {isGI && piLoadInfo && (
               <div className="grid grid-cols-3 gap-4">
                 <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
                   <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total Dipesan</p>
@@ -1248,7 +1313,7 @@ export default function SuratPengangkutanPage() {
               </div>
             )}
 
-            {isFullForm && piLoadInfo && piLoadInfo.produkList.length > 0 && (
+            {isGI && piLoadInfo && piLoadInfo.produkList.length > 0 && (
               <div className="mt-4">
                 <h4 className="text-sm font-semibold text-gray-700 mb-2">Detail Per Produk</h4>
                 <div className="space-y-2">
@@ -1275,7 +1340,7 @@ export default function SuratPengangkutanPage() {
           </div>
         </Card>
 
-        {subJenisDO === "mandiri" && (
+        {isMandiri && (
           <Card title="Informasi Penerima">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <Input label="Kepada Yth (Nama)" type="text" name="kepadaNama" value={formData.kepadaNama} onChange={handleChange} placeholder="Contoh: Bapak Kepala Gudang" error={errors.kepadaNama} required />
@@ -1303,15 +1368,15 @@ export default function SuratPengangkutanPage() {
                   )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {jenisSurat !== "gudangInduk" && (
+                  {!isGI && (
                     <>
-                      <Input label="Nomor SUB DO" type="text" value={item.nomorSubDO} onChange={(e) => handleItemChange(item.id, "nomorSubDO", e.target.value)} placeholder={subJenisDO === "mandiri" ? "Wajib" : "Opsional"} error={errors[`nomorSubDO_${idx}`]} required={subJenisDO === "mandiri"} />
-                      <Input label="Nomor PO" type="text" value={item.nomorPO} onChange={(e) => handleItemChange(item.id, "nomorPO", e.target.value)} placeholder={subJenisDO === "mandiri" ? "Wajib" : "Opsional"} error={errors[`nomorPO_${idx}`]} required={subJenisDO === "mandiri"} />
+                      <Input label="Nomor SUB DO" type="text" value={item.nomorSubDO} onChange={(e) => handleItemChange(item.id, "nomorSubDO", e.target.value)} placeholder={isMandiri ? "Wajib" : "Opsional"} error={errors[`nomorSubDO_${idx}`]} required={isMandiri} />
+                      <Input label="Nomor PO" type="text" value={item.nomorPO} onChange={(e) => handleItemChange(item.id, "nomorPO", e.target.value)} placeholder={isMandiri ? "Wajib" : "Opsional"} error={errors[`nomorPO_${idx}`]} required={isMandiri} />
                     </>
                   )}
                   <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Otomatis dari PI" error={errors[`jenisPupuk_${idx}`]} required />
-                  {jenisSurat !== "gudangInduk" && (
-                    <Input label="Party" type="text" value={item.party} onChange={(e) => handleItemChange(item.id, "party", e.target.value)} placeholder={subJenisDO === "mandiri" ? "Wajib" : "Opsional"} error={errors[`party_${idx}`]} required={subJenisDO === "mandiri"} />
+                  {!isGI && (
+                    <Input label="Party" type="text" value={item.party} onChange={(e) => handleItemChange(item.id, "party", e.target.value)} placeholder={isMandiri ? "Wajib" : "Opsional"} error={errors[`party_${idx}`]} required={isMandiri} />
                   )}
                   <div>
                     <Input label={`Pengambilan (ZAK)${item.maxZAK > 0 ? ` - Max: ${item.maxZAK}` : ""}`} type="number" value={item.pengambilanZAK} onChange={(e) => handleItemChange(item.id, "pengambilanZAK", e.target.value)} placeholder={item.maxZAK > 0 ? `Max ${item.maxZAK} ZAK` : "Contoh: 100"} />
@@ -1344,7 +1409,7 @@ export default function SuratPengangkutanPage() {
           </div>
         </Card>
 
-        {isFullForm && (
+        {showUnitAngkutan && (
           <Card title="Data Unit Angkutan">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input label="Nomor Polisi Kendaraan" type="text" name="nomorPolisi" value={formData.nomorPolisi} onChange={handleChange} placeholder="Contoh: S 9701 JH" error={errors.nomorPolisi} required />
@@ -1355,18 +1420,16 @@ export default function SuratPengangkutanPage() {
         )}
 
         <div className="flex items-center justify-end gap-4 pt-4">
-          <Button type="button" variant="outline" onClick={() => { resetForm(); if (isFullForm) generateNomorSeri(); }}>
+          <Button type="button" variant="outline" onClick={() => { resetForm(); generateNomorSeri(); }}>
             Reset Form
           </Button>
-          {isFullForm && (
-            <Button type="button" variant="secondary" onClick={handlePrintPDF}>
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-              </svg>
-              Preview PDF
-            </Button>
-          )}
-          <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting} disabled={isFullForm && !!nomorSeriError}>
+          <Button type="button" variant="secondary" onClick={handlePrintPDF}>
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Preview PDF
+          </Button>
+          <Button type="submit" variant="primary" size="lg" isLoading={isSubmitting} disabled={!!nomorSeriError || !!nomorDOError}>
             Simpan Surat Pengangkutan
           </Button>
         </div>

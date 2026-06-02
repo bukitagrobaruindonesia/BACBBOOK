@@ -870,40 +870,43 @@ export default function RekapProformaInvoicePage() {
           });
         }
       }
-      const productMapOld: Record<string, number> = {};
-      const productMapNew: Record<string, number> = {};
-      oldItems.forEach((it) => {
-        const key = it.jenisPupuk;
-        productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
-      });
-      newItems.forEach((it) => {
-        const key = it.jenisPupuk;
-        productMapNew[key] = (productMapNew[key] || 0) + (it.totalKG || 0);
-      });
-      const allProducts = new Set([...Object.keys(productMapOld), ...Object.keys(productMapNew)]);
-      for (const prod of allProducts) {
-        const oldKG = productMapOld[prod] || 0;
-        const newKG = productMapNew[prod] || 0;
-        const deltaKG = oldKG - newKG;
-        const stock = getStockForProduct(prod);
-        if (stock && deltaKG !== 0) {
-          const stockRef = doc(db, "stockGudang", stock.id);
-          const stockSnap = await getDoc(stockRef);
-          if (stockSnap.exists()) {
-            const sData = stockSnap.data();
-            const currentUnit = sData.stokAkhirUnit || 0;
-            const currentKG = sData.stokAkhirKG || 0;
-            const currentKeluarUnit = sData.barangKeluarUnit || 0;
-            const currentKeluarKG = sData.barangKeluarKG || 0;
-            const bobot = stock.bobotPerUnit || 50;
-            const deltaUnit = deltaKG / bobot;
-            await updateDoc(stockRef, {
-              stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
-              stokAkhirKG: Math.max(0, currentKG + deltaKG),
-              barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
-              barangKeluarKG: Math.max(0, currentKeluarKG - deltaKG),
-              updatedAt: serverTimestamp(),
-            });
+      const isGI = !selectedSurat.jenisSurat || selectedSurat.jenisSurat === "gudangInduk";
+      if (isGI) {
+        const productMapOld: Record<string, number> = {};
+        const productMapNew: Record<string, number> = {};
+        oldItems.forEach((it) => {
+          const key = it.jenisPupuk;
+          productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+        });
+        newItems.forEach((it) => {
+          const key = it.jenisPupuk;
+          productMapNew[key] = (productMapNew[key] || 0) + (it.totalKG || 0);
+        });
+        const allProducts = new Set([...Object.keys(productMapOld), ...Object.keys(productMapNew)]);
+        for (const prod of allProducts) {
+          const oldKG = productMapOld[prod] || 0;
+          const newKG = productMapNew[prod] || 0;
+          const deltaKG = oldKG - newKG;
+          const stock = getStockForProduct(prod);
+          if (stock && deltaKG !== 0) {
+            const stockRef = doc(db, "stockGudang", stock.id);
+            const stockSnap = await getDoc(stockRef);
+            if (stockSnap.exists()) {
+              const sData = stockSnap.data();
+              const currentUnit = sData.stokAkhirUnit || 0;
+              const currentKG = sData.stokAkhirKG || 0;
+              const currentKeluarUnit = sData.barangKeluarUnit || 0;
+              const currentKeluarKG = sData.barangKeluarKG || 0;
+              const bobot = stock.bobotPerUnit || 50;
+              const deltaUnit = deltaKG / bobot;
+              await updateDoc(stockRef, {
+                stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
+                stokAkhirKG: Math.max(0, currentKG + deltaKG),
+                barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
+                barangKeluarKG: Math.max(0, currentKeluarKG - deltaKG),
+                updatedAt: serverTimestamp(),
+              });
+            }
           }
         }
       }
@@ -944,32 +947,35 @@ export default function RekapProformaInvoicePage() {
           });
         }
       }
-      const productMap: Record<string, number> = {};
-      (surat.items || []).forEach((it: SuratMuatItem) => {
-        const key = it.jenisPupuk;
-        productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
-      });
-      for (const prod of Object.keys(productMap)) {
-        const kg = productMap[prod];
-        const stock = getStockForProduct(prod);
-        if (stock) {
-          const stockRef = doc(db, "stockGudang", stock.id);
-          const stockSnap = await getDoc(stockRef);
-          if (stockSnap.exists()) {
-            const sData = stockSnap.data();
-            const currentUnit = sData.stokAkhirUnit || 0;
-            const currentKG = sData.stokAkhirKG || 0;
-            const currentKeluarUnit = sData.barangKeluarUnit || 0;
-            const currentKeluarKG = sData.barangKeluarKG || 0;
-            const bobot = stock.bobotPerUnit || 50;
-            const unit = kg / bobot;
-            await updateDoc(stockRef, {
-              stokAkhirUnit: currentUnit + unit,
-              stokAkhirKG: currentKG + kg,
-              barangKeluarUnit: Math.max(0, currentKeluarUnit - unit),
-              barangKeluarKG: Math.max(0, currentKeluarKG - kg),
-              updatedAt: serverTimestamp(),
-            });
+      const isGI = !surat.jenisSurat || surat.jenisSurat === "gudangInduk";
+      if (isGI) {
+        const productMap: Record<string, number> = {};
+        (surat.items || []).forEach((it: SuratMuatItem) => {
+          const key = it.jenisPupuk;
+          productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+        });
+        for (const prod of Object.keys(productMap)) {
+          const kg = productMap[prod];
+          const stock = getStockForProduct(prod);
+          if (stock) {
+            const stockRef = doc(db, "stockGudang", stock.id);
+            const stockSnap = await getDoc(stockRef);
+            if (stockSnap.exists()) {
+              const sData = stockSnap.data();
+              const currentUnit = sData.stokAkhirUnit || 0;
+              const currentKG = sData.stokAkhirKG || 0;
+              const currentKeluarUnit = sData.barangKeluarUnit || 0;
+              const currentKeluarKG = sData.barangKeluarKG || 0;
+              const bobot = stock.bobotPerUnit || 50;
+              const unit = kg / bobot;
+              await updateDoc(stockRef, {
+                stokAkhirUnit: currentUnit + unit,
+                stokAkhirKG: currentKG + kg,
+                barangKeluarUnit: Math.max(0, currentKeluarUnit - unit),
+                barangKeluarKG: Math.max(0, currentKeluarKG - kg),
+                updatedAt: serverTimestamp(),
+              });
+            }
           }
         }
       }
@@ -1008,27 +1014,30 @@ export default function RekapProformaInvoicePage() {
       for (const [, suratDoc] of suratDocsMap) {
         const suratData = suratDoc.data();
         const items = suratData.items || [];
-        for (const item of items) {
-          const stock = getStockForProduct(item.jenisPupuk);
-          if (stock) {
-            const stockRef = doc(db, "stockGudang", stock.id);
-            const stockSnap = await getDoc(stockRef);
-            if (stockSnap.exists()) {
-              const sData = stockSnap.data();
-              const zak = parseFloat(String(item.pengambilanZAK)) || 0;
-              const bobot = item.bobotPerUnit || stock.bobotPerUnit || 50;
-              const kg = zak * bobot;
-              const currentUnit = sData.stokAkhirUnit || 0;
-              const currentKG = sData.stokAkhirKG || 0;
-              const currentKeluarUnit = sData.barangKeluarUnit || 0;
-              const currentKeluarKG = sData.barangKeluarKG || 0;
-              await updateDoc(stockRef, {
-                stokAkhirUnit: currentUnit + zak,
-                stokAkhirKG: currentKG + kg,
-                barangKeluarUnit: Math.max(0, currentKeluarUnit - zak),
-                barangKeluarKG: Math.max(0, currentKeluarKG - kg),
-                updatedAt: serverTimestamp(),
-              });
+        const isGI = !suratData.jenisSurat || suratData.jenisSurat === "gudangInduk";
+        if (isGI) {
+          for (const item of items) {
+            const stock = getStockForProduct(item.jenisPupuk);
+            if (stock) {
+              const stockRef = doc(db, "stockGudang", stock.id);
+              const stockSnap = await getDoc(stockRef);
+              if (stockSnap.exists()) {
+                const sData = stockSnap.data();
+                const zak = parseFloat(String(item.pengambilanZAK)) || 0;
+                const bobot = item.bobotPerUnit || stock.bobotPerUnit || 50;
+                const kg = zak * bobot;
+                const currentUnit = sData.stokAkhirUnit || 0;
+                const currentKG = sData.stokAkhirKG || 0;
+                const currentKeluarUnit = sData.barangKeluarUnit || 0;
+                const currentKeluarKG = sData.barangKeluarKG || 0;
+                await updateDoc(stockRef, {
+                  stokAkhirUnit: currentUnit + zak,
+                  stokAkhirKG: currentKG + kg,
+                  barangKeluarUnit: Math.max(0, currentKeluarUnit - zak),
+                  barangKeluarKG: Math.max(0, currentKeluarKG - kg),
+                  updatedAt: serverTimestamp(),
+                });
+              }
             }
           }
         }
@@ -1657,7 +1666,6 @@ export default function RekapProformaInvoicePage() {
             <div class="info-row">
               <span class="info-label">Nomor Seri : ${surat.nomorSeri}</span>
             </div>
-            
           </div>
           <div class="recipient-box">
             <p class="recipient-title">Kepada Yth :</p>
