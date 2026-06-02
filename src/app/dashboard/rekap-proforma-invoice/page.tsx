@@ -1664,11 +1664,16 @@ export default function RekapProformaInvoicePage() {
       render: (row: ProformaInvoice) => {
         const status = getStatusPengangkutan(row);
         const isComplete = status === "complete";
-        const isPaid = !row.includePPN || (getPaymentStatus(row) === "Lunas");
-        const canInvoice = isComplete && isPaid;
-        let title = "Print Invoice Full";
-        if (!isComplete) title = "Belum selesai dimuat";
-        else if (!isPaid) title = "Menunggu pelunasan PPN";
+        const isPaid = getPaymentStatus(row) === "Lunas";
+        let canInvoice = false;
+        let title = "";
+        if (row.includePPN) {
+          canInvoice = isPaid;
+          title = isPaid ? "Print Invoice Full" : "Menunggu pelunasan PPN";
+        } else {
+          canInvoice = isComplete;
+          title = isComplete ? "Print Invoice Full" : "Belum selesai dimuat";
+        }
         return (
           <button
             onClick={(e) => { e.stopPropagation(); handleOpenFullInvoice(row); }}
