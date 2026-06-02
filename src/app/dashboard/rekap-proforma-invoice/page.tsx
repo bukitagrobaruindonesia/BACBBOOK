@@ -1042,17 +1042,23 @@ export default function RekapProformaInvoicePage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus data ini? Semua surat pengangkutan, berita acara, invoice, dan riwayat transaksi terkait juga akan dihapus.")) return;
+    setIsLoading(true);
     try {
       const piDoc = data.find((d) => d.id === id);
-      if (!piDoc) return;
+      if (!piDoc) {
+        setIsLoading(false);
+        return;
+      }
       const nomorPI = piDoc.nomorPI;
 
       const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
       const suratSnapshot = await getDocs(suratQuery);
       const deletedSuratSeri: string[] = [];
+
       for (const suratDoc of suratSnapshot.docs) {
         const suratData = suratDoc.data();
         const items = suratData.items || [];
+
         for (const item of items) {
           const stock = getStockForProduct(item.jenisPupuk);
           if (stock) {
@@ -1077,6 +1083,7 @@ export default function RekapProformaInvoicePage() {
             }
           }
         }
+
         if (suratData.nomorSeri) {
           deletedSuratSeri.push(suratData.nomorSeri);
         }
@@ -1104,11 +1111,16 @@ export default function RekapProformaInvoicePage() {
       }
 
       await deleteDoc(doc(db, "proformaInvoice", id));
-      fetchData();
-      fetchSuratMuat();
-      fetchStockGudang();
+
+      await fetchData();
+      await fetchSuratMuat();
+      await fetchStockGudang();
+      await fetchExistingSurat();
     } catch (error) {
       console.error(error);
+      alert("Gagal menghapus data. Silakan coba lagi.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
