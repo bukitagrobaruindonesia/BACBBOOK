@@ -1538,13 +1538,15 @@ export default function RekapProformaInvoicePage() {
                 <p style="font-weight: 600;">Dipesan oleh:</p>
                 <p style="font-weight: 700;">${pi.namaCustomer || ""}</p>
               </div>
-              <div class="ttd-box">
-                <p style="font-weight: 600;">Diorder Oleh:</p>
-                <p>PT. Bukit Agrochemical Baru</p>
-                <div style="height: 8px;"></div>
+              <div class="ttd-box" style="text-align: center;">
+                <p style="font-weight: 600; text-align: left;">Diorder Oleh:</p>
+                <p style="text-align: left;">PT. Bukit Agrochemical Baru</p>
+                <div style="height: 10px;"></div>
                 ${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 0 auto 2px auto;" />` : `<div style="height: 35px;"></div>`}
-                ${orderTTD ? `<p style="font-weight: 700; border-top: 1px solid #000; padding-top: 2px; display: inline-block; margin: 0;">${orderTTD.nama}</p>` : `<p style="font-weight: 700; border-top: 1px solid #000; padding-top: 2px; display: inline-block; margin: 0;">_________________</p>`}
-                ${orderTTD ? `<p style="margin: 0;">${orderTTD.jabatan}</p>` : ""}
+                <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 2px;">
+                  ${orderTTD ? `<p style="font-weight: 700; margin: 0;">${orderTTD.nama}</p>` : `<p style="font-weight: 700; margin: 0;">_________________</p>`}
+                  ${orderTTD ? `<p style="margin: 0; font-size: 8px;">${orderTTD.jabatan}</p>` : ""}
+                </div>
               </div>
             </div>
             <div class="right-signature">
