@@ -372,7 +372,7 @@ export default function BapispPage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const baHtml = generateBAHtml(bast, ttd, pi);
-    const piHtml = generatePIHtml(pi);
+    const piHtml = generatePIHtml(pi, ttd);
     const spHtml = generateSPHtml(spList, pi);
     const html = `
       <!DOCTYPE html>
@@ -486,7 +486,7 @@ export default function BapispPage() {
     `;
   };
 
-  const generatePIHtml = (pi: ProformaInvoice) => {
+  const generatePIHtml = (pi: ProformaInvoice, orderTTD?: TTDData) => {
     const produkRows = (pi.produkItems || []).map((p, idx) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${idx + 1}</td>
@@ -577,25 +577,39 @@ export default function BapispPage() {
               <div style="padding: 4px 10px; text-align: right; border-top: 1px solid #eee; font-size: 10px; color: #666;">Dibuat: ${createdAtStr}</div>
             </div>
           </div>
-          <div style="display: flex; border: 1px solid #000; border-top: none;">
-            <div style="flex: 1; padding: 8px 10px; border-right: 1px solid #000;">
-              <p style="font-size: 9px; font-weight: 700; color: #000; margin-bottom: 5px;">Pembayaran mohon ditransfer via rekening:</p>
-              <div style="font-size: 8px; line-height: 1.6; color: #333;">
-                <p><strong style="color: #000; font-size: 9px;">BANK MANDIRI</strong> - Cabang Lamandau</p>
-                <p>a/n PT Bukit Agrochemical Baru</p>
-                <p>No. Rek : 159-00-1205477-0</p>
-                <p style="margin-top: 3px;"><strong style="color: #000; font-size: 9px;">BANK BRI</strong> - Cabang Lamandau</p>
-                <p>a/n PT Bukit Agrochemical Baru</p>
-                <p>No. Rek : 2232-01000-879-567</p>
-              </div>
-            </div>
-            <div style="width: 180px; padding: 8px 10px; text-align: center;">
-              <p style="font-size: 9px; color: #333; margin-bottom: 6px;">Dengan Hormat</p>
-              ${pi.ttdImage ? `<img src="${pi.ttdImage}" style="height: 40px; object-fit: contain; margin: 0 auto 4px auto; display: block;" alt="TTD" />` : `<div style="height: 40px;"></div>`}
-              <p style="font-size: 10px; font-weight: 700; color: #000; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${pi.ttdNama || ""}</p>
-              <p style="font-size: 8px; color: #555;">${pi.ttdJabatan ? `(${pi.ttdJabatan})` : ""}</p>
-            </div>
-          </div>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; border-top: none;">
+            <tbody>
+              <tr>
+                <td style="width: 50%; vertical-align: bottom; padding: 8px 10px; border-right: 1px solid #000; font-size: 9px; line-height: 1.6; color: #333;">
+                  <p style="font-size: 9px; font-weight: 700; color: #000; margin-bottom: 5px;">Pembayaran mohon ditransfer via rekening:</p>
+                  <p><strong style="color: #000; font-size: 9px;">BANK MANDIRI</strong> - Cabang Lamandau</p>
+                  <p>a/n PT Bukit Agrochemical Baru</p>
+                  <p>No. Rek : 159-00-1205477-0</p>
+                  <p style="margin-top: 3px;"><strong style="color: #000; font-size: 9px;">BANK BRI</strong> - Cabang Lamandau</p>
+                  <p>a/n PT Bukit Agrochemical Baru</p>
+                  <p>No. Rek : 2232-01000-879-567</p>
+                  <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc;">
+                    <p style="font-size: 9px; font-weight: 700; color: #000; margin-bottom: 2px;">Dipesan oleh:</p>
+                    <p style="font-size: 10px; font-weight: 700; color: #000;">${pi.namaCustomer || ""}</p>
+                  </div>
+                  <div style="margin-top: 6px;">
+                    <p style="font-size: 9px; font-weight: 600; color: #000; margin-bottom: 2px;">Diorder Oleh:</p>
+                    <p style="font-size: 9px; color: #333; margin-bottom: 2px;">PT. Bukit Agrochemical Baru</p>
+                    ${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 2px 0;" onerror="this.style.display='none'" />` : `<div style="height: 35px;"></div>`}
+                    <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 2px; display: inline-block; min-width: 120px;">
+                      ${orderTTD ? `<p style="font-weight: 700; margin: 0; font-size: 9px;">${orderTTD.nama}</p><p style="margin: 0; font-size: 8px; color: #555;">${orderTTD.jabatan}</p>` : `<p style="font-weight: 700; margin: 0; font-size: 9px;">_________________</p>`}
+                    </div>
+                  </div>
+                </td>
+                <td style="width: 50%; vertical-align: bottom; text-align: center; padding: 8px 10px; font-size: 9px;">
+                  <p style="margin-bottom: 30px;">Hormat kami,<br>PT. Bukit Agrochemical Baru</p>
+                  <img src="/Picture4.png" alt="TTD" style="max-height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
+                  <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">Sri Setyo Wibowo</p>
+                  <p style="font-size: 8px; color: #555;">Manager Keuangan</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     `;
@@ -617,7 +631,7 @@ export default function BapispPage() {
         </tr>
       `).join("");
       return `
-        <div class="page">
+        <div class="page" style="width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000;">
           <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
           <div style="text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px;">SURAT PENGANGKUTAN</div>
           <div style="margin-bottom: 12px;">
@@ -681,19 +695,19 @@ export default function BapispPage() {
             <p style="margin-bottom: 2px;">- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
             <p style="margin-bottom: 2px;">- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 20px;">
+          <div style="display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px;">
             <div style="width: 45%; text-align: center;">
-              <p style="font-size: 9px; margin-bottom: 30px;">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-              <img src="/Picture2.png" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
+              <p style="font-size: 9px; margin-bottom: 45px;">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+              <img src="/Picture2.png" alt="TTD" style="max-height: 105px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
               <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">HENDRA PRAMASYANTO</p>
             </div>
             <div style="width: 45%; text-align: center;">
-              <p style="font-size: 9px; margin-bottom: 30px;">Diangkut oleh,<br>Driver</p>
+              <p style="font-size: 9px; margin-bottom: 45px;">Diangkut oleh,<br>Driver</p>
               <div style="height: 50px;"></div>
               <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${surat.driverUnit || ""}</p>
             </div>
           </div>
-          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: 10px;" onerror="this.style.display='none'" />
+          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: auto; padding-top: 10px;" onerror="this.style.display='none'" />
         </div>
       `;
     }).join('<div class="page-break"></div>');
