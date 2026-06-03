@@ -332,11 +332,33 @@ export default function SuratPengangkutanPage() {
     return totalLoaded;
   };
 
+  const piHasValidProductForJenisSurat = (pi: ProformaInvoice) => {
+    if (!jenisSurat) return true;
+    return pi.produkItems.some((prod) => {
+      const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+      const isGI = isGudangIndukFOT(fot);
+      if (jenisSurat === "gudangInduk") return isGI;
+      if (jenisSurat === "do") return !isGI;
+      return true;
+    });
+  };
+
   const getPIAvailableForItem = (search: string) => {
     return piList.filter((pi) => {
+      if (!piHasValidProductForJenisSurat(pi)) return false;
       const searchLower = search.toLowerCase();
       const matchSearch = pi.nomorPI.toLowerCase().includes(searchLower) || pi.namaCustomer.toLowerCase().includes(searchLower);
       if (!matchSearch) return false;
+      return true;
+    });
+  };
+
+  const getValidProductsForPI = (pi: ProformaInvoice) => {
+    return pi.produkItems.filter((prod) => {
+      const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+      const isGI = isGudangIndukFOT(fot);
+      if (jenisSurat === "gudangInduk") return isGI;
+      if (jenisSurat === "do") return !isGI;
       return true;
     });
   };
@@ -345,6 +367,29 @@ export default function SuratPengangkutanPage() {
     setPiShowMap((prev) => ({ ...prev, [itemId]: false }));
     setPiSearchMap((prev) => ({ ...prev, [itemId]: pi.nomorPI }));
 
+    const validProducts = getValidProductsForPI(pi);
+    const firstProd = validProducts[0];
+    let bobot = 50;
+    let fot = "";
+    let jenisPupuk = "";
+    let maxZAK = 0;
+    let sisa = "";
+    let kuantitasOrdered = 0;
+    let loadedKG = 0;
+    let pengambilanZAK = "";
+
+    if (firstProd) {
+      bobot = getBobotPerUnit(firstProd.namaProduk);
+      fot = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
+      jenisPupuk = firstProd.namaProduk;
+      kuantitasOrdered = firstProd.kuantitas || 0;
+      loadedKG = await getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk);
+      const remaining = Math.max(0, kuantitasOrdered - loadedKG);
+      maxZAK = Math.floor(remaining / bobot);
+      sisa = String(maxZAK);
+      pengambilanZAK = maxZAK > 0 ? String(maxZAK) : "";
+    }
+
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== itemId) return item;
@@ -352,21 +397,22 @@ export default function SuratPengangkutanPage() {
           ...item,
           nomorPI: pi.nomorPI,
           namaCustomer: pi.namaCustomer,
-          jenisPupuk: "",
-          fot: "",
-          bobotPerUnit: 50,
-          maxZAK: 0,
-          sisa: "",
-          pengambilanZAK: "",
-          kuantitasOrdered: 0,
-          loadedKG: 0,
+          jenisPupuk,
+          fot,
+          bobotPerUnit: bobot,
+          maxZAK,
+          sisa,
+          pengambilanZAK,
+          kuantitasOrdered,
+          loadedKG,
         };
       })
     );
   };
 
   const handleProdukSelectForItem = async (itemId: number, pi: ProformaInvoice, produkIndex: number) => {
-    const prod = pi.produkItems[produkIndex];
+    const validProducts = getValidProductsForPI(pi);
+    const prod = validProducts[produkIndex];
     if (!prod) return;
     const bobot = getBobotPerUnit(prod.namaProduk);
     const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
@@ -417,8 +463,9 @@ export default function SuratPengangkutanPage() {
   };
 
   const addItemWithPI = (pi: ProformaInvoice) => {
+    const validProducts = getValidProductsForPI(pi);
+    const firstProd = validProducts[0];
     const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
-    const firstProd = pi.produkItems[0];
     const bobot = firstProd ? getBobotPerUnit(firstProd.namaProduk) : 50;
     const fot = firstProd ? (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim() : "";
     setItems((prev) => [
@@ -515,7 +562,6 @@ export default function SuratPengangkutanPage() {
 
     const isGI = jenisSurat === "gudangInduk";
     const isMandiri = subJenisDO === "mandiri";
-    const isDikuasakan = subJenisDO === "dikuasakan";
 
     if (isGI || isMandiri) {
       if (!formData.driverUnit.trim()) newErrors.driverUnit = "Driver unit wajib diisi";
@@ -532,7 +578,6 @@ export default function SuratPengangkutanPage() {
       newErrors.items = "Minimal harus ada 1 item pengangkutan";
     }
 
-    const usedPIs = new Set<string>();
     items.forEach((item, idx) => {
       if (!item.nomorPI.trim()) newErrors[`nomorPI_${idx}`] = "Nomor PI wajib dipilih";
       if (!item.jenisPupuk.trim()) newErrors[`jenisPupuk_${idx}`] = "Jenis pupuk wajib diisi";
@@ -558,7 +603,6 @@ export default function SuratPengangkutanPage() {
       if (jenisSurat === "do" && giFOT && item.jenisPupuk) {
         newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT Gudang Induk`;
       }
-      if (item.nomorPI.trim()) usedPIs.add(item.nomorPI.trim());
     });
 
     if (jenisSurat === "do" && isMandiri) {
@@ -1117,6 +1161,7 @@ export default function SuratPengangkutanPage() {
               const showSearch = piShowMap[item.id] || false;
               const filteredPI = getPIAvailableForItem(searchVal);
               const selectedPI = piList.find((p) => p.nomorPI === item.nomorPI);
+              const validProducts = selectedPI ? getValidProductsForPI(selectedPI) : [];
               return (
                 <div key={item.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
                   <div className="flex items-center justify-between mb-3">
@@ -1184,11 +1229,11 @@ export default function SuratPengangkutanPage() {
                         </div>
                       )}
                     </div>
-                    {selectedPI && selectedPI.produkItems.length > 0 && (
+                    {selectedPI && validProducts.length > 0 && (
                       <div className="md:col-span-3">
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Pilih Produk dari PI</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                          {selectedPI.produkItems.map((prod, pidx) => {
+                          {validProducts.map((prod, pidx) => {
                             const isSelected = item.jenisPupuk === prod.namaProduk;
                             return (
                               <button
@@ -1204,6 +1249,11 @@ export default function SuratPengangkutanPage() {
                             );
                           })}
                         </div>
+                      </div>
+                    )}
+                    {selectedPI && validProducts.length === 0 && (
+                      <div className="md:col-span-3 p-3 bg-red-50 rounded-lg border border-red-200 text-xs text-red-600">
+                        {isGI ? "PI ini tidak memiliki produk dengan FOT Gudang Induk." : "PI ini tidak memiliki produk dengan FOT selain Gudang Induk."}
                       </div>
                     )}
                     <div className="md:col-span-3">
