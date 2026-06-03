@@ -2,18 +2,15 @@
 
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import {
-  collection, getDocs, query, orderBy,
-} from "firebase/firestore";
+import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
 import Table from "@/app/components/ui/Table";
 import Button from "@/app/components/ui/Button";
-import Modal from "@/app/components/ui/Modal";
+import Card from "@/app/components/ui/Card";
 import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
-import Card from "@/app/components/ui/Card";
 
 interface ProdukItem {
   namaProduk: string;
@@ -190,17 +187,9 @@ const tahunOptions = [
   }),
 ];
 
-export default function BeritaAcaraPage() {
+export default function BapispFinalPage() {
   const router = useRouter();
   const { user } = useAuth();
-
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [currentPin, setCurrentPin] = useState("080900");
-  const [isPinSettingsOpen, setIsPinSettingsOpen] = useState(false);
-  const [oldPinInput, setOldPinInput] = useState("");
-  const [newPinInput, setNewPinInput] = useState("");
-  const [confirmPinInput, setConfirmPinInput] = useState("");
 
   const [baList, setBaList] = useState<BeritaAcaraData[]>([]);
   const [piMap, setPiMap] = useState<Record<string, ProformaInvoice>>({});
@@ -213,21 +202,9 @@ export default function BeritaAcaraPage() {
   const [filterBulan, setFilterBulan] = useState("");
   const [filterTahun, setFilterTahun] = useState("");
 
-  const [selectedBA, setSelectedBA] = useState<BeritaAcaraData | null>(null);
-  const [isTTDModalOpen, setIsTTDModalOpen] = useState(false);
-  const [selectedTTDId, setSelectedTTDId] = useState("");
-
   useEffect(() => {
-    const savedPin = localStorage.getItem("ba_page_pin");
-    if (savedPin) setCurrentPin(savedPin);
-    const auth = sessionStorage.getItem("ba_page_auth");
-    if (auth === "true") setIsAuthenticated(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isAuthenticated) return;
     fetchAllData();
-  }, [isAuthenticated]);
+  }, []);
 
   const fetchAllData = async () => {
     setIsLoading(true);
@@ -270,29 +247,6 @@ export default function BeritaAcaraPage() {
     }
   };
 
-  const handlePinSubmit = () => {
-    if (pinInput === currentPin) {
-      setIsAuthenticated(true);
-      sessionStorage.setItem("ba_page_auth", "true");
-      setPinInput("");
-    } else {
-      alert("PIN salah!");
-    }
-  };
-
-  const handleChangePin = () => {
-    if (oldPinInput !== currentPin) { alert("PIN lama salah!"); return; }
-    if (newPinInput !== confirmPinInput) { alert("Konfirmasi PIN baru tidak cocok!"); return; }
-    if (newPinInput.length < 4) { alert("PIN minimal 4 digit!"); return; }
-    setCurrentPin(newPinInput);
-    localStorage.setItem("ba_page_pin", newPinInput);
-    setIsPinSettingsOpen(false);
-    setOldPinInput("");
-    setNewPinInput("");
-    setConfirmPinInput("");
-    alert("PIN berhasil diubah!");
-  };
-
   const getTTDForBA = (baId: string) => {
     const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
     return mapping[baId] || null;
@@ -305,7 +259,12 @@ export default function BeritaAcaraPage() {
     return count;
   };
 
-  const filteredData = baList.filter(ba => {
+  const baListWithTTD = baList.filter(ba => {
+    const ttd = getTTDForBA(ba.id);
+    return ttd && ttd.ttdId;
+  });
+
+  const filteredData = baListWithTTD.filter(ba => {
     const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
     const piData = piMap[piNomor];
     const customerName = piData?.namaCustomer || ba.namaCustomer || "";
@@ -320,73 +279,7 @@ export default function BeritaAcaraPage() {
     return matchSearch && matchTanggal && matchBulan && matchTahun;
   });
 
-  const handleSelectTTD = (ba: BeritaAcaraData) => {
-    setSelectedBA(ba);
-    const existing = getTTDForBA(ba.id);
-    setSelectedTTDId(existing?.ttdId || "");
-    setIsTTDModalOpen(true);
-  };
-
-  const handleSaveTTD = () => {
-    if (!selectedBA) return;
-    const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
-    if (!selectedTTDId) {
-      delete mapping[selectedBA.id];
-      localStorage.setItem("ba_ttd_mapping", JSON.stringify(mapping));
-      setIsTTDModalOpen(false);
-      setSelectedBA(null);
-      setSelectedTTDId("");
-      setBaList([...baList]);
-      return;
-    }
-    const ttd = ttdList.find(t => t.id === selectedTTDId);
-    if (!ttd) return;
-    mapping[selectedBA.id] = { ttdId: ttd.id, nama: ttd.nama, jabatan: ttd.jabatan, ttdImage: ttd.ttdImage };
-    localStorage.setItem("ba_ttd_mapping", JSON.stringify(mapping));
-    setIsTTDModalOpen(false);
-    setSelectedBA(null);
-    setSelectedTTDId("");
-    setBaList([...baList]);
-  };
-
-  const isSentToBapispFinal = (baId: string) => {
-    const queue = JSON.parse(localStorage.getItem("bapisp_final_queue") || "[]");
-    return queue.some((q: any) => q.baId === baId);
-  };
-
-  const handleSendToBapispFinal = (ba: BeritaAcaraData) => {
-    const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
-    const pi = piMap[piNomor];
-    const ttd = getTTDForBA(ba.id);
-    const suratList: SuratMuatInfo[] = [];
-    if (Array.isArray(ba.nomorPI)) {
-      ba.nomorPI.forEach(p => { if (suratMap[p]) suratList.push(...suratMap[p]); });
-    } else {
-      if (suratMap[ba.nomorPI]) suratList.push(...suratMap[ba.nomorPI]);
-    }
-    const payload = {
-      baId: ba.id,
-      nomorSeri: ba.nomorSeri,
-      nomorPI: ba.nomorPI,
-      namaCustomer: pi?.namaCustomer || ba.namaCustomer,
-      alamatCustomer: pi?.alamatCustomer || "",
-      tanggalBA: ba.tanggal,
-      items: ba.items,
-      ttd: ttd,
-      suratPengangkutan: suratList,
-      proformaInvoice: pi || null,
-      sentAt: new Date().toISOString(),
-    };
-    const queue = JSON.parse(localStorage.getItem("bapisp_final_queue") || "[]");
-    const existingIndex = queue.findIndex((q: any) => q.baId === ba.id);
-    if (existingIndex >= 0) queue[existingIndex] = payload;
-    else queue.push(payload);
-    localStorage.setItem("bapisp_final_queue", JSON.stringify(queue));
-    alert("Berita Acara berhasil dikirim ke BAPISP Final!");
-    setBaList([...baList]);
-  };
-
-  const handlePrintCombined = (ba: BeritaAcaraData) => {
+  const handlePrintBA = (ba: BeritaAcaraData) => {
     const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
     const pi = piMap[piNomor];
     if (!pi) { alert("Data Proforma Invoice tidak ditemukan!"); return; }
@@ -563,14 +456,13 @@ export default function BeritaAcaraPage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Dokumen Gabungan ${ba.nomorSeri}</title>
+        <title>Dokumen BAPISP Final ${ba.nomorSeri}</title>
         <style>
-          @page { size: A4 portrait; margin: 10mm 12mm 10mm 12mm; }
+          @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
           @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
@@ -787,92 +679,44 @@ export default function BeritaAcaraPage() {
       },
     },
     {
-      key: "statusTTD",
-      header: "STATUS TTD",
-      width: "120px",
+      key: "ttd",
+      header: "TTD",
+      width: "150px",
       render: (row: BeritaAcaraData) => {
         const ttd = getTTDForBA(row.id);
         if (ttd) {
-          return <span className="px-2 py-1 rounded-md text-xs font-bold bg-green-100 text-green-700">{ttd.nama}</span>;
+          return (
+            <div className="flex items-center gap-2">
+              <img src={ttd.ttdImage} alt="TTD" className="h-6 object-contain bg-white rounded border border-gray-200" />
+              <span className="text-xs font-semibold text-green-700">{ttd.nama}</span>
+            </div>
+          );
         }
-        return <span className="px-2 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-700">Belum TTD</span>;
+        return <span className="text-xs text-gray-400">-</span>;
       },
     },
     {
       key: "aksi",
       header: "AKSI",
-      width: "220px",
-      render: (row: BeritaAcaraData) => {
-        const hasTTD = !!getTTDForBA(row.id);
-        const sent = isSentToBapispFinal(row.id);
-        return (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={(e) => { e.stopPropagation(); handleSelectTTD(row); }}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-1"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
-              TTD
-            </button>
-            <button
-              onClick={(e) => { e.stopPropagation(); handlePrintCombined(row); }}
-              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-700 text-white transition-colors flex items-center gap-1"
-            >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-              Print
-            </button>
-            {hasTTD && (
-              <button
-                onClick={(e) => { e.stopPropagation(); handleSendToBapispFinal(row); }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 ${sent ? "bg-purple-100 text-purple-700" : "bg-purple-600 hover:bg-purple-700 text-white"}`}
-                title={sent ? "Sudah dikirim ke BAPISP Final" : "Kirim ke BAPISP Final"}
-              >
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
-                {sent ? "Terkirim" : "BAPISP"}
-              </button>
-            )}
-          </div>
-        );
-      },
+      width: "100px",
+      render: (row: BeritaAcaraData) => (
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); handlePrintBA(row); }}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-700 text-white transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+            Print
+          </button>
+        </div>
+      ),
     },
   ];
-
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100">
-        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-900">Akses Berita Acara</h2>
-            <p className="text-sm text-gray-500 mt-1">Masukkan PIN untuk melanjutkan</p>
-          </div>
-          <input
-            type="password"
-            inputMode="numeric"
-            maxLength={6}
-            value={pinInput}
-            onChange={(e) => setPinInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handlePinSubmit(); }}
-            className="w-full px-4 py-3 text-center text-2xl tracking-widest border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 mb-4"
-            placeholder="••••••"
-          />
-          <Button variant="primary" className="w-full" onClick={handlePinSubmit}>Masuk</Button>
-          <p className="text-xs text-gray-400 text-center mt-4">PIN default: 080900</p>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6">
       <div className="flex items-start sm:items-center justify-between gap-4">
-        <Header title="Daftar Proforma Invoice dengan Berita Acara" subtitle="Pilih PI untuk mencetak dokumen gabungan BA + PI + SP" />
-        <Button variant="secondary" onClick={() => setIsPinSettingsOpen(true)}>
-          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-          Pengaturan PIN
-        </Button>
+        <Header title="BAPISP Final" subtitle="Daftar Berita Acara yang telah ditandatangani" />
       </div>
 
       <Card>
@@ -893,7 +737,7 @@ export default function BeritaAcaraPage() {
         </div>
 
         <div className="text-sm text-gray-500 mb-4">
-          Menampilkan {filteredData.length} dari {baList.length} data
+          Menampilkan {filteredData.length} dari {baListWithTTD.length} data
           {filterTanggal && ` | Tanggal: ${filterTanggal}`}
           {filterBulan && ` | Bulan: ${bulanOptions.find((b) => b.value === filterBulan)?.label}`}
           {filterTahun && ` | Tahun: ${filterTahun}`}
@@ -903,63 +747,10 @@ export default function BeritaAcaraPage() {
           columns={columns}
           data={filteredData.map((row, idx) => ({ ...row, __index: idx }))}
           isLoading={isLoading}
-          emptyMessage="Belum ada data berita acara"
+          emptyMessage="Belum ada Berita Acara yang ditandatangani"
           keyExtractor={(row) => row.id}
         />
       </Card>
-
-      <Modal isOpen={isTTDModalOpen} onClose={() => setIsTTDModalOpen(false)} title="Pilih TTD" size="md" footer={
-        <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => setIsTTDModalOpen(false)}>Batal</Button>
-          <Button variant="primary" onClick={handleSaveTTD}>Simpan</Button>
-        </div>
-      }>
-        <div className="space-y-4">
-          <Select
-            label="Pilih TTD"
-            value={selectedTTDId}
-            onChange={(e) => setSelectedTTDId(e.target.value)}
-            options={[{ value: "", label: "Pilih tanda tangan..." }, ...ttdList.map((ttd) => ({ value: ttd.id, label: `${ttd.nama} - ${ttd.jabatan}` }))]}
-          />
-          {selectedTTDId && (() => {
-            const ttd = ttdList.find(t => t.id === selectedTTDId);
-            if (!ttd) return null;
-            return (
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-4">
-                <img src={ttd.ttdImage} alt="TTD" className="h-16 object-contain bg-white rounded-lg border border-gray-200" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">{ttd.nama}</p>
-                  <p className="text-xs text-gray-500">{ttd.jabatan}</p>
-                </div>
-              </div>
-            );
-          })()}
-          <p className="text-xs text-gray-500">Kosongkan pilihan untuk menghapus TTD yang sudah dipilih.</p>
-        </div>
-      </Modal>
-
-      <Modal isOpen={isPinSettingsOpen} onClose={() => setIsPinSettingsOpen(false)} title="Pengaturan PIN" size="md" footer={
-        <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => setIsPinSettingsOpen(false)}>Batal</Button>
-          <Button variant="primary" onClick={handleChangePin}>Ubah PIN</Button>
-        </div>
-      }>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">PIN Lama</label>
-            <input type="password" inputMode="numeric" value={oldPinInput} onChange={(e) => setOldPinInput(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">PIN Baru</label>
-            <input type="password" inputMode="numeric" value={newPinInput} onChange={(e) => setNewPinInput(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Konfirmasi PIN Baru</label>
-            <input type="password" inputMode="numeric" value={confirmPinInput} onChange={(e) => setConfirmPinInput(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
-          </div>
-          <p className="text-xs text-gray-500">PIN minimal 4 digit. PIN default adalah 080900.</p>
-        </div>
-      </Modal>
     </div>
   );
 }
