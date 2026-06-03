@@ -317,7 +317,9 @@ export default function SuratPengangkutanPage() {
         uniqueIds.add(d.id);
         const data = d.data();
         const suratItems = data.items || [];
-        suratItems.forEach((item: { jenisPupuk: string; pengambilanZAK: number; bobotPerUnit: number }) => {
+        suratItems.forEach((item: { jenisPupuk: string; pengambilanZAK: number; bobotPerUnit: number; nomorPI?: string }) => {
+          const itemPI = item.nomorPI || "";
+          if (itemPI !== nomorPI) return;
           if (
             item.jenisPupuk && (
               item.jenisPupuk.toUpperCase().includes(namaProduk.toUpperCase()) ||

@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -171,6 +172,55 @@ const parseInvoiceNumber = (nomor: string) => {
     partialNum: match[1] ? parseInt(match[1]) : 0,
     baseNum: parseInt(match[2]),
   };
+};
+
+const formatRupiah = (num: number) => {
+  if (!num && num !== 0) return "Rp -";
+  return "Rp " + num.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+};
+
+const numberToWords = (num: number): string => {
+  if (num === 0) return "NOL RUPIAH";
+  const ones = ["", "SATU", "DUA", "TIGA", "EMPAT", "LIMA", "ENAM", "TUJUH", "DELAPAN", "SEMBILAN"];
+  const teens = ["SEPULUH", "SEBELAS", "DUA BELAS", "TIGA BELAS", "EMPAT BELAS", "LIMA BELAS", "ENAM BELAS", "TUJUH BELAS", "DELAPAN BELAS", "SEMBILAN BELAS"];
+  const tens = ["", "", "DUA PULUH", "TIGA PULUH", "EMPAT PULUH", "LIMA PULUH", "ENAM PULUH", "TUJUH PULUH", "DELAPAN PULUH", "SEMBILAN PULUH"];
+  const thousands = ["", "RIBU", "JUTA", "MILIAR", "TRILIUN"];
+  const convertThreeDigits = (n: number): string => {
+    let result = "";
+    const hundreds = Math.floor(n / 100);
+    const remainder = n % 100;
+    if (hundreds > 0) {
+      if (hundreds === 1) result += "SERATUS ";
+      else result += ones[hundreds] + " RATUS ";
+    }
+    if (remainder > 0) {
+      if (remainder < 10) result += ones[remainder] + " ";
+      else if (remainder < 20) result += teens[remainder - 10] + " ";
+      else {
+        const ten = Math.floor(remainder / 10);
+        const one = remainder % 10;
+        result += tens[ten] + " ";
+        if (one > 0) result += ones[one] + " ";
+      }
+    }
+    return result.trim();
+  };
+  if (num < 0) return "MINUS " + numberToWords(-num);
+  let result = "";
+  let i = 0;
+  let tempNum = num;
+  while (tempNum > 0) {
+    const chunk = tempNum % 1000;
+    if (chunk > 0) {
+      let chunkWords = convertThreeDigits(chunk);
+      if (i === 1 && chunk === 1) chunkWords = "SERIBU";
+      else if (i > 0) chunkWords += " " + thousands[i];
+      result = chunkWords + " " + result;
+    }
+    tempNum = Math.floor(tempNum / 1000);
+    i++;
+  }
+  return result.trim() + " RUPIAH";
 };
 
 export default function RekapProformaInvoicePage() {
@@ -462,11 +512,8 @@ export default function RekapProformaInvoicePage() {
     return suratList.reduce((sum: number, s: SuratMuatInfo) => {
       return sum + (s.items || []).reduce((itemSum: number, it: SuratMuatItem) => {
         const itemPI = it.nomorPI || "";
-        const match = itemPI === nomorPI;
-        if (match) {
-          return itemSum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
-        }
-        return itemSum;
+        if (itemPI && itemPI !== nomorPI) return itemSum;
+        return itemSum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
       }, 0);
     }, 0);
   };
@@ -507,8 +554,7 @@ export default function RekapProformaInvoicePage() {
       suratList.forEach((surat: SuratMuatInfo) => {
         (surat.items || []).forEach((it: SuratMuatItem) => {
           const itemPI = it.nomorPI || "";
-          const piMatch = itemPI === item.nomorPI;
-          if (!piMatch) return;
+          if (itemPI && itemPI !== item.nomorPI) return;
           if (it.jenisPupuk && (
             it.jenisPupuk.toUpperCase().includes(prod.namaProduk.toUpperCase()) ||
             prod.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
@@ -668,11 +714,6 @@ export default function RekapProformaInvoicePage() {
     const matchTahun = filterTahun ? date.getFullYear().toString() === filterTahun : true;
     return matchSearch && matchTanggal && matchBulan && matchTahun;
   });
-
-  const formatRupiah = (num: number) => {
-    if (!num && num !== 0) return "Rp -";
-    return "Rp " + num.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  };
 
   const handleDetail = (item: ProformaInvoice) => {
     setSelectedItem(item);
@@ -1029,7 +1070,7 @@ export default function RekapProformaInvoicePage() {
     } finally { setIsLoading(false); }
   };
 
-    const handleGenerateBast = async (item: ProformaInvoice) => {
+  const handleGenerateBast = async (item: ProformaInvoice) => {
     try {
       const nomor = await getNextBastNumber();
       const suratList = getSuratMuatForPI(item.nomorPI);
@@ -1037,7 +1078,8 @@ export default function RekapProformaInvoicePage() {
       let no = 1;
       suratList.forEach((surat) => {
         (surat.items || []).forEach((it) => {
-          if (it.nomorPI && it.nomorPI !== item.nomorPI) return;
+          const itemPI = it.nomorPI || "";
+          if (itemPI && itemPI !== item.nomorPI) return;
           const piProd = item.produkItems.find((p) =>
             p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
             it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
@@ -1208,7 +1250,7 @@ export default function RekapProformaInvoicePage() {
     printWindow.document.close();
   };
 
-const handleOpenPaymentEdit = (item: ProformaInvoice) => {
+  const handleOpenPaymentEdit = (item: ProformaInvoice) => {
     setSelectedItem(item);
     setPaymentForm({
       jumlahUangDibayar: "",
@@ -1629,21 +1671,14 @@ const handleOpenPaymentEdit = (item: ProformaInvoice) => {
     const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
     const lastSurat = allSuratForPI.length > 0 ? allSuratForPI[allSuratForPI.length - 1] : null;
     const invoiceDate = lastSurat ? lastSurat.tanggal : pi.tanggal;
-    const invoiceItems = pi.produkItems.map((produk, idx) => {
-      let loadedQty = 0;
-      if (invoiceSurat) {
-        (invoiceSurat.items || []).forEach((it) => {
-          const match =
-            it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) ||
-            produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
-          if (match) {
-            const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
-            loadedQty += (it.pengambilanZAK || 0) * bobot;
-          }
-        });
-      } else {
-        allSuratForPI.forEach((surat) => {
-          (surat.items || []).forEach((it) => {
+
+    const invoiceItems = pi.produkItems
+      .map((produk, idx) => {
+        let loadedQty = 0;
+        if (invoiceSurat) {
+          (invoiceSurat.items || []).forEach((it) => {
+            const itemPI = it.nomorPI || "";
+            if (itemPI && itemPI !== pi.nomorPI) return;
             const match =
               it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) ||
               produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
@@ -1652,30 +1687,47 @@ const handleOpenPaymentEdit = (item: ProformaInvoice) => {
               loadedQty += (it.pengambilanZAK || 0) * bobot;
             }
           });
-        });
-      }
-      const hargaSatuan = produk.hargaSatuan || 0;
-      const hargaPerZakDus = produk.hargaPerZakDus || 0;
-      const kemasan = produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-";
-      const subTotal = loadedQty * hargaSatuan;
-      return {
-        no: idx + 1,
-        namaProduk: produk.namaProduk,
-        produsen: produk.produsen || "",
-        kemasan,
-        fot: produk.fot || "",
-        kuantitas: loadedQty,
-        satuan: "KG",
-        hargaSatuan,
-        hargaPerZakDus,
-        subTotal,
-      };
-    }).filter((it) => !invoiceSurat || it.kuantitas > 0).map((it, idx) => ({ ...it, no: idx + 1 }));
+        } else {
+          allSuratForPI.forEach((surat) => {
+            (surat.items || []).forEach((it) => {
+              const itemPI = it.nomorPI || "";
+              if (itemPI && itemPI !== pi.nomorPI) return;
+              const match =
+                it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) ||
+                produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
+              if (match) {
+                const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
+                loadedQty += (it.pengambilanZAK || 0) * bobot;
+              }
+            });
+          });
+        }
+        const hargaSatuan = produk.hargaSatuan || 0;
+        const hargaPerZakDus = produk.hargaPerZakDus || 0;
+        const kemasan = produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-";
+        const subTotal = loadedQty * hargaSatuan;
+        return {
+          no: idx + 1,
+          namaProduk: produk.namaProduk,
+          produsen: produk.produsen || "",
+          kemasan,
+          fot: produk.fot || "",
+          kuantitas: loadedQty,
+          satuan: "KG",
+          hargaSatuan,
+          hargaPerZakDus,
+          subTotal,
+        };
+      })
+      .filter((it) => !invoiceSurat || it.kuantitas > 0)
+      .map((it, idx) => ({ ...it, no: idx + 1 }));
+
     const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
     const dppNilaiLain = 0;
     const ongkosKirim = pi.ongkosKirim || 0;
     const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
     const totalPembayaran = totalSubTotal + dppNilaiLain + ongkosKirim + ppn;
+
     const itemsHtml = invoiceItems.map((it) => `
       <tr>
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
@@ -1689,6 +1741,7 @@ const handleOpenPaymentEdit = (item: ProformaInvoice) => {
         <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${formatRupiah(it.subTotal)}</td>
       </tr>
     `).join("");
+
     const emptyRows = Array.from({ length: Math.max(0, 8 - invoiceItems.length) }, (_, i) => `
       <tr>
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${invoiceItems.length + i + 1}</td>
@@ -1702,8 +1755,10 @@ const handleOpenPaymentEdit = (item: ProformaInvoice) => {
         <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
       </tr>
     `).join("");
+
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
+
     const html = `
       <!DOCTYPE html>
       <html>
@@ -1841,50 +1896,6 @@ const handleOpenPaymentEdit = (item: ProformaInvoice) => {
     printWindow.document.write(html);
     printWindow.document.close();
     setIsInvoiceModalOpen(false);
-  };
-
-  const numberToWords = (num: number): string => {
-    if (num === 0) return "NOL RUPIAH";
-    const ones = ["", "SATU", "DUA", "TIGA", "EMPAT", "LIMA", "ENAM", "TUJUH", "DELAPAN", "SEMBILAN"];
-    const teens = ["SEPULUH", "SEBELAS", "DUA BELAS", "TIGA BELAS", "EMPAT BELAS", "LIMA BELAS", "ENAM BELAS", "TUJUH BELAS", "DELAPAN BELAS", "SEMBILAN BELAS"];
-    const tens = ["", "", "DUA PULUH", "TIGA PULUH", "EMPAT PULUH", "LIMA PULUH", "ENAM PULUH", "TUJUH PULUH", "DELAPAN PULUH", "SEMBILAN PULUH"];
-    const thousands = ["", "RIBU", "JUTA", "MILIAR", "TRILIUN"];
-    const convertThreeDigits = (n: number): string => {
-      let result = "";
-      const hundreds = Math.floor(n / 100);
-      const remainder = n % 100;
-      if (hundreds > 0) {
-        if (hundreds === 1) result += "SERATUS ";
-        else result += ones[hundreds] + " RATUS ";
-      }
-      if (remainder > 0) {
-        if (remainder < 10) result += ones[remainder] + " ";
-        else if (remainder < 20) result += teens[remainder - 10] + " ";
-        else {
-          const ten = Math.floor(remainder / 10);
-          const one = remainder % 10;
-          result += tens[ten] + " ";
-          if (one > 0) result += ones[one] + " ";
-        }
-      }
-      return result.trim();
-    };
-    if (num < 0) return "MINUS " + numberToWords(-num);
-    let result = "";
-    let i = 0;
-    let tempNum = num;
-    while (tempNum > 0) {
-      const chunk = tempNum % 1000;
-      if (chunk > 0) {
-        let chunkWords = convertThreeDigits(chunk);
-        if (i === 1 && chunk === 1) chunkWords = "SERIBU";
-        else if (i > 0) chunkWords += " " + thousands[i];
-        result = chunkWords + " " + result;
-      }
-      tempNum = Math.floor(tempNum / 1000);
-      i++;
-    }
-    return result.trim() + " RUPIAH";
   };
 
   const bulanOptions = [
@@ -2259,7 +2270,7 @@ const handleOpenPaymentEdit = (item: ProformaInvoice) => {
                       <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase border">Total KG</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">No. Polisi</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Driver</th>
-                      <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase border" colSpan={4}>Aksi</th>
+                      <th className="px-2 py-3 text-center text-xs font-semibold text-green-800 uppercase border" colSpan={4}>Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2587,7 +2598,6 @@ const handleOpenPaymentEdit = (item: ProformaInvoice) => {
           )}
         </form>
       </Modal>
-      
     </div>
   );
 }
