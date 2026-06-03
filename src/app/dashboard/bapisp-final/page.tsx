@@ -11,7 +11,6 @@ import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
 import Card from "@/app/components/ui/Card";
 import Button from "@/app/components/ui/Button";
-import Select from "@/app/components/ui/Select";
 
 interface ProformaInvoice {
   id: string;
@@ -166,9 +165,6 @@ const numberToWords = (num: number): string => {
 };
 
 export default function BapispFinalPage() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [pinInput, setPinInput] = useState("");
-  const [pinError, setPinError] = useState("");
   const [piList, setPiList] = useState<ProformaInvoice[]>([]);
   const [bastList, setBastList] = useState<BeritaAcaraData[]>([]);
   const [suratList, setSuratList] = useState<SuratMuatInfo[]>([]);
@@ -181,8 +177,8 @@ export default function BapispFinalPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    if (isAuthenticated) fetchData();
-  }, [isAuthenticated]);
+    fetchData();
+  }, []);
 
   const fetchData = async () => {
     setIsLoading(true);
@@ -268,17 +264,6 @@ export default function BapispFinalPage() {
       console.error(error);
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handlePinSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pinInput === "080900") {
-      setIsAuthenticated(true);
-      setPinError("");
-    } else {
-      setPinError("PIN salah. Silakan coba lagi.");
-      setPinInput("");
     }
   };
 
@@ -432,9 +417,9 @@ export default function BapispFinalPage() {
               <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 0 10px;">
                 <p style="font-size: 9px; margin-bottom: 50px;">${ttd?.nama || "........................"}<br>(Pihak Pertama)</p>
                 ${ttd ? `
-                  <div style="position: relative; display: inline-block; margin-bottom: 4px;">
-                    <img src="${ttd.ttdImage}" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
-                    <img src="/LogoAGRO.png" alt="Stampel" style="position: absolute; top: -15px; right: -30px; width: 70px; height: auto; opacity: 0.9; pointer-events: none;" onerror="this.style.display='none'" />
+                  <div style="position: relative; display: inline-block; margin-bottom: 4px; width: 140px; height: 70px;">
+                    <img src="/LogoAGRO.png" alt="Stampel" style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 80px; height: auto; opacity: 0.85; pointer-events: none; z-index: 1;" onerror="this.style.display='none'" />
+                    <img src="${ttd.ttdImage}" alt="TTD" style="position: absolute; top: 5px; left: 50%; transform: translateX(-50%); height: 55px; object-fit: contain; z-index: 2; display: block;" onerror="this.style.display='none'" />
                   </div>
                 ` : `<div style="height: 50px;"></div>`}
                 <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${ttd?.nama || "........................"}</p>
@@ -707,50 +692,6 @@ export default function BapispFinalPage() {
     { value: "50", label: "50 per halaman" },
   ];
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Card className="w-full max-w-md p-8">
-          <div className="text-center mb-6">
-            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-            </div>
-            <h2 className="text-xl font-bold text-gray-800">Akses BAPISP Final</h2>
-            <p className="text-sm text-gray-500 mt-1">Masukkan PIN untuk mengakses dokumen final BA + PI + SP</p>
-          </div>
-          <form onSubmit={handlePinSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">PIN Akses</label>
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={6}
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ""))}
-                placeholder="Masukkan 6 digit PIN"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white text-center text-lg tracking-widest font-mono"
-                autoFocus
-              />
-            </div>
-            {pinError && (
-              <div className="p-3 bg-red-50 rounded-lg border border-red-200 flex items-center gap-2">
-                <svg className="w-4 h-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm text-red-600">{pinError}</p>
-              </div>
-            )}
-            <Button type="submit" variant="primary" className="w-full">
-              Masuk
-            </Button>
-          </form>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
       <Header title="BAPISP Final" subtitle="Dokumen Final Berita Acara + Proforma Invoice + Surat Pengangkutan (Sudah TTD)" />
@@ -768,12 +709,6 @@ export default function BapispFinalPage() {
               <p className="text-xs text-gray-500">Hanya menampilkan PI yang sudah memiliki Berita Acara dan TTD</p>
             </div>
           </div>
-          <button
-            onClick={() => { setIsAuthenticated(false); setPinInput(""); setPinError(""); }}
-            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
-          >
-            Keluar
-          </button>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
