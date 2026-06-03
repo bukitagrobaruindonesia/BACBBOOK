@@ -1127,7 +1127,7 @@ export default function RekapProformaInvoicePage() {
     } catch (error) { console.error(error); }
   };
 
-  const handlePrintBastSimple = async (item: ProformaInvoice) => {
+  const handlePrintBapisp = async (item: ProformaInvoice) => {
     let baData: any = null;
     const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
     const snap1 = await getDocs(q1);
@@ -1141,11 +1141,15 @@ export default function RekapProformaInvoicePage() {
       alert("Berita Acara belum dibuat. Silakan generate terlebih dahulu.");
       return;
     }
-    const bastItems: BeritaAcaraItem[] = baData.items || [];
+    const spList = getSuratMuatForPI(item.nomorPI);
     const now = new Date();
     const hari = now.toLocaleDateString("id-ID", { weekday: "long" });
     const tanggalLengkap = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-    const rowsHtml = bastItems.map((it) => `
+    const bastItems: BeritaAcaraItem[] = baData.items || [];
+    const ttdNama = baData.ttdNama || "";
+    const ttdJabatan = baData.ttdJabatan || "";
+    const ttdImage = baData.ttdImage || "";
+    const baRowsHtml = bastItems.map((it) => `
       <tr>
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.tanggalMuat}</td>
@@ -1157,39 +1161,330 @@ export default function RekapProformaInvoicePage() {
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nopol}</td>
       </tr>
     `).join("");
+    const baHtml = `
+      <div class="page">
+        <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
+        <div style="text-align: center; margin: 8px 0 12px 0;">
+          <h1 style="font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline;">BERITA ACARA SERAH TERIMA BARANG</h1>
+          <p style="font-size: 11px; font-weight: 600;">${baData.nomorSeri}</p>
+        </div>
+        <div style="padding: 0 4px;">
+          <p style="margin-bottom: 12px; font-size: 10px;">Kami yang bertanda tangan di bawah ini, pada hari ${hari}, ${tanggalLengkap}</p>
+          <div style="margin-bottom: 10px;">
+            <p style="font-weight: 700; margin-bottom: 4px; font-size: 10px;">Selanjutnya disebut Pihak Pertama.</p>
+            <table style="width: 100%; margin-bottom: 8px; font-size: 10px;">
+              <tr><td style="padding: 2px 0; vertical-align: top; width: 100px; font-weight: 600;">Nama</td><td>: ${ttdNama || "............................"}</td></tr>
+              <tr><td style="padding: 2px 0; vertical-align: top; font-weight: 600;">Perusahaan</td><td>: PT Bukit Agrochemical Baru</td></tr>
+              <tr><td style="padding: 2px 0; vertical-align: top; font-weight: 600;">Jabatan</td><td>: ${ttdJabatan || "............................"}</td></tr>
+            </table>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <p style="font-weight: 700; margin-bottom: 4px; font-size: 10px;">Selanjutnya yang disebut Pihak Kedua.</p>
+            <table style="width: 100%; margin-bottom: 8px; font-size: 10px;">
+              <tr><td style="padding: 2px 0; vertical-align: top; width: 100px; font-weight: 600;">Nama</td><td>: ${item.namaCustomer}</td></tr>
+              <tr><td style="padding: 2px 0; vertical-align: top; font-weight: 600;">Alamat</td><td>: ${(item.alamatCustomer || "").replace(/\n/g, " ")}</td></tr>
+            </table>
+          </div>
+          <p style="margin-bottom: 12px; font-size: 10px; text-align: justify;">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px;">
+            <thead>
+              <tr style="background: #f0fdf4; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 30px;">No</th>
+                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 80px;">Tanggal Muat</th>
+                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center;">Nama Produk</th>
+                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 80px;">FOT / No DO</th>
+                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 70px;">QTY</th>
+                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 120px;">No SJ</th>
+                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 90px;">Driver</th>
+                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 80px;">Nopol</th>
+              </tr>
+            </thead>
+            <tbody>${baRowsHtml}</tbody>
+          </table>
+          <p style="margin-bottom: 16px; font-size: 10px; text-align: justify;">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
+          <table style="width: 100%; border-collapse: collapse; margin-top: 30px;">
+            <tr>
+              <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 0 10px;">
+                <p style="font-size: 9px; margin-bottom: 50px;">${item.namaCustomer}<br>(Pihak Kedua)</p>
+                <div style="height: 50px;"></div>
+                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${item.namaCustomer}</p>
+              </td>
+              <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 0 10px;">
+                <p style="font-size: 9px; margin-bottom: 50px;">${ttdNama || "........................"}<br>(Pihak Pertama)</p>
+                ${ttdImage ? `
+                  <div style="position: relative; display: inline-block; margin-bottom: 4px;">
+                    <img src="${ttdImage}" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
+                    <img src="/LogoAGRO.png" alt="Stampel" style="position: absolute; top: -15px; right: -30px; width: 70px; height: auto; opacity: 0.9; pointer-events: none;" onerror="this.style.display='none'" />
+                  </div>
+                ` : `<div style="height: 50px;"></div>`}
+                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${ttdNama || "........................"}</p>
+                <p style="font-size: 9px; color: #333; margin-top: 2px;">${ttdJabatan || ""}</p>
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+    `;
+    const produkRows = (item.produkItems || []).map((p, idx) => `
+      <tr>
+        <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${idx + 1}</td>
+        <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600; height: 28px;">${p.namaProduk || ""}</td>
+        <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${p.fot || ""}</td>
+        <td style="padding: 5px 8px; font-size: 9px; border: 1px solid #000; vertical-align: top; height: 28px; color: #555;">${p.produsen || ""}</td>
+        <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${p.kuantitas?.toLocaleString("id-ID") || "0"}</td>
+        <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${formatRupiah(p.hargaSatuan)}</td>
+        <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600; height: 28px;">${formatRupiah(p.totalHarga)}</td>
+      </tr>
+    `).join("");
+    const emptyRowsCount = Math.max(0, 10 - (item.produkItems || []).length);
+    const emptyRows = Array.from({ length: emptyRowsCount }, (_, i) => `
+      <tr>
+        <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${(item.produkItems || []).length + i + 1}</td>
+        <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
+        <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
+        <td style="padding: 5px 8px; font-size: 9px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
+        <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
+        <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
+        <td style="text-align: right; padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
+      </tr>
+    `).join("");
+    const createdAtStr = item.createdAt instanceof Date
+      ? item.createdAt.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+      : "-";
+    const piHtml = `
+      <div class="page">
+        <img src="/LogoAGRO.png" alt="Watermark" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.08; pointer-events: none; z-index: 0;" onerror="this.style.display='none'" />
+        <div style="position: relative; z-index: 1;">
+          <img src="/logo.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>');" />
+          <div style="text-align: center; margin: 8px 0 10px 0; padding: 5px 0; background: #dcfce7; border-top: 2px solid #16a34a; border-bottom: 2px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+            <h1 style="color: #111; font-size: 15px; margin: 0; font-weight: bold; letter-spacing: 3px;">PROFORMA INVOICE</h1>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth,</p>
+            <div style="display: flex; justify-content: space-between; gap: 0;">
+              <div style="flex: 1; border: 1px solid #000; padding: 8px 10px; min-height: 75px;">
+                <p style="font-size: 11px; font-weight: 700; color: #000; margin: 0 0 3px 0;">${item.namaCustomer || ""}</p>
+                <p style="font-size: 9px; color: #333; line-height: 1.5;">${(item.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
+              </div>
+              <div style="width: 250px; padding: 0 0 0 10px;">
+                <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
+                  <span style="color: #333; min-width: 90px;">Tanggal</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${item.tanggal || ""}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
+                  <span style="color: #333; min-width: 90px;">No Invoice</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${item.nomorPI || ""}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
+                  <span style="color: #333; min-width: 90px;">Metode Pembayaran</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${item.metodePembayaran || ""}</span>
+                </div>
+                ${item.npwp ? `<div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;"><span style="color: #333; min-width: 90px;">NPWP</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${item.npwp}</span></div>` : ""}
+              </div>
+            </div>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+            <thead>
+              <tr style="background: #ffedd5; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 28px;">NO</th>
+                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: left; padding-left: 8px;">Nama Produk</th>
+                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 45px;">Fot</th>
+                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 90px;">Produsen</th>
+                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 60px;">Kuantitas<br>(kg)</th>
+                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 95px;">Harga Satuan</th>
+                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 105px;">Total Harga</th>
+              </tr>
+            </thead>
+            <tbody>${produkRows}${emptyRows}</tbody>
+          </table>
+          <div style="display: flex; border: 1px solid #000; border-top: none;">
+            <div style="flex: 1; padding: 8px 10px; border-right: 1px solid #000;">
+              <div style="font-size: 9px; color: #333; margin-bottom: 3px; font-weight: 600;">Terbilang :</div>
+              <div style="font-size: 10px; color: #000; font-weight: 700; text-transform: uppercase; line-height: 1.4;">${item.terbilang || "-"}</div>
+            </div>
+            <div style="width: 250px; padding: 0;">
+              <div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;">
+                <span style="color: #333;">Subtotal</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(item.subtotal)}</span>
+              </div>
+              ${(item.uangMuka || 0) > 0 ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">Uang Muka</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(item.uangMuka)}</span></div>` : ""}
+              ${item.includePPN ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">PPN 11%</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(item.ppnNominal)}</span></div>` : ""}
+              ${(item.ongkosKirim || 0) > 0 ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">Ongkos Kirim</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(item.ongkosKirim)}</span></div>` : ""}
+              <div style="display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: none; background: #f0fdf4; border-top: 1px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                <span style="font-weight: 700; color: #000;">Jumlah Tertagih</span><span style="font-size: 10px; color: #000; font-weight: 700; font-family: monospace;">${formatRupiah(item.jumlahTertagih)}</span>
+              </div>
+              <div style="padding: 5px 10px; text-align: right; border-top: 1px solid #ddd; font-size: 11px;">
+                <span style="color: #666; font-size: 11px;">Tanggal Jatuh Tempo : </span><span style="color: #dc2626; font-weight: 700; font-size: 11px;">${item.tanggalJatuhTempo || ""}</span>
+              </div>
+              <div style="padding: 4px 10px; text-align: right; border-top: 1px solid #eee; font-size: 10px; color: #666;">Dibuat: ${createdAtStr}</div>
+            </div>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; border-top: none;">
+            <tbody>
+              <tr>
+                <td style="width: 50%; vertical-align: bottom; padding: 8px 10px; border-right: 1px solid #000; font-size: 9px; line-height: 1.6; color: #333;">
+                  <p style="font-size: 9px; font-weight: 700; color: #000; margin-bottom: 5px;">Pembayaran mohon ditransfer via rekening:</p>
+                  <p><strong style="color: #000; font-size: 9px;">BANK MANDIRI</strong> - Cabang Lamandau</p>
+                  <p>a/n PT Bukit Agrochemical Baru</p>
+                  <p>No. Rek : 159-00-1205477-0</p>
+                  <p style="margin-top: 3px;"><strong style="color: #000; font-size: 9px;">BANK BRI</strong> - Cabang Lamandau</p>
+                  <p>a/n PT Bukit Agrochemical Baru</p>
+                  <p>No. Rek : 2232-01000-879-567</p>
+                  <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc;">
+                    <p style="font-size: 9px; font-weight: 700; color: #000; margin-bottom: 2px;">Dipesan oleh:</p>
+                    <p style="font-size: 10px; font-weight: 700; color: #000;">${item.namaCustomer || ""}</p>
+                  </div>
+                  <div style="margin-top: 6px;">
+                    <p style="font-size: 9px; font-weight: 600; color: #000; margin-bottom: 2px;">Diorder Oleh:</p>
+                    <p style="font-size: 9px; color: #333; margin-bottom: 2px;">PT. Bukit Agrochemical Baru</p>
+                    ${item.ttdImage ? `<img src="${item.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 2px 0;" onerror="this.style.display='none'" />` : `<div style="height: 35px;"></div>`}
+                    <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 2px; display: inline-block; min-width: 120px;">
+                      ${item.ttdImage ? `<p style="font-weight: 700; margin: 0; font-size: 9px;">${item.ttdNama}</p><p style="margin: 0; font-size: 8px; color: #555;">${item.ttdJabatan}</p>` : `<p style="font-weight: 700; margin: 0; font-size: 9px;">_________________</p>`}
+                    </div>
+                  </div>
+                </td>
+                <td style="width: 50%; vertical-align: bottom; text-align: center; padding: 8px 10px; font-size: 9px;">
+                  <p style="margin-bottom: 30px;">Hormat kami,<br>PT. Bukit Agrochemical Baru</p>
+                  <img src="/Picture4.png" alt="TTD" style="max-height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
+                  <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">Sri Setyo Wibowo</p>
+                  <p style="font-size: 8px; color: #555;">Manager Keuangan</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+    const spHtml = spList.map((surat) => {
+      const isGI = !surat.jenisSurat || surat.jenisSurat === "gudangInduk";
+      const isDikuasakan = surat.jenisSurat === "do" && surat.subJenisDO === "dikuasakan";
+      const piDisplay = Array.isArray(surat.nomorPI) ? surat.nomorPI.join(", ") : surat.nomorPI;
+      const itemsHtml = (surat.items || []).map((it, idx) => `
+        <tr>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
+          ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (it.nomorPI || piDisplay || "-") : (it.nomorPO || "-")}</td>
+          <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
+        </tr>
+      `).join("");
+      let recipientBox = "";
+      if (isGI) {
+        recipientBox = `<div style="border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px;">
+          <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth :</p>
+          <p style="font-size: 11px; font-weight: 700;">Bapak Kepala Gudang Induk</p>
+          <p style="font-size: 11px; font-weight: 700;">PT Bukit Agrochemical Baru</p>
+          <p style="font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px;">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p>
+        </div>`;
+      } else if (isDikuasakan) {
+        const customerName = Array.isArray(surat.namaCustomer) ? surat.namaCustomer[0] : surat.namaCustomer;
+        recipientBox = `<div style="border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px;">
+          <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth :</p>
+          <p style="font-size: 11px; font-weight: 700;">${customerName || ""}</p>
+          <p style="font-size: 11px; font-weight: 700;">${customerName || ""}</p>
+        </div>`;
+      } else {
+        recipientBox = `<div style="border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px;">
+          <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth :</p>
+          <p style="font-size: 11px; font-weight: 700;">${surat.kepadaNama || ""}</p>
+          <p style="font-size: 11px; font-weight: 700;">${surat.kepadaPerusahaan || ""}</p>
+          <p style="font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px;">${(surat.kepadaAlamat || "").replace(/\n/g, "<br>")}</p>
+        </div>`;
+      }
+      return `
+        <div class="page" style="width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000;">
+          <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
+          <div style="text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">SURAT PENGANGKUTAN</div>
+          <div style="margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;">
+              <span>Lamandau, ${new Date(surat.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;">
+              <span style="font-weight: 600;">Nomor Seri : ${surat.nomorSeri}</span>
+            </div>
+            ${piDisplay ? `<div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;"><span style="font-weight: 600;">Nomor PI : ${piDisplay}</span></div>` : ""}
+          </div>
+          ${recipientBox}
+          <div style="font-size: 10px; margin-bottom: 8px;">
+            <p style="margin-bottom: 2px;">Dengan Hormat,</p>
+            <p style="margin-bottom: 2px;">Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <div style="text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact;">DASAR PENGANGKUTAN</div>
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background: #f0fdf4; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 30px;">NO</th>
+                  ${!isGI ? `<th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 100px;">NOMOR SUB DO</th>` : ""}
+                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 100px;">NOMOR PI</th>
+                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center;">JENIS PUPUK</th>
+                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 60px;">PARTY</th>
+                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 100px;">PENGAMBILAN<br>ZAK</th>
+                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 60px;">SISA</th>
+                </tr>
+              </thead>
+              <tbody>${itemsHtml}</tbody>
+            </table>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <div style="text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact;">DATA UNIT ANGKUTAN</div>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tbody>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorPolisi || "-"}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.driverUnit || "-"}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
+                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorSIM || "-"}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top: 10px; font-size: 9px;">
+            <p style="margin-bottom: 2px; font-weight: 700;">Notes :</p>
+            <p style="margin-bottom: 2px;">- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
+            <p style="margin-bottom: 2px;">- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
+            <p style="margin-bottom: 2px;">- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; margin-top: auto;">
+            <tr>
+              <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 20px 10px 0;">
+                <p style="font-size: 9px; margin-bottom: 45px;">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+                <img src="/Picture2.png" alt="TTD" style="max-height: 105px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
+                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">HENDRA PRAMASYANTO</p>
+              </td>
+              <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 20px 10px 0;">
+                <p style="font-size: 9px; margin-bottom: 45px;">Diangkut oleh,<br>Driver</p>
+                <div style="height: 105px;"></div>
+                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${surat.driverUnit || ""}</p>
+              </td>
+            </tr>
+          </table>
+          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: 10px;" onerror="this.style.display='none'" />
+        </div>
+      `;
+    }).join('<div class="page-break"></div>');
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const html = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Berita Acara ${baData.nomorSeri}</title>
+        <title>BAPISP ${item.nomorPI}</title>
         <style>
           @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+          @media print {
+            body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            .no-print { display: none !important; }
+            .page-break { page-break-after: always; }
+          }
           * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
+          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
           .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
-          .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .title-bar { text-align: center; margin: 8px 0 12px 0; }
-          .title-bar h1 { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline; }
-          .title-bar p { font-size: 11px; font-weight: 600; }
-          .content { padding: 0 4px; flex: 1; }
-          .opening { margin-bottom: 12px; font-size: 10px; }
-          .party-section { margin-bottom: 10px; }
-          .party-title { font-weight: 700; margin-bottom: 4px; font-size: 10px; }
-          .party-table { width: 100%; margin-bottom: 8px; font-size: 10px; }
-          .party-table td { padding: 2px 0; vertical-align: top; }
-          .party-label { width: 100px; font-weight: 600; }
-          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; }
-          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
-          .closing { margin-bottom: 16px; font-size: 10px; text-align: justify; }
-          .signature-row { display: flex; justify-content: space-between; margin-top: 30px; }
-          .signature-box { width: 45%; text-align: center; }
-          .signature-title { font-size: 9px; margin-bottom: 50px; }
-          .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
-          .signature-role { font-size: 9px; color: #333; margin-top: 2px; }
+          .page-break { page-break-after: always; }
           .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
           .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
           @media print { .print-bar { display: none !important; } }
@@ -1199,61 +1494,11 @@ export default function RekapProformaInvoicePage() {
         <div class="print-bar no-print">
           <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
         </div>
-        <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
-          <div class="title-bar">
-            <h1>BERITA ACARA SERAH TERIMA BARANG</h1>
-            <p>${baData.nomorSeri}</p>
-          </div>
-          <div class="content">
-            <p class="opening">Kami yang bertanda tangan di bawah ini, pada hari ${hari}, ${tanggalLengkap}</p>
-            <div class="party-section">
-              <p class="party-title">Selanjutnya disebut Pihak Pertama.</p>
-              <table class="party-table">
-                <tr><td class="party-label">Nama</td><td>: ........................</td></tr>
-                <tr><td class="party-label">Perusahaan</td><td>: PT Bukit Agrochemical Baru</td></tr>
-                <tr><td class="party-label">Jabatan</td><td>: ........................</td></tr>
-              </table>
-            </div>
-            <div class="party-section">
-              <p class="party-title">Selanjutnya yang disebut Pihak Kedua.</p>
-              <table class="party-table">
-                <tr><td class="party-label">Nama</td><td>: ${item.namaCustomer}</td></tr>
-                <tr><td class="party-label">Alamat</td><td>: ${(item.alamatCustomer || "").replace(/\n/g, " ")}</td></tr>
-              </table>
-            </div>
-            <p class="opening">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width: 30px;">No</th>
-                  <th style="width: 80px;">Tanggal Muat</th>
-                  <th>Nama Produk</th>
-                  <th style="width: 80px;">FOT / No DO</th>
-                  <th style="width: 70px;">QTY</th>
-                  <th style="width: 120px;">No SJ</th>
-                  <th style="width: 90px;">Driver</th>
-                  <th style="width: 80px;">Nopol</th>
-                </tr>
-              </thead>
-              <tbody>${rowsHtml}</tbody>
-            </table>
-            <p class="closing">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
-            <div class="signature-row">
-              <div class="signature-box">
-                <p class="signature-title">${item.namaCustomer}<br>(Pihak Kedua)</p>
-                <div style="height: 50px;"></div>
-                <p class="signature-name">${item.namaCustomer}</p>
-              </div>
-              <div class="signature-box">
-                <p class="signature-title">PT Bukit Agrochemical Baru<br>(Pihak Pertama)</p>
-                <div style="min-height: 60px; margin-bottom: 4px;"></div>
-                <p class="signature-name">_________________</p>
-                <p class="signature-role">PT Bukit Agrochemical Baru</p>
-              </div>
-            </div>
-          </div>
-        </div>
+        ${baHtml}
+        <div class="page-break"></div>
+        ${piHtml}
+        <div class="page-break"></div>
+        ${spHtml}
       </body>
       </html>
     `;
@@ -2246,9 +2491,9 @@ export default function RekapProformaInvoicePage() {
                     )}
                     {bastExists && (
                       <>
-                        <button onClick={() => handlePrintBastSimple(selectedItem)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
+                        <button onClick={() => handlePrintBapisp(selectedItem)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                          Print BA
+                          Print BAPISP
                         </button>
                         <button onClick={() => handleResetBast(selectedItem.nomorPI)} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
