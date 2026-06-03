@@ -198,17 +198,12 @@ export default function RekapProformaInvoicePage() {
   const [selectedOrderTTD, setSelectedOrderTTD] = useState("");
   const [invoiceNomor, setInvoiceNomor] = useState("");
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
-  const [showRegenerateButton, setShowRegenerateButton] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     jumlahUangDibayar: "",
     tanggalPembayaran: "",
     statusPelunasan: "",
   });
-  const [isBastModalOpen, setIsBastModalOpen] = useState(false);
-  const [bastTTDId, setBastTTDId] = useState("");
-  const [bastNomorSeri, setBastNomorSeri] = useState("");
-  const [isGeneratingBast, setIsGeneratingBast] = useState(false);
   const [bastExists, setBastExists] = useState(false);
   const [invoiceExists, setInvoiceExists] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -580,29 +575,11 @@ export default function RekapProformaInvoicePage() {
     return nomor;
   };
 
-  const handleRegenerateInvoice = async () => {
-    if (!selectedItem || !invoiceSurat) return;
-    setIsGeneratingInvoice(true);
-    try {
-      const piRef = doc(db, "proformaInvoice", selectedItem.id);
-      const piSnap = await getDoc(piRef);
-      const baseNumber = piSnap.data()?.invoiceBaseNumber;
-      if (baseNumber) {
-        const nomor = `BAGB-INV-${baseNumber}`;
-        const suratRef = doc(db, "suratPengangkutan", invoiceSurat.id);
-        await updateDoc(suratRef, { nomorInvoice: nomor });
-        setInvoiceNomor(nomor);
-        setShowRegenerateButton(false);
-      }
-    } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
-  };
-
   const handleOpenFullInvoice = async (row: ProformaInvoice) => {
     setSelectedItem(row);
     setInvoiceSurat(null);
     setSelectedOrderTTD("");
     setInvoiceNomor("");
-    setShowRegenerateButton(false);
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
@@ -622,16 +599,11 @@ export default function RekapProformaInvoicePage() {
     setInvoiceSurat(surat);
     setSelectedOrderTTD("");
     setInvoiceNomor("");
-    setShowRegenerateButton(false);
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
       const nomor = await generateInvoiceNumber(surat);
       setInvoiceNomor(nomor);
-      if (selectedItem) {
-        const status = getStatusPengangkutan(selectedItem);
-        setShowRegenerateButton(status === "complete" && nomor.includes("-S"));
-      }
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
   };
 
@@ -1045,63 +1017,66 @@ export default function RekapProformaInvoicePage() {
     } finally { setIsLoading(false); }
   };
 
-  const handleOpenBast = async (item: ProformaInvoice) => {
-    setSelectedItem(item);
-    setBastTTDId("");
-    setBastNomorSeri("");
-    setIsGeneratingBast(true);
-    setIsBastModalOpen(true);
+    const handleGenerateBast = async (item: ProformaInvoice) => {
     try {
-      let existingBa: any = null;
-      const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
-      const snap1 = await getDocs(q1);
-      if (!snap1.empty) existingBa = snap1.docs[0];
-      if (!existingBa) {
-        const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
-        const snap2 = await getDocs(q2);
-        if (!snap2.empty) existingBa = snap2.docs[0];
-      }
-      if (existingBa) {
-        const baData = existingBa.data();
-        setBastNomorSeri(baData.nomorSeri || "");
-        const matchedTtd = ttdList.find((t) =>
-          t.nama === baData.pihakPertama?.nama &&
-          t.jabatan === baData.pihakPertama?.jabatan
-        );
-        if (matchedTtd) setBastTTDId(matchedTtd.id);
-      } else {
-        const nomor = await getNextBastNumber();
-        setBastNomorSeri(nomor);
-      }
-    } catch (error) { console.error(error); } finally { setIsGeneratingBast(false); }
-  };
-
-  const handlePrintBast = async () => {
-    if (!selectedItem || !bastTTDId || !bastNomorSeri) return;
-    const ttd = ttdList.find((t) => t.id === bastTTDId);
-    if (!ttd) return;
-    const suratList = getSuratMuatForPI(selectedItem.nomorPI);
-    const bastItems: BeritaAcaraItem[] = [];
-    let no = 1;
-    suratList.forEach((surat) => {
-      (surat.items || []).forEach((it) => {
-        if (it.nomorPI && it.nomorPI !== selectedItem.nomorPI) return;
-        const piProd = selectedItem.produkItems.find((p) =>
-          p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
-          it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
-        );
-        bastItems.push({
-          no: no++,
-          tanggalMuat: surat.tanggal,
-          namaProduk: piProd?.namaProduk || it.jenisPupuk || "",
-          fot: piProd?.fot || "",
-          qty: `${it.pengambilanZAK || 0} ZAK`,
-          noSJ: surat.nomorSeri,
-          driver: surat.driverUnit || "",
-          nopol: surat.nomorPolisi || "",
+      const nomor = await getNextBastNumber();
+      const suratList = getSuratMuatForPI(item.nomorPI);
+      const bastItems: BeritaAcaraItem[] = [];
+      let no = 1;
+      suratList.forEach((surat) => {
+        (surat.items || []).forEach((it) => {
+          if (it.nomorPI && it.nomorPI !== item.nomorPI) return;
+          const piProd = item.produkItems.find((p) =>
+            p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
+            it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
+          );
+          bastItems.push({
+            no: no++,
+            tanggalMuat: surat.tanggal,
+            namaProduk: piProd?.namaProduk || it.jenisPupuk || "",
+            fot: piProd?.fot || "",
+            qty: `${it.pengambilanZAK || 0} ZAK`,
+            noSJ: surat.nomorSeri,
+            driver: surat.driverUnit || "",
+            nopol: surat.nomorPolisi || "",
+          });
         });
       });
-    });
+      const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
+      const snap1 = await getDocs(q1);
+      for (const d of snap1.docs) { await deleteDoc(doc(db, "beritaAcara", d.id)); }
+      const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
+      const snap2 = await getDocs(q2);
+      for (const d of snap2.docs) { await deleteDoc(doc(db, "beritaAcara", d.id)); }
+      await addDoc(collection(db, "beritaAcara"), {
+        nomorSeri: nomor,
+        nomorPI: item.nomorPI,
+        namaCustomer: item.namaCustomer,
+        tanggal: new Date().toISOString().split("T")[0],
+        pihakPertama: { nama: "", jabatan: "", perusahaan: "PT Bukit Agrochemical Baru" },
+        pihakKedua: { nama: item.namaCustomer, alamat: item.alamatCustomer },
+        items: bastItems,
+        createdAt: serverTimestamp(),
+      });
+      setBastExists(true);
+    } catch (error) { console.error(error); }
+  };
+
+  const handlePrintBastSimple = async (item: ProformaInvoice) => {
+    let baData: any = null;
+    const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
+    const snap1 = await getDocs(q1);
+    if (!snap1.empty) baData = snap1.docs[0].data();
+    if (!baData) {
+      const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
+      const snap2 = await getDocs(q2);
+      if (!snap2.empty) baData = snap2.docs[0].data();
+    }
+    if (!baData) {
+      alert("Berita Acara belum dibuat. Silakan generate terlebih dahulu.");
+      return;
+    }
+    const bastItems: BeritaAcaraItem[] = baData.items || [];
     const now = new Date();
     const hari = now.toLocaleDateString("id-ID", { weekday: "long" });
     const tanggalLengkap = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -1123,7 +1098,7 @@ export default function RekapProformaInvoicePage() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Berita Acara ${bastNomorSeri}</title>
+        <title>Berita Acara ${baData.nomorSeri}</title>
         <style>
           @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
           @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
@@ -1163,23 +1138,23 @@ export default function RekapProformaInvoicePage() {
           <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
           <div class="title-bar">
             <h1>BERITA ACARA SERAH TERIMA BARANG</h1>
-            <p>${bastNomorSeri}</p>
+            <p>${baData.nomorSeri}</p>
           </div>
           <div class="content">
             <p class="opening">Kami yang bertanda tangan di bawah ini, pada hari ${hari}, ${tanggalLengkap}</p>
             <div class="party-section">
               <p class="party-title">Selanjutnya disebut Pihak Pertama.</p>
               <table class="party-table">
-                <tr><td class="party-label">Nama</td><td>: ${ttd.nama}</td></tr>
+                <tr><td class="party-label">Nama</td><td>: ........................</td></tr>
                 <tr><td class="party-label">Perusahaan</td><td>: PT Bukit Agrochemical Baru</td></tr>
-                <tr><td class="party-label">Jabatan</td><td>: ${ttd.jabatan}</td></tr>
+                <tr><td class="party-label">Jabatan</td><td>: ........................</td></tr>
               </table>
             </div>
             <div class="party-section">
               <p class="party-title">Selanjutnya yang disebut Pihak Kedua.</p>
               <table class="party-table">
-                <tr><td class="party-label">Nama</td><td>: ${selectedItem.namaCustomer}</td></tr>
-                <tr><td class="party-label">Alamat</td><td>: ${(selectedItem.alamatCustomer || "").replace(/\n/g, " ")}</td></tr>
+                <tr><td class="party-label">Nama</td><td>: ${item.namaCustomer}</td></tr>
+                <tr><td class="party-label">Alamat</td><td>: ${(item.alamatCustomer || "").replace(/\n/g, " ")}</td></tr>
               </table>
             </div>
             <p class="opening">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
@@ -1201,18 +1176,15 @@ export default function RekapProformaInvoicePage() {
             <p class="closing">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
             <div class="signature-row">
               <div class="signature-box">
-                <p class="signature-title">${selectedItem.namaCustomer}<br>(Pihak Kedua)</p>
+                <p class="signature-title">${item.namaCustomer}<br>(Pihak Kedua)</p>
                 <div style="height: 50px;"></div>
-                <p class="signature-name">${selectedItem.namaCustomer}</p>
+                <p class="signature-name">${item.namaCustomer}</p>
               </div>
               <div class="signature-box">
-                <p class="signature-title">${ttd.nama}<br>(Pihak Pertama)</p>
-                <div style="position: relative; display: inline-block; margin-bottom: 4px;">
-                  <img src="${ttd.ttdImage}" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
-                  <img src="/LogoAGRO.png" alt="Stampel" style="position: absolute; top: -15px; right: -30px; width: 70px; height: auto; opacity: 0.9; pointer-events: none;" onerror="this.style.display='none'" />
-                </div>
-                <p class="signature-name">${ttd.nama}</p>
-                <p class="signature-role">${ttd.jabatan}</p>
+                <p class="signature-title">PT Bukit Agrochemical Baru<br>(Pihak Pertama)</p>
+                <div style="min-height: 60px; margin-bottom: 4px;"></div>
+                <p class="signature-name">_________________</p>
+                <p class="signature-role">PT Bukit Agrochemical Baru</p>
               </div>
             </div>
           </div>
@@ -1222,29 +1194,9 @@ export default function RekapProformaInvoicePage() {
     `;
     printWindow.document.write(html);
     printWindow.document.close();
-    try {
-      const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", selectedItem.nomorPI));
-      const snap1 = await getDocs(q1);
-      for (const d of snap1.docs) { await deleteDoc(doc(db, "beritaAcara", d.id)); }
-      const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", selectedItem.nomorPI));
-      const snap2 = await getDocs(q2);
-      for (const d of snap2.docs) { await deleteDoc(doc(db, "beritaAcara", d.id)); }
-      await addDoc(collection(db, "beritaAcara"), {
-        nomorSeri: bastNomorSeri,
-        nomorPI: selectedItem.nomorPI,
-        namaCustomer: selectedItem.namaCustomer,
-        tanggal: new Date().toISOString().split("T")[0],
-        pihakPertama: { nama: ttd.nama, jabatan: ttd.jabatan, perusahaan: "PT Bukit Agrochemical Baru" },
-        pihakKedua: { nama: selectedItem.namaCustomer, alamat: selectedItem.alamatCustomer },
-        items: bastItems,
-        createdAt: serverTimestamp(),
-      });
-      setBastExists(true);
-    } catch (error) { console.error(error); }
-    setIsBastModalOpen(false);
   };
 
-  const handleOpenPaymentEdit = (item: ProformaInvoice) => {
+const handleOpenPaymentEdit = (item: ProformaInvoice) => {
     setSelectedItem(item);
     setPaymentForm({
       jumlahUangDibayar: "",
@@ -1706,7 +1658,7 @@ export default function RekapProformaInvoicePage() {
         hargaPerZakDus,
         subTotal,
       };
-    });
+    }).filter((it) => !invoiceSurat || it.kuantitas > 0).map((it, idx) => ({ ...it, no: idx + 1 }));
     const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
     const dppNilaiLain = 0;
     const ongkosKirim = pi.ongkosKirim || 0;
@@ -2231,14 +2183,14 @@ export default function RekapProformaInvoicePage() {
                   <p className="text-sm text-gray-700 mb-3">Seluruh muatan telah selesai dimuat. {bastExists ? "Berita Acara sudah dibuat." : "Buat Berita Acara Serah Terima Barang."}</p>
                   <div className="flex gap-2">
                     {!bastExists && (
-                      <button onClick={() => handleOpenBast(selectedItem)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
+                      <button onClick={() => handleGenerateBast(selectedItem)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                        Buat Berita Acara
+                        Generate Berita Acara
                       </button>
                     )}
                     {bastExists && (
                       <>
-                        <button onClick={() => handleOpenBast(selectedItem)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
+                        <button onClick={() => handlePrintBastSimple(selectedItem)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
                           <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
                           Print BA
                         </button>
@@ -2536,12 +2488,6 @@ export default function RekapProformaInvoicePage() {
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
             <p className="text-sm text-blue-700"><span className="font-semibold">Dipesan Oleh:</span> {selectedItem?.namaCustomer || "-"}</p>
           </div>
-          {showRegenerateButton && (
-            <div className="p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-              <p className="text-sm text-yellow-800 mb-2">Status pemuatan lengkap. Gunakan format final tanpa suffix -S.</p>
-              <Button variant="secondary" size="sm" onClick={handleRegenerateInvoice} isLoading={isGeneratingInvoice}>Generate Final Invoice</Button>
-            </div>
-          )}
           <p className="text-sm text-gray-600">Pilih TTD untuk bagian <strong>Diorder Oleh</strong>:</p>
           <Select label="Pilih TTD" value={selectedOrderTTD} onChange={(e) => setSelectedOrderTTD(e.target.value)} options={[{ value: "", label: "Pilih tanda tangan..." }, ...ttdList.map((ttd) => ({ value: ttd.id, label: `${ttd.nama} - ${ttd.jabatan}` }))]} />
           {selectedOrderTTD && (
@@ -2629,95 +2575,7 @@ export default function RekapProformaInvoicePage() {
           )}
         </form>
       </Modal>
-      <Modal isOpen={isBastModalOpen} onClose={() => setIsBastModalOpen(false)} title="Preview Berita Acara Serah Terima" size="lg" footer={
-        <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => setIsBastModalOpen(false)}>Batal</Button>
-          <Button variant="primary" onClick={handlePrintBast} disabled={!bastTTDId || !bastNomorSeri || isGeneratingBast} isLoading={isGeneratingBast}>Print Berita Acara</Button>
-        </div>
-      }>
-        <div className="space-y-4">
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Berita Acara</p>
-            <p className="text-lg font-mono font-bold text-indigo-700">{bastNomorSeri || "Memuat..."}</p>
-            {isGeneratingBast && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor seri...</p>}
-          </div>
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor PI</p>
-            <p className="text-sm font-semibold text-gray-800">{selectedItem?.nomorPI}</p>
-          </div>
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Customer (Pihak Kedua)</p>
-            <p className="text-sm font-semibold text-gray-800">{selectedItem?.namaCustomer}</p>
-            <p className="text-xs text-gray-500 mt-1">{selectedItem?.alamatCustomer}</p>
-          </div>
-          <div>
-            <p className="text-sm text-gray-600 mb-2">Pilih Tanda Tangan Pihak Pertama:</p>
-            <Select label="Pilih TTD" value={bastTTDId} onChange={(e) => setBastTTDId(e.target.value)} options={[{ value: "", label: "Pilih tanda tangan..." }, ...ttdList.map((ttd) => ({ value: ttd.id, label: `${ttd.nama} - ${ttd.jabatan}` }))]} />
-          </div>
-          {bastTTDId && (() => {
-            const ttd = ttdList.find((t) => t.id === bastTTDId);
-            if (!ttd) return null;
-            return (
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-4">
-                <img src={ttd.ttdImage} alt="TTD" className="h-16 object-contain bg-white rounded-lg border border-gray-200" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">{ttd.nama}</p>
-                  <p className="text-xs text-gray-500">{ttd.jabatan}</p>
-                  <p className="text-xs text-gray-500">PT Bukit Agrochemical Baru</p>
-                </div>
-              </div>
-            );
-          })()}
-          {selectedItem && bastNomorSeri && (
-            <div className="overflow-x-auto">
-              <p className="text-sm font-semibold text-gray-700 mb-2">Preview Daftar Muatan</p>
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="bg-indigo-50">
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">No</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">Tanggal Muat</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">Nama Produk</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">FOT</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">QTY</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">No SJ</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">Driver</th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-indigo-800 uppercase border">Nopol</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(() => {
-                    const suratList = getSuratMuatForPI(selectedItem.nomorPI);
-                    let no = 1;
-                    const rows: React.ReactNode[] = [];
-                    suratList.forEach((surat) => {
-                      (surat.items || []).forEach((it) => {
-                        if (it.nomorPI && it.nomorPI !== selectedItem.nomorPI) return;
-                        const piProd = selectedItem.produkItems.find((p) =>
-                          p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
-                          it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
-                        );
-                        rows.push(
-                          <tr key={`${surat.id}-${no}`} className="border-b">
-                            <td className="px-3 py-2 text-gray-900 border">{no++}</td>
-                            <td className="px-3 py-2 text-gray-600 border">{surat.tanggal}</td>
-                            <td className="px-3 py-2 text-gray-800 font-medium border">{piProd?.namaProduk || it.jenisPupuk || ""}</td>
-                            <td className="px-3 py-2 text-gray-600 border">{piProd?.fot || "-"}</td>
-                            <td className="px-3 py-2 text-gray-900 border">{it.pengambilanZAK || 0} ZAK</td>
-                            <td className="px-3 py-2 text-gray-800 font-mono border">{surat.nomorSeri}</td>
-                            <td className="px-3 py-2 text-gray-600 border">{surat.driverUnit || "-"}</td>
-                            <td className="px-3 py-2 text-gray-600 border">{surat.nomorPolisi || "-"}</td>
-                          </tr>
-                        );
-                      });
-                    });
-                    return rows;
-                  })()}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </Modal>
+      
     </div>
   );
 }
