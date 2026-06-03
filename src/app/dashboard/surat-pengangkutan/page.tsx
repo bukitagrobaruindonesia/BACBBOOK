@@ -61,33 +61,15 @@ interface SuratPengangkutanItem {
   bobotPerUnit: number;
   maxZAK: number;
   fot: string;
-  nomorPI?: string;
+  nomorPI: string;
+  namaCustomer: string;
+  kuantitasOrdered: number;
+  loadedKG: number;
 }
 
 interface ExistingSurat {
   id: string;
   nomorSeri: string;
-}
-
-interface ProdukAggregate {
-  namaProduk: string;
-  fot: string;
-  orderedKG: number;
-  loadedKG: number;
-  remainingKG: number;
-  bobotPerUnit: number;
-  stockId: string;
-  stockFot: string;
-  nomorPIs: string[];
-}
-
-interface PILoadInfo {
-  nomorPIs: string[];
-  totalOrderedKG: number;
-  totalLoadedKG: number;
-  remainingKG: number;
-  produkList: ProdukAggregate[];
-  customers: string[];
 }
 
 const getRomanMonth = (month: number) => {
@@ -126,13 +108,10 @@ export default function SuratPengangkutanPage() {
   const [subJenisDO, setSubJenisDO] = useState<"mandiri" | "dikuasakan" | "">("");
   const [showJenisModal, setShowJenisModal] = useState(true);
   const [showSubJenisModal, setShowSubJenisModal] = useState(false);
-  const [piLoadInfo, setPiLoadInfo] = useState<PILoadInfo | null>(null);
-  const [pendingNomorPI, setPendingNomorPI] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
     namaKabupaten: "Lamandau",
-    nomorPI: "",
     nomorPolisi: "",
     driverUnit: "",
     nomorSIM: "",
@@ -142,10 +121,9 @@ export default function SuratPengangkutanPage() {
   });
 
   const [items, setItems] = useState<SuratPengangkutanItem[]>([]);
-  const [searchPI, setSearchPI] = useState("");
-  const [showPISearch, setShowPISearch] = useState(false);
-  const [selectedPIs, setSelectedPIs] = useState<ProformaInvoice[]>([]);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const [piSearchMap, setPiSearchMap] = useState<Record<number, string>>({});
+  const [piShowMap, setPiShowMap] = useState<Record<number, boolean>>({});
+  const itemSearchRefs = useRef<Record<number, HTMLDivElement | null>>({});
 
   useEffect(() => {
     fetchProformaInvoice();
@@ -156,41 +134,26 @@ export default function SuratPengangkutanPage() {
   }, []);
 
   useEffect(() => {
-    if (urlNomorPI) {
-      setPendingNomorPI(urlNomorPI);
-    }
-  }, [urlNomorPI]);
-
-  useEffect(() => {
-    if (pendingNomorPI && piList.length > 0 && !showJenisModal && !showSubJenisModal) {
+    if (urlNomorPI && piList.length > 0 && !showJenisModal && !showSubJenisModal) {
       if (
         jenisSurat === "gudangInduk" ||
         (jenisSurat === "do" && (subJenisDO === "mandiri" || subJenisDO === "dikuasakan"))
       ) {
-        const pi = piList.find((p) => p.nomorPI === pendingNomorPI);
-        if (pi && !selectedPIs.find((sp) => sp.id === pi.id)) {
-          handlePISelect(pi);
-          setPendingNomorPI(null);
+        const pi = piList.find((p) => p.nomorPI === urlNomorPI);
+        if (pi) {
+          addItemWithPI(pi);
         }
       }
     }
-  }, [pendingNomorPI, piList, jenisSurat, subJenisDO, showJenisModal, showSubJenisModal]);
-
-  useEffect(() => {
-    if (selectedPIs.length > 0 && (jenisSurat === "gudangInduk" || subJenisDO === "mandiri" || subJenisDO === "dikuasakan")) {
-      calculatePILoadInfo();
-    } else {
-      setPiLoadInfo(null);
-      if (jenisSurat === "gudangInduk" || subJenisDO === "mandiri" || subJenisDO === "dikuasakan") {
-        setItems([]);
-      }
-    }
-  }, [selectedPIs, stockList, jenisSurat, subJenisDO]);
+  }, [urlNomorPI, piList, jenisSurat, subJenisDO, showJenisModal, showSubJenisModal]);
 
   const handleClickOutside = (e: MouseEvent) => {
-    if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-      setShowPISearch(false);
-    }
+    Object.keys(itemSearchRefs.current).forEach((key) => {
+      const ref = itemSearchRefs.current[Number(key)];
+      if (ref && !ref.contains(e.target as Node)) {
+        setPiShowMap((prev) => ({ ...prev, [key]: false }));
+      }
+    });
   };
 
   const fetchExistingSurat = async () => {
@@ -335,217 +298,183 @@ export default function SuratPengangkutanPage() {
     return stock ? stock.bobotPerUnit : 50;
   };
 
-  const getStockIdForProduct = (namaProduk: string) => {
-    const stock = getStockForProduct(namaProduk);
-    return stock ? stock.id : "";
-  };
-
   const getStockFotForProduct = (namaProduk: string) => {
     const stock = getStockForProduct(namaProduk);
     return stock ? stock.fot : "";
   };
 
-  const calculatePILoadInfo = async () => {
-    if (selectedPIs.length === 0) {
-      setPiLoadInfo(null);
-      return;
-    }
+  const getLoadedKGForPIProduct = async (nomorPI: string, namaProduk: string) => {
+    let totalLoaded = 0;
     try {
-      const allNomorPIs = selectedPIs.map((p) => p.nomorPI);
-
-      const allSuratDocs: any[] = [];
-
-      for (let i = 0; i < allNomorPIs.length; i += 10) {
-        const batch = allNomorPIs.slice(i, i + 10);
-        const q1 = query(
-          collection(db, "suratPengangkutan"),
-          where("nomorPI", "in", batch)
-        );
-        const snap1 = await getDocs(q1);
-        snap1.docs.forEach((d) => {
-          if (!allSuratDocs.find((existing) => existing.id === d.id)) {
-            allSuratDocs.push(d);
-          }
-        });
-      }
-
-      for (let i = 0; i < allNomorPIs.length; i += 10) {
-        const batch = allNomorPIs.slice(i, i + 10);
-        const q2 = query(
-          collection(db, "suratPengangkutan"),
-          where("nomorPI", "array-contains-any", batch)
-        );
-        const snap2 = await getDocs(q2);
-        snap2.docs.forEach((d) => {
-          if (!allSuratDocs.find((existing) => existing.id === d.id)) {
-            allSuratDocs.push(d);
-          }
-        });
-      }
-
-      let totalLoadedKG = 0;
-      const produkMap: Record<string, ProdukAggregate> = {};
-
-      selectedPIs.forEach((pi) => {
-        pi.produkItems.forEach((prod) => {
-          const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
-          const isGIProduct = isGudangIndukFOT(fot);
-          if (jenisSurat === "gudangInduk" && !isGIProduct) return;
-          if (jenisSurat === "do" && isGIProduct) return;
-          const key = prod.namaProduk;
-          const bobot = getBobotPerUnit(prod.namaProduk);
-          if (!produkMap[key]) {
-            produkMap[key] = {
-              namaProduk: prod.namaProduk,
-              fot: prod.fot,
-              orderedKG: 0,
-              loadedKG: 0,
-              remainingKG: 0,
-              bobotPerUnit: bobot,
-              stockId: getStockIdForProduct(prod.namaProduk),
-              stockFot: getStockFotForProduct(prod.namaProduk),
-              nomorPIs: [],
-            };
-          }
-          produkMap[key].orderedKG += prod.kuantitas || 0;
-          if (!produkMap[key].nomorPIs.includes(pi.nomorPI)) {
-            produkMap[key].nomorPIs.push(pi.nomorPI);
-          }
-        });
-      });
-
-      allSuratDocs.forEach((docSnap) => {
-        const data = docSnap.data();
+      const q1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
+      const snap1 = await getDocs(q1);
+      const q2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", nomorPI));
+      const snap2 = await getDocs(q2);
+      const allDocs = [...snap1.docs, ...snap2.docs];
+      const uniqueIds = new Set<string>();
+      allDocs.forEach((d) => {
+        if (uniqueIds.has(d.id)) return;
+        uniqueIds.add(d.id);
+        const data = d.data();
         const suratItems = data.items || [];
-        suratItems.forEach((item: { jenisPupuk: string; pengambilanZAK: number | string; bobotPerUnit: number }) => {
-          const zak = parseFloat(String(item.pengambilanZAK)) || 0;
-          const bobot = item.bobotPerUnit || 50;
-          const kg = zak * bobot;
-          totalLoadedKG += kg;
-          Object.keys(produkMap).forEach((key) => {
-            if (item.jenisPupuk && (
-              item.jenisPupuk.toUpperCase().includes(key.toUpperCase()) ||
-              key.toUpperCase().includes(item.jenisPupuk.toUpperCase())
-            )) {
-              produkMap[key].loadedKG += kg;
-            }
-          });
+        suratItems.forEach((item: { jenisPupuk: string; pengambilanZAK: number; bobotPerUnit: number }) => {
+          if (
+            item.jenisPupuk && (
+              item.jenisPupuk.toUpperCase().includes(namaProduk.toUpperCase()) ||
+              namaProduk.toUpperCase().includes(item.jenisPupuk.toUpperCase())
+            )
+          ) {
+            totalLoaded += (item.pengambilanZAK || 0) * (item.bobotPerUnit || 50);
+          }
         });
       });
-
-      const totalOrderedKG = selectedPIs.reduce((sum, pi) => sum + pi.produkItems.reduce((s, p) => s + (p.kuantitas || 0), 0), 0);
-      const produkList = Object.values(produkMap).map((p) => ({
-        namaProduk: p.namaProduk,
-        fot: p.fot,
-        orderedKG: p.orderedKG,
-        loadedKG: p.loadedKG,
-        remainingKG: Math.max(0, p.orderedKG - p.loadedKG),
-        bobotPerUnit: p.bobotPerUnit,
-        stockId: p.stockId,
-        stockFot: p.stockFot,
-        nomorPIs: p.nomorPIs,
-      }));
-
-      setPiLoadInfo({
-        nomorPIs: allNomorPIs,
-        totalOrderedKG: totalOrderedKG,
-        totalLoadedKG: totalLoadedKG,
-        remainingKG: Math.max(0, totalOrderedKG - totalLoadedKG),
-        produkList: produkList,
-        customers: selectedPIs.map((p) => p.namaCustomer).filter((v, i, a) => a.indexOf(v) === i),
-      });
-
-      const newItems: SuratPengangkutanItem[] = [];
-      let idCounter = 1;
-      produkList.forEach((prod) => {
-        if (prod.remainingKG > 0) {
-          const maxZAK = Math.floor(prod.remainingKG / prod.bobotPerUnit);
-          newItems.push({
-            id: idCounter++,
-            nomorSubDO: "",
-            nomorPO: "",
-            jenisPupuk: prod.namaProduk,
-            party: "",
-            pengambilanZAK: maxZAK > 0 ? String(maxZAK) : "",
-            sisa: "",
-            bobotPerUnit: prod.bobotPerUnit,
-            maxZAK: maxZAK,
-            fot: prod.fot,
-            nomorPI: prod.nomorPIs.join(", "),
-          });
-        }
-      });
-      if (newItems.length === 0) {
-        newItems.push({
-          id: 1,
-          nomorSubDO: "",
-          nomorPO: "",
-          jenisPupuk: "",
-          party: "",
-          pengambilanZAK: "",
-          sisa: "",
-          bobotPerUnit: 50,
-          maxZAK: 0,
-          fot: "",
-        });
-      }
-      setItems(newItems);
-    } catch (error) {
-      console.error(error);
-    }
+    } catch (e) { console.error(e); }
+    return totalLoaded;
   };
 
-  const handlePISelect = (pi: ProformaInvoice) => {
-    if (selectedPIs.find((p) => p.id === pi.id)) return;
-    const newSelected = [...selectedPIs, pi];
-    setSelectedPIs(newSelected);
-    setFormData((prev) => ({
-      ...prev,
-      nomorPI: newSelected.map((p) => p.nomorPI).join(", "),
-      kepadaNama: newSelected[0]?.namaCustomer || "",
-      kepadaPerusahaan: newSelected[0]?.namaCustomer || "",
-      kepadaAlamat: newSelected[0]?.alamatCustomer || "",
-    }));
-    setSearchPI("");
-    setShowPISearch(false);
-  };
-
-  const handlePIRemove = (piId: string) => {
-    const newSelected = selectedPIs.filter((p) => p.id !== piId);
-    setSelectedPIs(newSelected);
-    setFormData((prev) => ({
-      ...prev,
-      nomorPI: newSelected.map((p) => p.nomorPI).join(", "),
-      kepadaNama: newSelected[0]?.namaCustomer || "",
-      kepadaPerusahaan: newSelected[0]?.namaCustomer || "",
-      kepadaAlamat: newSelected[0]?.alamatCustomer || "",
-    }));
-    if (newSelected.length === 0) {
-      setPiLoadInfo(null);
-      setItems([]);
-    }
-  };
-
-  const getPIAvailableList = () => {
+  const getPIAvailableForItem = (search: string) => {
     return piList.filter((pi) => {
-      if (selectedPIs.find((p) => p.id === pi.id)) return false;
-      const searchLower = searchPI.toLowerCase();
+      const searchLower = search.toLowerCase();
       const matchSearch = pi.nomorPI.toLowerCase().includes(searchLower) || pi.namaCustomer.toLowerCase().includes(searchLower);
       if (!matchSearch) return false;
-      if (jenisSurat === "gudangInduk" || subJenisDO === "mandiri" || subJenisDO === "dikuasakan") {
-        const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
-        let totalLoaded = 0;
-        if (piLoadInfo && piLoadInfo.nomorPIs.includes(pi.nomorPI)) {
-          const piProds = piLoadInfo.produkList.filter((pl) => pl.nomorPIs.includes(pi.nomorPI));
-          totalLoaded = piProds.reduce((sum, p) => sum + p.loadedKG, 0);
-        }
-        return totalLoaded < totalOrdered;
-      }
       return true;
     });
   };
 
-  const filteredPIList = getPIAvailableList();
+  const handlePISelectForItem = async (itemId: number, pi: ProformaInvoice) => {
+    setPiShowMap((prev) => ({ ...prev, [itemId]: false }));
+    setPiSearchMap((prev) => ({ ...prev, [itemId]: pi.nomorPI }));
+
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        return {
+          ...item,
+          nomorPI: pi.nomorPI,
+          namaCustomer: pi.namaCustomer,
+          jenisPupuk: "",
+          fot: "",
+          bobotPerUnit: 50,
+          maxZAK: 0,
+          sisa: "",
+          pengambilanZAK: "",
+          kuantitasOrdered: 0,
+          loadedKG: 0,
+        };
+      })
+    );
+  };
+
+  const handleProdukSelectForItem = async (itemId: number, pi: ProformaInvoice, produkIndex: number) => {
+    const prod = pi.produkItems[produkIndex];
+    if (!prod) return;
+    const bobot = getBobotPerUnit(prod.namaProduk);
+    const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+    const loaded = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
+    const ordered = prod.kuantitas || 0;
+    const remaining = Math.max(0, ordered - loaded);
+    const maxZAK = Math.floor(remaining / bobot);
+
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        return {
+          ...item,
+          jenisPupuk: prod.namaProduk,
+          fot: fot,
+          bobotPerUnit: bobot,
+          maxZAK: maxZAK,
+          sisa: String(maxZAK),
+          kuantitasOrdered: ordered,
+          loadedKG: loaded,
+          pengambilanZAK: maxZAK > 0 ? String(maxZAK) : "",
+        };
+      })
+    );
+  };
+
+  const addItem = () => {
+    const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
+    setItems((prev) => [
+      ...prev,
+      {
+        id: newId,
+        nomorSubDO: "",
+        nomorPO: "",
+        jenisPupuk: "",
+        party: "",
+        pengambilanZAK: "",
+        sisa: "",
+        bobotPerUnit: 50,
+        maxZAK: 0,
+        fot: "",
+        nomorPI: "",
+        namaCustomer: "",
+        kuantitasOrdered: 0,
+        loadedKG: 0,
+      },
+    ]);
+  };
+
+  const addItemWithPI = (pi: ProformaInvoice) => {
+    const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
+    const firstProd = pi.produkItems[0];
+    const bobot = firstProd ? getBobotPerUnit(firstProd.namaProduk) : 50;
+    const fot = firstProd ? (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim() : "";
+    setItems((prev) => [
+      ...prev,
+      {
+        id: newId,
+        nomorSubDO: "",
+        nomorPO: "",
+        jenisPupuk: firstProd ? firstProd.namaProduk : "",
+        party: "",
+        pengambilanZAK: "",
+        sisa: "",
+        bobotPerUnit: bobot,
+        maxZAK: 0,
+        fot: fot,
+        nomorPI: pi.nomorPI,
+        namaCustomer: pi.namaCustomer,
+        kuantitasOrdered: firstProd ? firstProd.kuantitas || 0 : 0,
+        loadedKG: 0,
+      },
+    ]);
+    if (firstProd) {
+      getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk).then((loaded) => {
+        const ordered = firstProd.kuantitas || 0;
+        const remaining = Math.max(0, ordered - loaded);
+        const maxZAK = Math.floor(remaining / bobot);
+        setItems((prev) =>
+          prev.map((item) => {
+            if (item.id !== newId) return item;
+            return {
+              ...item,
+              maxZAK: maxZAK,
+              sisa: String(maxZAK),
+              loadedKG: loaded,
+              pengambilanZAK: maxZAK > 0 ? String(maxZAK) : "",
+            };
+          })
+        );
+      });
+    }
+  };
+
+  const removeItem = (id: number) => {
+    if (items.length <= 1) return;
+    setItems((prev) => prev.filter((item) => item.id !== id));
+    setPiSearchMap((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setPiShowMap((prev) => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -579,30 +508,6 @@ export default function SuratPengangkutanPage() {
     );
   };
 
-  const addItem = () => {
-    const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
-    setItems((prev) => [
-      ...prev,
-      {
-        id: newId,
-        nomorSubDO: "",
-        nomorPO: "",
-        jenisPupuk: "",
-        party: "",
-        pengambilanZAK: "",
-        sisa: "",
-        bobotPerUnit: 50,
-        maxZAK: 0,
-        fot: "",
-      },
-    ]);
-  };
-
-  const removeItem = (id: number) => {
-    if (items.length <= 1) return;
-    setItems((prev) => prev.filter((item) => item.id !== id));
-  };
-
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
@@ -617,10 +522,6 @@ export default function SuratPengangkutanPage() {
       if (!formData.nomorPolisi.trim()) newErrors.nomorPolisi = "Nomor polisi wajib diisi";
     }
 
-    if (isGI || isDikuasakan) {
-      if (selectedPIs.length === 0) newErrors.nomorPI = "Minimal 1 Nomor PI wajib dipilih";
-    }
-
     if (isMandiri) {
       if (!formData.kepadaNama.trim()) newErrors.kepadaNama = "Nama penerima wajib diisi";
       if (!formData.kepadaPerusahaan.trim()) newErrors.kepadaPerusahaan = "Nama perusahaan wajib diisi";
@@ -631,7 +532,9 @@ export default function SuratPengangkutanPage() {
       newErrors.items = "Minimal harus ada 1 item pengangkutan";
     }
 
+    const usedPIs = new Set<string>();
     items.forEach((item, idx) => {
+      if (!item.nomorPI.trim()) newErrors[`nomorPI_${idx}`] = "Nomor PI wajib dipilih";
       if (!item.jenisPupuk.trim()) newErrors[`jenisPupuk_${idx}`] = "Jenis pupuk wajib diisi";
       if (isMandiri) {
         if (!item.nomorSubDO.trim()) newErrors[`nomorSubDO_${idx}`] = "Nomor Sub DO wajib diisi";
@@ -643,10 +546,19 @@ export default function SuratPengangkutanPage() {
       } else {
         const zak = parseFloat(item.pengambilanZAK) || 0;
         if (zak <= 0) newErrors[`pengambilan_${idx}`] = "Pengambilan harus lebih dari 0";
-        if (jenisSurat === "gudangInduk" && zak > item.maxZAK && item.maxZAK > 0) {
+        if (isGI && zak > item.maxZAK && item.maxZAK > 0) {
           newErrors[`pengambilan_${idx}`] = `Maksimal ${item.maxZAK} ZAK (${item.maxZAK * item.bobotPerUnit} KG)`;
         }
       }
+      const fot = (item.fot || "").trim();
+      const giFOT = isGudangIndukFOT(fot);
+      if (jenisSurat === "gudangInduk" && !giFOT && item.jenisPupuk) {
+        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT selain Gudang Induk`;
+      }
+      if (jenisSurat === "do" && giFOT && item.jenisPupuk) {
+        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT Gudang Induk`;
+      }
+      if (item.nomorPI.trim()) usedPIs.add(item.nomorPI.trim());
     });
 
     if (jenisSurat === "do" && isMandiri) {
@@ -659,31 +571,6 @@ export default function SuratPengangkutanPage() {
         newErrors.kepadaPerusahaan = "Nama perusahaan wajib diisi untuk generate nomor seri";
       }
     }
-
-    items.forEach((item, idx) => {
-      if (!item.jenisPupuk.trim()) return;
-      let fot = "";
-      for (const pi of selectedPIs) {
-        const prod = pi.produkItems.find((p) =>
-          p.namaProduk.toUpperCase().includes(item.jenisPupuk.toUpperCase()) ||
-          item.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
-        );
-        if (prod) {
-          fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
-          break;
-        }
-      }
-      if (!fot) {
-        fot = (getStockFotForProduct(item.jenisPupuk) || "").trim();
-      }
-      const giFOT = isGudangIndukFOT(fot);
-      if (jenisSurat === "gudangInduk" && !giFOT) {
-        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT selain Gudang Induk, tidak dapat diproses di Surat Gudang Induk`;
-      }
-      if (jenisSurat === "do" && giFOT) {
-        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT Gudang Induk, tidak dapat diproses di Surat DO`;
-      }
-    });
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -727,6 +614,7 @@ export default function SuratPengangkutanPage() {
           sisa: item.sisa,
           fot: item.fot,
           nomorPI: item.nomorPI || null,
+          namaCustomer: item.namaCustomer || null,
         })),
         totalPengambilanKG: totalPengambilanKG,
         nomorSeri: nomorSeri,
@@ -747,93 +635,60 @@ export default function SuratPengangkutanPage() {
         suratData.kepadaAlamat = formData.kepadaAlamat.trim();
       }
 
-      if (isDikuasakan && selectedPIs.length > 0) {
-        suratData.nomorPI = selectedPIs.map((p) => p.nomorPI);
-        suratData.namaCustomer = selectedPIs.map((p) => p.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
-        suratData.kepadaNama = selectedPIs[0].namaCustomer || "";
-        suratData.kepadaPerusahaan = selectedPIs[0].namaCustomer || "";
-        suratData.kepadaAlamat = selectedPIs[0].alamatCustomer || "";
+      if (isDikuasakan) {
+        const firstItem = items.find((it) => it.nomorPI.trim() !== "");
+        if (firstItem) {
+          suratData.nomorPI = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+          suratData.namaCustomer = items.map((it) => it.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
+          suratData.kepadaNama = firstItem.namaCustomer || "";
+          suratData.kepadaPerusahaan = firstItem.namaCustomer || "";
+        }
       }
 
-      if (selectedPIs.length > 0) {
-        suratData.nomorPI = selectedPIs.map((p) => p.nomorPI);
-        suratData.namaCustomer = selectedPIs.map((p) => p.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
+      const piDeductions: Record<string, number> = {};
+      for (const item of items) {
+        const zak = parseFloat(item.pengambilanZAK) || 0;
+        const kg = zak * item.bobotPerUnit;
+        if (kg <= 0 || !item.nomorPI) continue;
+        piDeductions[item.nomorPI] = (piDeductions[item.nomorPI] || 0) + kg;
+      }
 
-        const piDeductions: Record<string, number> = {};
+      for (const nomorPI of Object.keys(piDeductions)) {
+        const pi = piList.find((p) => p.nomorPI === nomorPI);
+        if (!pi) continue;
+        const piRef = doc(db, "proformaInvoice", pi.id);
+        const piSnap = await getDoc(piRef);
+        const piData = piSnap.exists() ? piSnap.data() : null;
+        const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+        const currentSisa = piData?.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : totalOrdered;
+        const piTotalLoaded = piDeductions[nomorPI] || 0;
+        const newSisa = Math.max(0, currentSisa - piTotalLoaded);
+        await updateDoc(piRef, {
+          sisaPengambilanKG: newSisa,
+          statusPengangkutan: newSisa <= 0 ? "complete" : "partial",
+          updatedAt: serverTimestamp(),
+        });
+      }
 
+      if (isGI) {
         for (const item of items) {
-          const zak = parseFloat(item.pengambilanZAK) || 0;
-          const kg = zak * item.bobotPerUnit;
-          const itemPIs = (item.nomorPI || "").split(",").map((s) => s.trim()).filter(Boolean);
-
-          if (kg <= 0) continue;
-
-          if (itemPIs.length === 0) {
-            const perPI = kg / selectedPIs.length;
-            selectedPIs.forEach((pi) => {
-              piDeductions[pi.nomorPI] = (piDeductions[pi.nomorPI] || 0) + perPI;
-            });
-          } else if (itemPIs.length === 1) {
-            piDeductions[itemPIs[0]] = (piDeductions[itemPIs[0]] || 0) + kg;
-          } else {
-            const piOrders = itemPIs.map((piNomor) => {
-              const pi = selectedPIs.find((p) => p.nomorPI === piNomor);
-              const prod = pi?.produkItems.find((p) =>
-                p.namaProduk.toUpperCase().includes(item.jenisPupuk.toUpperCase()) ||
-                item.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
-              );
-              return { piNomor, ordered: prod?.kuantitas || 0 };
-            });
-            const totalOrdered = piOrders.reduce((sum, p) => sum + p.ordered, 0);
-            if (totalOrdered > 0) {
-              piOrders.forEach(({ piNomor, ordered }) => {
-                const ratio = ordered / totalOrdered;
-                piDeductions[piNomor] = (piDeductions[piNomor] || 0) + kg * ratio;
+          const stockMatch = getStockForProduct(item.jenisPupuk);
+          if (stockMatch) {
+            const stockRef = doc(db, "stockGudang", stockMatch.id);
+            const stockSnap = await getDoc(stockRef);
+            if (stockSnap.exists()) {
+              const currentData = stockSnap.data();
+              const currentStokUnit = currentData.stokAkhirUnit || 0;
+              const currentStokKG = currentData.stokAkhirKG || 0;
+              const minusUnit = parseFloat(item.pengambilanZAK) || 0;
+              const minusKG = minusUnit * item.bobotPerUnit;
+              await updateDoc(stockRef, {
+                barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
+                barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
+                stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
+                stokAkhirKG: Math.max(0, currentStokKG - minusKG),
+                updatedAt: serverTimestamp(),
               });
-            } else {
-              const perPI = kg / itemPIs.length;
-              itemPIs.forEach((piNomor) => {
-                piDeductions[piNomor] = (piDeductions[piNomor] || 0) + perPI;
-              });
-            }
-          }
-        }
-
-        for (const pi of selectedPIs) {
-          const piRef = doc(db, "proformaInvoice", pi.id);
-          const piSnap = await getDoc(piRef);
-          const piData = piSnap.exists() ? piSnap.data() : null;
-          const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
-          const currentSisa = piData?.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : totalOrdered;
-          const piTotalLoaded = piDeductions[pi.nomorPI] || 0;
-          const newSisa = Math.max(0, currentSisa - piTotalLoaded);
-          await updateDoc(piRef, {
-            sisaPengambilanKG: newSisa,
-            statusPengangkutan: newSisa <= 0 ? "complete" : "partial",
-            updatedAt: serverTimestamp(),
-          });
-        }
-
-        if (isGI) {
-          for (const item of items) {
-            const stockMatch = getStockForProduct(item.jenisPupuk);
-            if (stockMatch) {
-              const stockRef = doc(db, "stockGudang", stockMatch.id);
-              const stockSnap = await getDoc(stockRef);
-              if (stockSnap.exists()) {
-                const currentData = stockSnap.data();
-                const currentStokUnit = currentData.stokAkhirUnit || 0;
-                const currentStokKG = currentData.stokAkhirKG || 0;
-                const minusUnit = parseFloat(item.pengambilanZAK) || 0;
-                const minusKG = minusUnit * item.bobotPerUnit;
-                await updateDoc(stockRef, {
-                  barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
-                  barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
-                  stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
-                  stokAkhirKG: Math.max(0, currentStokKG - minusKG),
-                  updatedAt: serverTimestamp(),
-                });
-              }
             }
           }
         }
@@ -857,9 +712,10 @@ export default function SuratPengangkutanPage() {
         transaksiData.nomorSIM = formData.nomorSIM || null;
       }
 
-      if (selectedPIs.length > 0) {
-        transaksiData.nomorPI = selectedPIs.map((p) => p.nomorPI);
-        transaksiData.namaCustomer = selectedPIs.map((p) => p.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
+      const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+      if (allPIs.length > 0) {
+        transaksiData.nomorPI = allPIs;
+        transaksiData.namaCustomer = items.map((it) => it.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
       }
 
       await addDoc(collection(db, "transaksiBarangKeluar"), transaksiData);
@@ -880,7 +736,6 @@ export default function SuratPengangkutanPage() {
     setFormData({
       tanggal: new Date().toISOString().split("T")[0],
       namaKabupaten: "Lamandau",
-      nomorPI: "",
       nomorPolisi: "",
       driverUnit: "",
       nomorSIM: "",
@@ -889,11 +744,9 @@ export default function SuratPengangkutanPage() {
       kepadaAlamat: "",
     });
     setItems([]);
-    setSelectedPIs([]);
-    setPiLoadInfo(null);
-    setSearchPI("");
+    setPiSearchMap({});
+    setPiShowMap({});
     setErrors({});
-    setPendingNomorPI(null);
     if (urlNomorPI) {
       router.replace("/dashboard/surat-pengangkutan");
     }
@@ -915,7 +768,7 @@ export default function SuratPengangkutanPage() {
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           ${!isGI && !isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.nomorSubDO || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (item.nomorPI || selectedPIs.map((p) => p.nomorPI).join(", ") || "-") : (item.nomorPO || "-")}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (item.nomorPI || "-") : (item.nomorPO || "-")}</td>
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${item.jenisPupuk || ""}</td>
           ${!isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.party || "-"}</td>` : ""}
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.pengambilanZAK || "-"} ZAK</td>
@@ -924,7 +777,7 @@ export default function SuratPengangkutanPage() {
       `
       )
       .join("");
-    const piNumbers = selectedPIs.map((p) => p.nomorPI).join(", ");
+    const piNumbers = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i).join(", ");
     const recipientBox = jenisSurat === "gudangInduk"
       ? `<div class="recipient-box">
               <p class="recipient-title">Kepada Yth :</p>
@@ -934,9 +787,9 @@ export default function SuratPengangkutanPage() {
             </div>`
       : `<div class="recipient-box">
               <p class="recipient-title">Kepada Yth :</p>
-              <p class="recipient-name">${formData.kepadaNama || selectedPIs[0]?.namaCustomer || ""}</p>
-              <p class="recipient-name">${formData.kepadaPerusahaan || selectedPIs[0]?.namaCustomer || ""}</p>
-              <p class="recipient-address">${(formData.kepadaAlamat || selectedPIs[0]?.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
+              <p class="recipient-name">${formData.kepadaNama || items[0]?.namaCustomer || ""}</p>
+              <p class="recipient-name">${formData.kepadaPerusahaan || items[0]?.namaCustomer || ""}</p>
+              <p class="recipient-address">${(formData.kepadaAlamat || "").replace(/\n/g, "<br>")}</p>
             </div>`;
     const html = `
       <!DOCTYPE html>
@@ -1244,140 +1097,6 @@ export default function SuratPengangkutanPage() {
           </div>
         </Card>
 
-        <Card title={isDikuasakan ? "Pilih Proforma Invoice" : "Proforma Invoice"} className="overflow-visible">
-          <div className="space-y-4">
-            <div ref={searchRef} className="relative z-50 overflow-visible">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Cari Nomor Proforma Invoice
-              </label>
-              <input
-                type="text"
-                value={searchPI}
-                onChange={(e) => {
-                  setSearchPI(e.target.value);
-                  setShowPISearch(true);
-                }}
-                onFocus={() => setShowPISearch(true)}
-                placeholder="Ketik nomor PI atau nama customer..."
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
-              />
-              {showPISearch && (
-                <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[400px] overflow-y-auto z-[9999]" onMouseDown={(e) => e.preventDefault()}>
-                  {searchPI && filteredPIList.length === 0 ? (
-                    <div className="p-4 text-sm text-gray-500">Tidak ada PI yang tersedia atau tidak cocok</div>
-                  ) : !searchPI ? (
-                    <div className="p-3 text-xs text-gray-400">Ketik minimal 1 karakter untuk mencari PI</div>
-                  ) : (
-                    filteredPIList.map((pi) => {
-                      const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
-                      let totalLoaded = 0;
-                      if (piLoadInfo && piLoadInfo.nomorPIs.includes(pi.nomorPI)) {
-                        const piProds = piLoadInfo.produkList.filter((pl) => pl.nomorPIs.includes(pi.nomorPI));
-                        totalLoaded = piProds.reduce((sum, p) => sum + p.loadedKG, 0);
-                      }
-                      const sisa = Math.max(0, totalOrdered - totalLoaded);
-                      return (
-                        <button
-                          key={pi.id}
-                          type="button"
-                          onClick={() => handlePISelect(pi)}
-                          className="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors border-b border-gray-100 last:border-0 block"
-                        >
-                          <p className="font-semibold text-gray-800">{pi.nomorPI}</p>
-                          <p className="text-sm text-gray-500">{pi.namaCustomer} | {pi.tanggal}</p>
-                          <p className="text-xs text-green-600 mt-1">Total: {totalOrdered.toLocaleString()} KG | Sisa: {sisa.toLocaleString()} KG</p>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-              {errors.nomorPI && <p className="mt-1 text-sm text-red-600">{errors.nomorPI}</p>}
-            </div>
-
-            {selectedPIs.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {selectedPIs.map((pi) => (
-                  <div key={pi.id} className="inline-flex items-center gap-2 px-3 py-1.5 bg-green-100 text-green-800 rounded-lg text-sm font-medium border border-green-200">
-                    <span>{pi.nomorPI}</span>
-                    <button
-                      type="button"
-                      onClick={() => handlePIRemove(pi.id)}
-                      className="w-5 h-5 flex items-center justify-center rounded-full hover:bg-green-200 transition-colors"
-                    >
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {isDikuasakan && selectedPIs.length > 0 && (
-              <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold mb-2">Data Penerima dari PI</p>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <p className="text-xs text-gray-500">Nama</p>
-                    <p className="text-sm font-semibold text-gray-800">{selectedPIs[0].namaCustomer}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Perusahaan</p>
-                    <p className="text-sm font-semibold text-gray-800">{selectedPIs[0].namaCustomer}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500">Alamat</p>
-                    <p className="text-sm font-semibold text-gray-800">{selectedPIs[0].alamatCustomer || "-"}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {selectedPIs.length > 0 && piLoadInfo && (
-              <div className="grid grid-cols-3 gap-4">
-                <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
-                  <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total Dipesan</p>
-                  <p className="text-xl font-bold text-blue-700 font-mono">{piLoadInfo.totalOrderedKG.toLocaleString()} KG</p>
-                </div>
-                <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
-                  <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold">Sudah Dimuat</p>
-                  <p className="text-xl font-bold text-amber-700 font-mono">{piLoadInfo.totalLoadedKG.toLocaleString()} KG</p>
-                </div>
-                <div className="p-4 bg-green-50 rounded-xl border border-green-200">
-                  <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Sisa</p>
-                  <p className="text-xl font-bold text-green-700 font-mono">{piLoadInfo.remainingKG.toLocaleString()} KG</p>
-                </div>
-              </div>
-            )}
-
-            {selectedPIs.length > 0 && piLoadInfo && piLoadInfo.produkList.length > 0 && (
-              <div className="mt-4">
-                <h4 className="text-sm font-semibold text-gray-700 mb-2">Detail Per Produk</h4>
-                <div className="space-y-2">
-                  {piLoadInfo.produkList.map((prod, idx) => (
-                    <div key={idx} className={`p-3 rounded-lg border ${prod.remainingKG > 0 ? "bg-yellow-50 border-yellow-200" : "bg-green-50 border-green-200"}`}>
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="font-semibold text-sm text-gray-800">{prod.namaProduk}</p>
-                          <p className="text-xs text-gray-500">FOT: {prod.fot} | Bobot: {prod.bobotPerUnit} KG/ZAK</p>
-                          <p className="text-xs text-gray-400">PI: {prod.nomorPIs.join(", ")}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-xs text-gray-500">{prod.loadedKG.toLocaleString()} / {prod.orderedKG.toLocaleString()} KG</p>
-                          <p className={`text-sm font-bold ${prod.remainingKG > 0 ? "text-yellow-700" : "text-green-700"}`}>
-                            Sisa: {prod.remainingKG.toLocaleString()} KG ({Math.floor(prod.remainingKG / prod.bobotPerUnit)} ZAK)
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
-
         {isMandiri && (
           <Card title="Informasi Penerima">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1393,51 +1112,138 @@ export default function SuratPengangkutanPage() {
             {errors.items && (
               <p className="text-sm text-red-600">{errors.items}</p>
             )}
-            {items.map((item, idx) => (
-              <div key={item.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h4>
-                  {items.length > 1 && (
-                    <button type="button" onClick={() => removeItem(item.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {!isGI && !isDikuasakan && (
-                    <>
-                      <Input label="Nomor SUB DO" type="text" value={item.nomorSubDO} onChange={(e) => handleItemChange(item.id, "nomorSubDO", e.target.value)} placeholder="Wajib" error={errors[`nomorSubDO_${idx}`]} required />
-                      <Input label="Nomor PO" type="text" value={item.nomorPO} onChange={(e) => handleItemChange(item.id, "nomorPO", e.target.value)} placeholder="Wajib" error={errors[`nomorPO_${idx}`]} required />
-                    </>
-                  )}
-                  <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Otomatis dari PI" error={errors[`jenisPupuk_${idx}`]} required />
-                  {!isGI && !isDikuasakan && (
-                    <Input label="Party" type="text" value={item.party} onChange={(e) => handleItemChange(item.id, "party", e.target.value)} placeholder="Wajib" error={errors[`party_${idx}`]} required />
-                  )}
-                  <div>
-                    <Input label={`Pengambilan (ZAK)${item.maxZAK > 0 ? ` - Max: ${item.maxZAK}` : ""}`} type="number" value={item.pengambilanZAK} onChange={(e) => handleItemChange(item.id, "pengambilanZAK", e.target.value)} placeholder={item.maxZAK > 0 ? `Max ${item.maxZAK} ZAK` : "Contoh: 100"} />
-                    {item.bobotPerUnit > 0 && item.pengambilanZAK && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        = {(parseFloat(item.pengambilanZAK || "0") * item.bobotPerUnit).toLocaleString()} KG (bobot: {item.bobotPerUnit} KG/ZAK)
-                      </p>
+            {items.map((item, idx) => {
+              const searchVal = piSearchMap[item.id] || "";
+              const showSearch = piShowMap[item.id] || false;
+              const filteredPI = getPIAvailableForItem(searchVal);
+              const selectedPI = piList.find((p) => p.nomorPI === item.nomorPI);
+              return (
+                <div key={item.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h4>
+                    {items.length > 1 && (
+                      <button type="button" onClick={() => removeItem(item.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     )}
                   </div>
-                  <div>
-                    <Input label="Sisa (ZAK)" type="text" value={item.sisa} onChange={(e) => handleItemChange(item.id, "sisa", e.target.value)} placeholder="Auto-calculate" readOnly />
-                    {item.bobotPerUnit > 0 && item.sisa && (
-                      <p className="mt-1 text-xs text-gray-500">
-                        = {(parseFloat(item.sisa || "0") * item.bobotPerUnit).toLocaleString()} KG
-                      </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {!isGI && !isDikuasakan && (
+                      <>
+                        <Input label="Nomor SUB DO" type="text" value={item.nomorSubDO} onChange={(e) => handleItemChange(item.id, "nomorSubDO", e.target.value)} placeholder="Wajib" error={errors[`nomorSubDO_${idx}`]} required />
+                        <Input label="Nomor PO" type="text" value={item.nomorPO} onChange={(e) => handleItemChange(item.id, "nomorPO", e.target.value)} placeholder="Wajib" error={errors[`nomorPO_${idx}`]} required />
+                      </>
+                    )}
+                    <div className="md:col-span-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Cari Proforma Invoice</label>
+                      <div
+                        ref={(el) => { itemSearchRefs.current[item.id] = el; }}
+                        className="relative z-50"
+                      >
+                        <input
+                          type="text"
+                          value={searchVal}
+                          onChange={(e) => {
+                            setPiSearchMap((prev) => ({ ...prev, [item.id]: e.target.value }));
+                            setPiShowMap((prev) => ({ ...prev, [item.id]: true }));
+                          }}
+                          onFocus={() => setPiShowMap((prev) => ({ ...prev, [item.id]: true }))}
+                          placeholder="Ketik nomor PI atau nama customer..."
+                          className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
+                        />
+                        {showSearch && (
+                          <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[300px] overflow-y-auto z-[9999]" onMouseDown={(e) => e.preventDefault()}>
+                            {searchVal && filteredPI.length === 0 ? (
+                              <div className="p-4 text-sm text-gray-500">Tidak ada PI yang cocok</div>
+                            ) : !searchVal ? (
+                              <div className="p-3 text-xs text-gray-400">Ketik minimal 1 karakter untuk mencari PI</div>
+                            ) : (
+                              filteredPI.map((pi) => {
+                                return (
+                                  <button
+                                    key={pi.id}
+                                    type="button"
+                                    onClick={() => handlePISelectForItem(item.id, pi)}
+                                    className="w-full text-left px-4 py-3 hover:bg-green-50 transition-colors border-b border-gray-100 last:border-0 block"
+                                  >
+                                    <p className="font-semibold text-gray-800">{pi.nomorPI}</p>
+                                    <p className="text-sm text-gray-500">{pi.namaCustomer} | {pi.tanggal}</p>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      {errors[`nomorPI_${idx}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorPI_${idx}`]}</p>}
+                      {selectedPI && (
+                        <div className="mt-2 p-2 bg-green-50 rounded-lg border border-green-200 text-xs text-green-700">
+                          <span className="font-semibold">{selectedPI.nomorPI}</span> — {selectedPI.namaCustomer}
+                        </div>
+                      )}
+                    </div>
+                    {selectedPI && selectedPI.produkItems.length > 0 && (
+                      <div className="md:col-span-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Pilih Produk dari PI</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                          {selectedPI.produkItems.map((prod, pidx) => {
+                            const isSelected = item.jenisPupuk === prod.namaProduk;
+                            return (
+                              <button
+                                key={pidx}
+                                type="button"
+                                onClick={() => handleProdukSelectForItem(item.id, selectedPI, pidx)}
+                                className={`p-3 rounded-lg border text-left transition-all ${isSelected ? "bg-green-100 border-green-500 ring-1 ring-green-500" : "bg-white border-gray-200 hover:border-green-300"}`}
+                              >
+                                <p className="font-semibold text-sm text-gray-800">{prod.namaProduk}</p>
+                                <p className="text-xs text-gray-500">FOT: {prod.fot || "-"}</p>
+                                <p className="text-xs text-gray-500">Order: {prod.kuantitas?.toLocaleString()} KG</p>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    <div className="md:col-span-3">
+                      <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Pilih produk dari PI" error={errors[`jenisPupuk_${idx}`]} required readOnly />
+                    </div>
+                    {!isGI && !isDikuasakan && (
+                      <Input label="Party" type="text" value={item.party} onChange={(e) => handleItemChange(item.id, "party", e.target.value)} placeholder="Wajib" error={errors[`party_${idx}`]} required />
+                    )}
+                    <div>
+                      <Input label={`Pengambilan (ZAK)${item.maxZAK > 0 ? ` - Max: ${item.maxZAK}` : ""}`} type="number" value={item.pengambilanZAK} onChange={(e) => handleItemChange(item.id, "pengambilanZAK", e.target.value)} placeholder={item.maxZAK > 0 ? `Max ${item.maxZAK} ZAK` : "Contoh: 100"} />
+                      {item.bobotPerUnit > 0 && item.pengambilanZAK && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          = {(parseFloat(item.pengambilanZAK || "0") * item.bobotPerUnit).toLocaleString()} KG (bobot: {item.bobotPerUnit} KG/ZAK)
+                        </p>
+                      )}
+                    </div>
+                    <div>
+                      <Input label="Sisa (ZAK)" type="text" value={item.sisa} onChange={(e) => handleItemChange(item.id, "sisa", e.target.value)} placeholder="Auto-calculate" readOnly />
+                      {item.bobotPerUnit > 0 && item.sisa && (
+                        <p className="mt-1 text-xs text-gray-500">
+                          = {(parseFloat(item.sisa || "0") * item.bobotPerUnit).toLocaleString()} KG
+                        </p>
+                      )}
+                    </div>
+                    {item.kuantitasOrdered > 0 && (
+                      <div className="md:col-span-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <div className="flex justify-between text-xs text-blue-700">
+                          <span>Total Dipesan: <strong>{item.kuantitasOrdered.toLocaleString()} KG</strong></span>
+                          <span>Sudah Dimuat: <strong>{item.loadedKG.toLocaleString()} KG</strong></span>
+                          <span>Sisa: <strong>{Math.max(0, item.kuantitasOrdered - item.loadedKG).toLocaleString()} KG</strong></span>
+                        </div>
+                      </div>
                     )}
                   </div>
+                  {errors[`pengambilan_${idx}`] && (
+                    <p className="mt-2 text-sm text-red-600">{errors[`pengambilan_${idx}`]}</p>
+                  )}
                 </div>
-                {errors[`pengambilan_${idx}`] && (
-                  <p className="mt-2 text-sm text-red-600">{errors[`pengambilan_${idx}`]}</p>
-                )}
-              </div>
-            ))}
+              );
+            })}
             <Button type="button" variant="outline" size="sm" onClick={addItem}>
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
