@@ -410,22 +410,20 @@ export default function BapispFinalPage() {
           <table style="width: 100%; border-collapse: collapse; margin-top: 30px;">
             <tr>
               <td style="width: 50%; text-align: center; vertical-align: top; padding: 0 10px;">
-                <p style="font-size: 10px; font-weight: 700;">${pi.namaCustomer}</p>
                 <p style="font-size: 9px; margin-bottom: 4px;">(Pihak Kedua)</p>
                 <div style="height: 60px;"></div>
                 <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${pi.namaCustomer}</p>
               </td>
               <td style="width: 50%; text-align: center; vertical-align: top; padding: 0 10px;">
-                <p style="font-size: 10px; font-weight: 700;">${ttd?.nama || "........................"}</p>
+                <p style="font-size: 9px; margin-bottom: 4px;">(Pihak Pertama)</p>
                 ${ttd ? `
                   <div style="position: relative; display: inline-block; width: 140px; height: 60px; margin: 4px 0;">
                     <img src="/LogoAGRO.png" alt="Stampel" style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 80px; height: auto; opacity: 0.85; pointer-events: none; z-index: 1;" onerror="this.style.display='none'" />
                     <img src="${ttd.ttdImage}" alt="TTD" style="position: absolute; top: 5px; left: 50%; transform: translateX(-50%); height: 50px; object-fit: contain; z-index: 2; display: block;" onerror="this.style.display='none'" />
                   </div>
                 ` : `<div style="height: 60px;"></div>`}
-                <p style="font-size: 9px; margin-bottom: 2px;">(Pihak Pertama)</p>
-                <p style="font-size: 9px; color: #333; margin-bottom: 4px;">${ttd?.jabatan || ""}</p>
                 <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${ttd?.nama || "........................"}</p>
+                <p style="font-size: 9px; color: #333; margin-top: 2px;">${ttd?.jabatan || ""}</p>
               </td>
             </tr>
           </table>
