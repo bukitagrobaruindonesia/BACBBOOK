@@ -587,6 +587,7 @@ export default function SuratPengangkutanPage() {
       newErrors.items = "Minimal harus ada 1 item pengangkutan";
     }
 
+    const productKeys: Record<string, number> = {};
     items.forEach((item, idx) => {
       if (!item.nomorPI.trim()) newErrors[`nomorPI_${idx}`] = "Nomor PI wajib dipilih";
       if (!item.jenisPupuk.trim()) newErrors[`jenisPupuk_${idx}`] = "Jenis pupuk wajib diisi";
@@ -600,7 +601,7 @@ export default function SuratPengangkutanPage() {
       } else {
         const zak = parseFloat(item.pengambilanZAK) || 0;
         if (zak <= 0) newErrors[`pengambilan_${idx}`] = "Pengambilan harus lebih dari 0";
-        if (isGI && zak > item.maxZAK && item.maxZAK > 0) {
+        if (zak > item.maxZAK && item.maxZAK > 0) {
           newErrors[`pengambilan_${idx}`] = `Maksimal ${item.maxZAK} ZAK (${item.maxZAK * item.bobotPerUnit} KG)`;
         }
       }
@@ -611,6 +612,14 @@ export default function SuratPengangkutanPage() {
       }
       if (jenisSurat === "do" && giFOT && item.jenisPupuk) {
         newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT Gudang Induk`;
+      }
+      const key = `${item.nomorPI.trim()}|${item.jenisPupuk.trim()}`;
+      if (item.nomorPI.trim() && item.jenisPupuk.trim()) {
+        if (productKeys[key] !== undefined) {
+          newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} dari PI ${item.nomorPI} sudah dipilih di Item ${productKeys[key] + 1}`;
+        } else {
+          productKeys[key] = idx;
+        }
       }
     });
 
