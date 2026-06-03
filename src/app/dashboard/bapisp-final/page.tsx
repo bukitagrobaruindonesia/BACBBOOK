@@ -1,5 +1,3 @@
-"use client";
-
 import React, { useState, useEffect } from "react";
 import {
   collection,
@@ -387,7 +385,7 @@ export default function BapispFinalPage() {
             <p style="font-weight: 700; margin-bottom: 4px; font-size: 10px;">Selanjutnya yang disebut Pihak Kedua.</p>
             <table style="width: 100%; margin-bottom: 8px; font-size: 10px;">
               <tr><td style="padding: 2px 0; vertical-align: top; width: 100px; font-weight: 600;">Nama</td><td>: ${pi.namaCustomer}</td></tr>
-              <tr><td style="padding: 2px 0; vertical-align: top; font-weight: 600;">Alamat</td><td>: ${(pi.alamatCustomer || "").replace(/\n/g, " ")}</td></tr>
+              <tr><td style="padding: 2px 0; vertical-align: top; font-weight: 600;">Alamat</td><td>: ${(pi.alamatCustomer || "").replace(/\\n/g, " ")}</td></tr>
             </table>
           </div>
           <p style="margin-bottom: 12px; font-size: 10px; text-align: justify;">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
@@ -409,21 +407,23 @@ export default function BapispFinalPage() {
           <p style="margin-bottom: 16px; font-size: 10px; text-align: justify;">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
           <table style="width: 100%; border-collapse: collapse; margin-top: 30px;">
             <tr>
-              <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 0 10px;">
-                <p style="font-size: 9px; margin-bottom: 50px;">${pi.namaCustomer}<br>(Pihak Kedua)</p>
-                <div style="height: 50px;"></div>
+              <td style="width: 50%; text-align: center; vertical-align: top; padding: 0 10px;">
+                <p style="font-size: 10px; font-weight: 700;">${pi.namaCustomer}</p>
+                <p style="font-size: 9px; margin-bottom: 4px;">(Pihak Kedua)</p>
+                <div style="height: 60px;"></div>
                 <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${pi.namaCustomer}</p>
               </td>
-              <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 0 10px;">
-                <p style="font-size: 9px; margin-bottom: 50px;">${ttd?.nama || "........................"}<br>(Pihak Pertama)</p>
+              <td style="width: 50%; text-align: center; vertical-align: top; padding: 0 10px;">
+                <p style="font-size: 10px; font-weight: 700;">${ttd?.nama || "........................"}</p>
                 ${ttd ? `
-                  <div style="position: relative; display: inline-block; margin-bottom: 4px; width: 140px; height: 70px;">
+                  <div style="position: relative; display: inline-block; width: 140px; height: 60px; margin: 4px 0;">
                     <img src="/LogoAGRO.png" alt="Stampel" style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 80px; height: auto; opacity: 0.85; pointer-events: none; z-index: 1;" onerror="this.style.display='none'" />
-                    <img src="${ttd.ttdImage}" alt="TTD" style="position: absolute; top: 5px; left: 50%; transform: translateX(-50%); height: 55px; object-fit: contain; z-index: 2; display: block;" onerror="this.style.display='none'" />
+                    <img src="${ttd.ttdImage}" alt="TTD" style="position: absolute; top: 5px; left: 50%; transform: translateX(-50%); height: 50px; object-fit: contain; z-index: 2; display: block;" onerror="this.style.display='none'" />
                   </div>
-                ` : `<div style="height: 50px;"></div>`}
+                ` : `<div style="height: 60px;"></div>`}
+                <p style="font-size: 9px; margin-bottom: 2px;">(Pihak Pertama)</p>
+                <p style="font-size: 9px; color: #333; margin-bottom: 4px;">${ttd?.jabatan || ""}</p>
                 <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${ttd?.nama || "........................"}</p>
-                <p style="font-size: 9px; color: #333; margin-top: 2px;">${ttd?.jabatan || ""}</p>
               </td>
             </tr>
           </table>
@@ -472,7 +472,7 @@ export default function BapispFinalPage() {
             <div style="display: flex; justify-content: space-between; gap: 0;">
               <div style="flex: 1; border: 1px solid #000; padding: 8px 10px; min-height: 75px;">
                 <p style="font-size: 11px; font-weight: 700; color: #000; margin: 0 0 3px 0;">${pi.namaCustomer || ""}</p>
-                <p style="font-size: 9px; color: #333; line-height: 1.5;">${(pi.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
+                <p style="font-size: 9px; color: #333; line-height: 1.5;">${(pi.alamatCustomer || "").replace(/\\n/g, "<br>")}</p>
               </div>
               <div style="width: 250px; padding: 0 0 0 10px;">
                 <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
