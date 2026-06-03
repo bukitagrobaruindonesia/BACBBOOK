@@ -1239,17 +1239,20 @@ export default function RekapProformaInvoicePage() {
               <tbody>${rowsHtml}</tbody>
             </table>
             <p class="closing">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
-            <div class="signature-row">
-              <div class="signature-box">
-                <p class="signature-title">${item.namaCustomer}<br>(Pihak Kedua)</p>
-                <div style="height: 50px;"></div>
-                <p class="signature-name">${item.namaCustomer}</p>
+            <div style="display: flex; justify-content: space-between; margin-top: 40px; align-items: flex-end;">
+              <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
+                <p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK KEDUA</p>
+                <div style="width: 100%; min-height: 80px; margin-bottom: 8px;"></div>
+                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">${item.namaCustomer || "_________________"}</p>
               </div>
-              <div class="signature-box">
-                <p class="signature-title">PT Bukit Agrochemical Baru<br>(Pihak Pertama)</p>
-                <div style="min-height: 60px; margin-bottom: 4px;"></div>
-                <p class="signature-name">_________________</p>
-                <p class="signature-role">PT Bukit Agrochemical Baru</p>
+              <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
+                <p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK PERTAMA</p>
+                <div style="position: relative; width: 100%; min-height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;">
+                  <img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.25; object-fit: contain; z-index: 1;" onerror="this.style.display='none'" />
+                  <div style="position: relative; z-index: 2; min-height: 70px;"></div>
+                </div>
+                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">_________________</p>
+                <p style="font-size: 9px; color: #333; margin-top: 3px;">PT Bukit Agrochemical Baru</p>
               </div>
             </div>
           </div>

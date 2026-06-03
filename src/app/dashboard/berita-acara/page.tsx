@@ -597,7 +597,7 @@ export default function BeritaAcaraPage() {
               <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
                 <p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK PERTAMA</p>
                 <div style="position: relative; width: 100%; min-height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;">
-                  <img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.25; object-fit: contain; z-index: 1;" onerror="this.style.display='none'" />
+                  <img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.6; object-fit: contain; z-index: 1;" onerror="this.style.display='none'" />
                   <div style="position: relative; z-index: 2;">
                     ${ttd?.ttdImage ? `<img src="${ttd.ttdImage}" style="max-height: 70px; max-width: 140px; object-fit: contain; display: block; margin: 0 auto;" />` : `<div style="min-height: 70px;"></div>`}
                   </div>
@@ -612,7 +612,7 @@ export default function BeritaAcaraPage() {
         <div class="page-break"></div>
 
         <div class="doc-page-pi" style="page-break-before: always;">
-          <img src="/LogoAGRO.png" alt="Watermark" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.08; pointer-events: none; z-index: 0;" onerror="this.style.display='none'" />
+          <img src="/LogoAGRO.png" alt="Watermark" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.6; pointer-events: none; z-index: 0;" onerror="this.style.display='none'" />
           <div style="position: relative; z-index: 1;">
             <img src="/logo.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>');" />
             <div style="text-align: center; margin: 8px 0 10px 0; padding: 5px 0; background: #dcfce7; border-top: 2px solid #16a34a; border-bottom: 2px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
