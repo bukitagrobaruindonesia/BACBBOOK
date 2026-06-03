@@ -179,7 +179,7 @@ export default function BapispPage() {
   const [pinError, setPinError] = useState("");
   const [piList, setPiList] = useState<ProformaInvoice[]>([]);
   const [bastList, setBastList] = useState<BeritaAcaraData[]>([]);
-  const [suratList, setSuratList] = useState<SuratMuatInfo[]>([]);
+  const [suratMuatMap, setSuratMuatMap] = useState<Record<string, SuratMuatInfo[]>>({});
   const [ttdList, setTtdList] = useState<TTDData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedPI, setSelectedPI] = useState<ProformaInvoice | null>(null);
@@ -251,25 +251,7 @@ export default function BapispPage() {
       });
       setBastList(baData);
 
-      const spQ = query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc"));
-      const spSnap = await getDocs(spQ);
-      const spData = spSnap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          nomorSeri: data.nomorSeri || "",
-          tanggal: data.tanggal || "",
-          items: data.items || [],
-          totalKG: data.totalPengambilanKG || 0,
-          nomorPolisi: data.nomorPolisi || "",
-          driverUnit: data.driverUnit || "",
-          nomorPI: data.nomorPI || "",
-          nomorSIM: data.nomorSIM || "",
-          jenisSurat: data.jenisSurat || "gudangInduk",
-          subJenisDO: data.subJenisDO || null,
-        } as SuratMuatInfo;
-      });
-      setSuratList(spData);
+      await fetchSuratMuat();
 
       const ttdQ = query(collection(db, "ttd"), orderBy("nama", "asc"));
       const ttdSnap = await getDocs(ttdQ);
@@ -278,6 +260,44 @@ export default function BapispPage() {
       console.error(error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchSuratMuat = async () => {
+    try {
+      const q = query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+      const map: Record<string, SuratMuatInfo[]> = {};
+      snapshot.docs.forEach((docSnap) => {
+        const d = docSnap.data();
+        const rawPI = d.nomorPI;
+        const piList: string[] = [];
+        if (Array.isArray(rawPI)) {
+          rawPI.forEach((p) => { if (p && typeof p === "string") piList.push(p); });
+        } else if (rawPI && typeof rawPI === "string") {
+          piList.push(rawPI);
+        }
+        const info: SuratMuatInfo = {
+          id: docSnap.id,
+          nomorSeri: d.nomorSeri || "",
+          tanggal: d.tanggal || "",
+          items: d.items || [],
+          totalKG: d.totalPengambilanKG || 0,
+          nomorPolisi: d.nomorPolisi || "",
+          driverUnit: d.driverUnit || "",
+          nomorPI: rawPI || "",
+          nomorSIM: d.nomorSIM || "",
+          jenisSurat: d.jenisSurat || "gudangInduk",
+          subJenisDO: d.subJenisDO || null,
+        };
+        piList.forEach((pi) => {
+          if (!map[pi]) map[pi] = [];
+          map[pi].push(info);
+        });
+      });
+      setSuratMuatMap(map);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -296,25 +316,27 @@ export default function BapispPage() {
     return bastList.find((b) => b.nomorPI === nomorPI);
   };
 
-  const getSuratForPI = (nomorPI: string) => {
-    const seen = new Set<string>();
-    return suratList.filter((s) => {
-      let match = false;
-      if (Array.isArray(s.nomorPI)) {
-        match = s.nomorPI.includes(nomorPI);
-      } else {
-        match = s.nomorPI === nomorPI;
-      }
-      if (match && !seen.has(s.id)) {
-        seen.add(s.id);
-        return true;
-      }
-      return false;
+  const getSuratMuatForPI = (nomorPI: string): SuratMuatInfo[] => {
+    const results: SuratMuatInfo[] = [];
+    Object.values(suratMuatMap).forEach((list) => {
+      list.forEach((surat) => {
+        const rawPI = surat.nomorPI;
+        let match = false;
+        if (Array.isArray(rawPI)) {
+          match = rawPI.includes(nomorPI);
+        } else if (typeof rawPI === "string") {
+          match = rawPI === nomorPI;
+        }
+        if (match && !results.find((r) => r.id === surat.id)) {
+          results.push(surat);
+        }
+      });
     });
+    return results;
   };
 
   const getLastSpDateForPI = (nomorPI: string): Date | null => {
-    const spItems = getSuratForPI(nomorPI);
+    const spItems = getSuratMuatForPI(nomorPI);
     if (spItems.length === 0) return null;
     const dates = spItems
       .map((s) => (s.tanggal ? new Date(s.tanggal) : null))
@@ -375,7 +397,7 @@ export default function BapispPage() {
   const handlePrint = (pi: ProformaInvoice) => {
     const bast = getBastForPI(pi.nomorPI);
     if (!bast) return;
-    const spList = getSuratForPI(pi.nomorPI);
+    const spList = getSuratMuatForPI(pi.nomorPI);
     const ttd = bast.ttdId ? ttdList.find((t) => t.id === bast.ttdId) : undefined;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -832,7 +854,7 @@ export default function BapispPage() {
               <tbody className="divide-y divide-gray-100">
                 {piList.filter((pi) => getBastForPI(pi.nomorPI)).map((pi, idx) => {
                   const bast = getBastForPI(pi.nomorPI);
-                  const spCount = getSuratForPI(pi.nomorPI).length;
+                  const spCount = getSuratMuatForPI(pi.nomorPI).length;
                   const ttdAccessible = isTtdAccessible(pi.nomorPI);
                   const ttdStatus = getTtdStatus(bast);
                   return (
@@ -931,7 +953,7 @@ export default function BapispPage() {
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-blue-500"></span>
                 <span>Surat Pengangkutan</span>
-                <span className="text-xs text-gray-500">{getSuratForPI(selectedPI?.nomorPI || "").length} dokumen</span>
+                <span className="text-xs text-gray-500">{getSuratMuatForPI(selectedPI?.nomorPI || "").length} dokumen</span>
               </div>
             </div>
           </div>

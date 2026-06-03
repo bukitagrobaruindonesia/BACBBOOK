@@ -6,11 +6,18 @@ import {
   getDocs,
   query,
   orderBy,
+  where,
+  doc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
 import Card from "@/app/components/ui/Card";
 import Button from "@/app/components/ui/Button";
+import Modal from "@/app/components/ui/Modal";
+import Select from "@/app/components/ui/Select";
 
 interface ProformaInvoice {
   id: string;
@@ -31,6 +38,8 @@ interface ProformaInvoice {
     bobotPerUnit: number;
     jumlahIsiBotol: number;
     totalHarga: number;
+    includePPN?: boolean;
+    ppnNominal?: number;
   }[];
   uangMuka: number;
   includePPN: boolean;
@@ -47,6 +56,7 @@ interface ProformaInvoice {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  invoiceBaseNumber?: string;
 }
 
 interface SuratMuatItem {
@@ -74,6 +84,7 @@ interface SuratMuatInfo {
   nomorSIM?: string;
   jenisSurat?: string;
   subJenisDO?: string | null;
+  nomorInvoice?: string;
 }
 
 interface BeritaAcaraData {
@@ -164,6 +175,16 @@ const numberToWords = (num: number): string => {
   return result.trim() + " RUPIAH";
 };
 
+const parseInvoiceNumber = (nomor: string) => {
+  const match = nomor.match(/^BAGB-INV(?:-S(\d+))?-(\d{4})$/);
+  if (!match) return null;
+  return {
+    isPartial: !!match[1],
+    partialNum: match[1] ? parseInt(match[1]) : 0,
+    baseNum: parseInt(match[2]),
+  };
+};
+
 export default function BapispFinalPage() {
   const [piList, setPiList] = useState<ProformaInvoice[]>([]);
   const [bastList, setBastList] = useState<BeritaAcaraData[]>([]);
@@ -175,6 +196,11 @@ export default function BapispFinalPage() {
   const [filterTahun, setFilterTahun] = useState("");
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
+  const [selectedPI, setSelectedPI] = useState<ProformaInvoice | null>(null);
+  const [selectedOrderTTD, setSelectedOrderTTD] = useState("");
+  const [invoiceNomor, setInvoiceNomor] = useState("");
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -211,6 +237,7 @@ export default function BapispFinalPage() {
           createdBy: data.createdBy || "",
           createdAt: data.createdAt?.toDate(),
           updatedAt: data.updatedAt?.toDate(),
+          invoiceBaseNumber: data.invoiceBaseNumber || "",
         } as ProformaInvoice;
       });
       setPiList(piData);
@@ -253,6 +280,7 @@ export default function BapispFinalPage() {
           nomorSIM: data.nomorSIM || "",
           jenisSurat: data.jenisSurat || "gudangInduk",
           subJenisDO: data.subJenisDO || null,
+          nomorInvoice: data.nomorInvoice || "",
         } as SuratMuatInfo;
       });
       setSuratList(spData);
@@ -290,20 +318,291 @@ export default function BapispFinalPage() {
     return ttdList.find((t) => t.id === bast.ttdId);
   };
 
-  const filteredPI = piList.filter((pi) => {
-    const bast = getBastForPI(pi.nomorPI);
-    if (!bast || !bast.ttdId) return false;
-    const date = new Date(pi.tanggal);
-    const matchTanggal = filterTanggal ? pi.tanggal === filterTanggal : true;
-    const matchBulan = filterBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === filterBulan : true;
-    const matchTahun = filterTahun ? date.getFullYear().toString() === filterTahun : true;
-    return matchTanggal && matchBulan && matchTahun;
-  });
+  const getNextInvoiceBaseNumber = async (): Promise<string> => {
+    const piQuery = query(collection(db, "proformaInvoice"), orderBy("invoiceBaseNumber", "asc"));
+    const piSnapshot = await getDocs(piQuery);
+    const suratQuery = query(collection(db, "suratPengangkutan"), orderBy("nomorInvoice", "asc"));
+    const suratSnapshot = await getDocs(suratQuery);
+    const usedBases: number[] = [];
+    piSnapshot.docs.forEach((d) => {
+      const bn = d.data().invoiceBaseNumber;
+      if (bn) usedBases.push(parseInt(bn));
+    });
+    suratSnapshot.docs.forEach((d) => {
+      const ni = d.data().nomorInvoice;
+      if (ni) {
+        const parsed = parseInvoiceNumber(ni);
+        if (parsed) usedBases.push(parsed.baseNum);
+      }
+    });
+    usedBases.sort((a, b) => a - b);
+    let nextBase = 1;
+    for (const num of usedBases) {
+      if (num === nextBase) { nextBase++; } else if (num > nextBase) { break; }
+    }
+    return String(nextBase).padStart(4, "0");
+  };
 
-  const totalPages = Math.ceil(filteredPI.length / itemsPerPage);
-  const paginatedPI = filteredPI.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  const generateInvoiceNumber = async (pi: ProformaInvoice): Promise<string> => {
+    const piRef = doc(db, "proformaInvoice", pi.id);
+    const piSnap = await getDoc(piRef);
+    let baseNumber = piSnap.data()?.invoiceBaseNumber;
+    if (!baseNumber) {
+      baseNumber = await getNextInvoiceBaseNumber();
+      await updateDoc(piRef, { invoiceBaseNumber: baseNumber, updatedAt: serverTimestamp() });
+    }
+    const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", pi.nomorPI));
+    const suratSnap1 = await getDocs(suratQ1);
+    const suratQ2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", pi.nomorPI));
+    const suratSnap2 = await getDocs(suratQ2);
+    const usedPartials = new Set<number>();
+    [suratSnap1, suratSnap2].forEach((snap) => {
+      snap.docs.forEach((d) => {
+        const ni = d.data().nomorInvoice;
+        if (ni && ni.includes("-S") && ni.endsWith(`-${baseNumber}`)) {
+          const match = ni.match(/-S(\d+)-/);
+          if (match) usedPartials.add(parseInt(match[1]));
+        }
+      });
+    });
+    let nextPartial = 1;
+    while (usedPartials.has(nextPartial)) nextPartial++;
+    return `BAGB-INV-S${nextPartial}-${baseNumber}`;
+  };
 
-  const handlePrintFinal = (pi: ProformaInvoice) => {
+  const handleOpenInvoice = async (pi: ProformaInvoice) => {
+    setSelectedPI(pi);
+    setSelectedOrderTTD("");
+    setInvoiceNomor("");
+    setIsInvoiceModalOpen(true);
+    setIsGeneratingInvoice(true);
+    try {
+      const piRef = doc(db, "proformaInvoice", pi.id);
+      const piSnap = await getDoc(piRef);
+      let baseNumber = piSnap.data()?.invoiceBaseNumber;
+      if (!baseNumber) {
+        baseNumber = await getNextInvoiceBaseNumber();
+        await updateDoc(piRef, { invoiceBaseNumber: baseNumber, updatedAt: serverTimestamp() });
+      }
+      const nomor = `BAGB-INV-${baseNumber}`;
+      setInvoiceNomor(nomor);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  };
+
+  const handlePrintInvoice = () => {
+    if (!selectedPI || !invoiceNomor) return;
+    const pi = selectedPI;
+    const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
+    const allSuratForPI = getSuratForPI(pi.nomorPI);
+    const lastSurat = allSuratForPI.length > 0 ? allSuratForPI[allSuratForPI.length - 1] : null;
+    const invoiceDate = lastSurat ? lastSurat.tanggal : pi.tanggal;
+    const invoiceItems = pi.produkItems.map((produk, idx) => {
+      let loadedQty = 0;
+      allSuratForPI.forEach((surat) => {
+        (surat.items || []).forEach((it) => {
+          const match =
+            it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) ||
+            produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
+          if (match) {
+            const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
+            loadedQty += (it.pengambilanZAK || 0) * bobot;
+          }
+        });
+      });
+      const hargaSatuan = produk.hargaSatuan || 0;
+      const hargaPerZakDus = produk.hargaPerZakDus || 0;
+      const kemasan = produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-";
+      const subTotal = loadedQty * hargaSatuan;
+      return {
+        no: idx + 1,
+        namaProduk: produk.namaProduk,
+        produsen: produk.produsen || "",
+        kemasan,
+        fot: produk.fot || "",
+        kuantitas: loadedQty,
+        satuan: "KG",
+        hargaSatuan,
+        hargaPerZakDus,
+        subTotal,
+      };
+    }).filter((it) => it.kuantitas > 0).map((it, idx) => ({ ...it, no: idx + 1 }));
+    const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
+    const dppNilaiLain = 0;
+    const ongkosKirim = pi.ongkosKirim || 0;
+    const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
+    const totalPembayaran = totalSubTotal + dppNilaiLain + ongkosKirim + ppn;
+    const itemsHtml = invoiceItems.map((it) => `
+      <tr>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
+        <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.namaProduk}</td>
+        <td style="padding: 6px 8px; font-size: 9px; border: 1px solid #000; vertical-align: top;">${it.produsen}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.kemasan}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.fot}</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.kuantitas.toLocaleString("id-ID")} ${it.satuan}</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${formatRupiah(it.hargaSatuan)}</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${formatRupiah(it.hargaPerZakDus)}</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${formatRupiah(it.subTotal)}</td>
+      </tr>
+    `).join("");
+    const emptyRows = Array.from({ length: Math.max(0, 8 - invoiceItems.length) }, (_, i) => `
+      <tr>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${invoiceItems.length + i + 1}</td>
+        <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
+        <td style="padding: 6px 8px; font-size: 9px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
+      </tr>
+    `).join("");
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Invoice ${invoiceNomor}</title>
+        <style>
+          @page { size: A4; margin: 8mm 10mm 8mm 10mm; }
+          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 9px; line-height: 1.3; color: #000; }
+          .page { width: 190mm; margin: 0 auto; position: relative; min-height: 277mm; display: flex; flex-direction: column; }
+          .header-img { width: 100%; display: block; margin-bottom: 0; }
+          .title-bar { text-align: center; background: #15803d; color: white; padding: 4px 0; margin: 4px 0 8px 0; font-weight: bold; font-size: 12px; letter-spacing: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .info-section { display: flex; justify-content: space-between; margin-bottom: 8px; }
+          .customer-box { width: 55%; font-size: 9px; }
+          .customer-box p { margin-bottom: 1px; }
+          .customer-title { font-size: 9px; margin-bottom: 2px; }
+          .customer-name { font-weight: 700; font-size: 10px; }
+          .meta-box { width: 40%; text-align: right; font-size: 9px; }
+          .meta-box p { margin-bottom: 2px; }
+          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 9px; }
+          .data-table th { background: #e8f5e9; font-size: 8px; padding: 4px 2px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .data-table td { border: 1px solid #000; padding: 4px 2px; vertical-align: top; font-size: 9px; }
+          .summary-section { display: flex; justify-content: flex-end; margin-top: 0; }
+          .summary-table { width: 55%; border-collapse: collapse; font-size: 9px; }
+          .summary-table td { border: 1px solid #000; padding: 3px 6px; }
+          .summary-label { text-align: left; font-weight: 600; }
+          .summary-value { text-align: right; font-family: monospace; }
+          .total-row { font-weight: 700; font-size: 10px; }
+          .terbilang-box { border: 1px dashed #000; padding: 4px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+          .terbilang-label { font-size: 8px; font-weight: 600; margin-bottom: 1px; }
+          .bottom-section { display: flex; justify-content: space-between; margin-top: 8px; }
+          .left-boxes { width: 48%; }
+          .pay-box { border: 1px solid #000; padding: 6px 8px; margin-bottom: 6px; font-size: 9px; }
+          .pay-box p { margin-bottom: 1px; }
+          .pay-title { font-weight: 700; margin-bottom: 3px; }
+          .order-box { border: 1px solid #000; padding: 6px 8px; margin-bottom: 6px; font-size: 9px; }
+          .order-box p { margin-bottom: 1px; }
+          .ttd-box { border: 1px solid #000; padding: 6px 8px; font-size: 9px; }
+          .ttd-box p { margin-bottom: 1px; }
+          .right-signature { width: 48%; text-align: center; font-size: 9px; }
+          .right-signature p { margin-bottom: 2px; }
+          .sig-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
+          .sig-name { font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
+          .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 8px; }
+          .print-btn { background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin: 8px; }
+          .print-bar { text-align: center; padding: 8px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+          @media print { .print-bar { display: none !important; } }
+        </style>
+      </head>
+      <body>
+        <div class="print-bar no-print">
+          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+        <div class="page">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <div class="title-bar">I N V O I C E</div>
+          <div class="info-section">
+            <div class="customer-box">
+              <p class="customer-title">Kepada Yth,</p>
+              <p class="customer-name">${pi.namaCustomer || ""}</p>
+              <p>${(pi.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
+              ${pi.npwp ? `<p style="margin-top: 3px;">NP/WP: ${pi.npwp}</p>` : ""}
+            </div>
+            <div class="meta-box">
+              <p><span style="font-weight: 600;">INVOICE NO. :</span> ${invoiceNomor}</p>
+              <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(invoiceDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
+              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${pi.nomorPI || ""}</p>
+            </div>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 24px;">NO</th>
+                <th style="text-align: left; padding-left: 4px;">NAMA PRODUK</th>
+                <th style="text-align: left; padding-left: 4px;">PRODUSEN</th>
+                <th style="width: 50px;">KEMASAN</th>
+                <th style="width: 40px;">FOT</th>
+                <th style="width: 60px;">KUANTITAS</th>
+                <th style="width: 80px;">HARGA SATUAN<br>PER KG</th>
+                <th style="width: 80px;">PER ZAK</th>
+                <th style="width: 90px;">SUB TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>${itemsHtml}${emptyRows}</tbody>
+          </table>
+          <div class="summary-section">
+            <table class="summary-table">
+              <tr><td class="summary-label" style="border: none;"></td><td class="summary-label">TOTAL</td><td class="summary-value">${formatRupiah(totalSubTotal)}</td></tr>
+              <tr><td style="border: none;"></td><td class="summary-label">DPP NILAI LAIN-LAIN</td><td class="summary-value">${formatRupiah(dppNilaiLain)}</td></tr>
+              <tr><td style="border: none;"></td><td class="summary-label">ONGKOS KIRIM</td><td class="summary-value">${ongkosKirim > 0 ? formatRupiah(ongkosKirim) : "Rp -"}</td></tr>
+              <tr><td style="border: none;"></td><td class="summary-label">PPN</td><td class="summary-value">${ppn > 0 ? formatRupiah(ppn) : "Rp -"}</td></tr>
+              <tr><td style="border: none;"></td><td class="summary-label">SUB TOTAL</td><td class="summary-value">${formatRupiah(totalSubTotal + ppn)}</td></tr>
+              <tr><td style="border: none;"></td><td class="summary-label total-row">TOTAL PEMBAYARAN :</td><td class="summary-value total-row">${formatRupiah(totalPembayaran)}</td></tr>
+            </table>
+          </div>
+          <div class="terbilang-box">
+            <div class="terbilang-label">TERBILANG :</div>
+            <div>${numberToWords(Math.round(totalPembayaran))}</div>
+          </div>
+          <div class="bottom-section">
+            <div class="left-boxes">
+              <div class="pay-box">
+                <p class="pay-title">Pembayaran PT. Bukit Agrochemical Baru</p>
+                <p>Bank BRI Cabang Lamandau- Kalimantan Tengah</p>
+                <p>No. Rek : 2232-01000-879-567</p>
+              </div>
+              <div class="order-box">
+                <p style="font-weight: 600;">Dipesan oleh:</p>
+                <p style="font-weight: 700;">${pi.namaCustomer || ""}</p>
+              </div>
+              <div class="ttd-box" style="text-align: center;">
+                <p style="font-weight: 600; text-align: left;">Diorder Oleh:</p>
+                <p style="text-align: left;">PT. Bukit Agrochemical Baru</p>
+                <div style="height: 10px;"></div>
+                ${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 0 auto 2px auto;" />` : `<div style="height: 35px;"></div>`}
+                <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 2px;">
+                  ${orderTTD ? `<p style="font-weight: 700; margin: 0;">${orderTTD.nama}</p>` : `<p style="font-weight: 700; margin: 0;">_________________</p>`}
+                  ${orderTTD ? `<p style="margin: 0; font-size: 8px;">${orderTTD.jabatan}</p>` : ""}
+                </div>
+              </div>
+            </div>
+            <div class="right-signature">
+              <p style="margin-bottom: 30px;">Hormat kami,<br>PT. Bukit Agrochemical Baru</p>
+              <img src="/Picture4.png" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
+              <p style="font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">Sri Setyo Wibowo</p>
+              <p>Manager Keuangan</p>
+            </div>
+          </div>
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+        </div>
+      </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    setIsInvoiceModalOpen(false);
+  };
+
+  const handlePrintBapisp = (pi: ProformaInvoice) => {
     const bast = getBastForPI(pi.nomorPI);
     if (!bast || !bast.ttdId) return;
     const spList = getSuratForPI(pi.nomorPI);
@@ -673,6 +972,19 @@ export default function BapispFinalPage() {
     }).join('<div class="page-break"></div>');
   };
 
+  const filteredPI = piList.filter((pi) => {
+    const bast = getBastForPI(pi.nomorPI);
+    if (!bast || !bast.ttdId) return false;
+    const date = new Date(pi.tanggal);
+    const matchTanggal = filterTanggal ? pi.tanggal === filterTanggal : true;
+    const matchBulan = filterBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === filterBulan : true;
+    const matchTahun = filterTahun ? date.getFullYear().toString() === filterTahun : true;
+    return matchTanggal && matchBulan && matchTahun;
+  });
+
+  const totalPages = Math.ceil(filteredPI.length / itemsPerPage);
+  const paginatedPI = filteredPI.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   const bulanOptions = [
     { value: "", label: "Semua Bulan" },
     { value: "01", label: "Januari" },
@@ -706,7 +1018,7 @@ export default function BapispFinalPage() {
 
   return (
     <div className="space-y-6">
-      <Header title="BAPISP Final" subtitle="Dokumen Final Berita Acara + Proforma Invoice + Surat Pengangkutan (Sudah TTD)" />
+      <Header title="BAPISP Final" subtitle="Dokumen Final Berita Acara + Proforma Invoice + Surat Pengangkutan (Sudah TTD) + Invoice" />
 
       <Card>
         <div className="flex items-center justify-between mb-4">
@@ -814,20 +1126,31 @@ export default function BapispFinalPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <button
-                          onClick={() => handlePrintFinal(pi)}
-                          disabled={!ttd}
-                          className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 mx-auto ${
-                            ttd
-                              ? "bg-green-600 hover:bg-green-700 text-white"
-                              : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                          }`}
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                          </svg>
-                          Print Final
-                        </button>
+                        <div className="flex items-center gap-2 justify-center">
+                          <button
+                            onClick={() => handlePrintBapisp(pi)}
+                            disabled={!ttd}
+                            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${
+                              ttd
+                                ? "bg-green-600 hover:bg-green-700 text-white"
+                                : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                            }`}
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                            </svg>
+                            Print BAPISP
+                          </button>
+                          <button
+                            onClick={() => handleOpenInvoice(pi)}
+                            className="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            Invoice
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -873,6 +1196,56 @@ export default function BapispFinalPage() {
           </div>
         )}
       </Card>
+
+      <Modal
+        isOpen={isInvoiceModalOpen}
+        onClose={() => setIsInvoiceModalOpen(false)}
+        title="Print Invoice"
+        size="md"
+        footer={
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsInvoiceModalOpen(false)}>Batal</Button>
+            <Button variant="primary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice}>Print Invoice</Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Invoice</p>
+            <p className="text-lg font-mono font-bold text-green-700">{invoiceNomor || "Memuat..."}</p>
+            {isGeneratingInvoice && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor invoice...</p>}
+          </div>
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+            <p className="text-sm text-blue-700"><span className="font-semibold">Dipesan Oleh:</span> {selectedPI?.namaCustomer || "-"}</p>
+          </div>
+          <p className="text-sm text-gray-600">Pilih TTD untuk bagian <strong>Diorder Oleh</strong>:</p>
+          <Select
+            label="Pilih TTD"
+            value={selectedOrderTTD}
+            onChange={(e) => setSelectedOrderTTD(e.target.value)}
+            options={[
+              { value: "", label: "Pilih tanda tangan..." },
+              ...ttdList.map((ttd) => ({
+                value: ttd.id,
+                label: `${ttd.nama} - ${ttd.jabatan}`,
+              })),
+            ]}
+          />
+          {selectedOrderTTD && (() => {
+            const ttd = ttdList.find((t) => t.id === selectedOrderTTD);
+            if (!ttd) return null;
+            return (
+              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-4">
+                <img src={ttd.ttdImage} alt="TTD" className="h-16 object-contain bg-white rounded-lg border border-gray-200" />
+                <div>
+                  <p className="text-sm font-semibold text-gray-900">{ttd.nama}</p>
+                  <p className="text-xs text-gray-500">{ttd.jabatan}</p>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </Modal>
     </div>
   );
 }
