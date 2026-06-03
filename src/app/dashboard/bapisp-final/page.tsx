@@ -1,62 +1,33 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
-  collection,
-  getDocs,
-  query,
-  orderBy,
-  where,
-  doc,
-  getDoc,
-  updateDoc,
-  serverTimestamp,
+  collection, getDocs, query, orderBy,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
+import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
-import Card from "@/app/components/ui/Card";
+import Table from "@/app/components/ui/Table";
 import Button from "@/app/components/ui/Button";
 import Modal from "@/app/components/ui/Modal";
+import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
+import Card from "@/app/components/ui/Card";
 
-interface ProformaInvoice {
-  id: string;
-  tanggal: string;
-  nomorPI: string;
-  namaCustomer: string;
-  alamatCustomer: string;
-  npwp: string;
-  metodePembayaran: string;
-  produkItems: {
-    namaProduk: string;
-    fot: string;
-    produsen: string;
-    kuantitas: number;
-    satuan: string;
-    hargaSatuan: number;
-    hargaPerZakDus: number;
-    bobotPerUnit: number;
-    jumlahIsiBotol: number;
-    totalHarga: number;
-    includePPN?: boolean;
-    ppnNominal?: number;
-  }[];
-  uangMuka: number;
-  includePPN: boolean;
-  ppnNominal: number;
-  ongkosKirim: number;
-  subtotal: number;
-  jumlahTertagih: number;
-  terbilang: string;
-  tanggalJatuhTempo: string;
-  keterangan: string;
-  ttdNama: string;
-  ttdJabatan: string;
-  ttdImage: string;
-  createdBy: string;
-  createdAt: Date;
-  updatedAt: Date;
-  invoiceBaseNumber?: string;
+interface ProdukItem {
+  namaProduk: string;
+  fot: string;
+  produsen: string;
+  kuantitas: number;
+  satuan: string;
+  hargaSatuan: number;
+  hargaPerZakDus: number;
+  bobotPerUnit: number;
+  jumlahIsiBotol: number;
+  totalHarga: number;
+  includePPN?: boolean;
+  ppnNominal?: number;
 }
 
 interface SuratMuatItem {
@@ -83,40 +54,60 @@ interface SuratMuatInfo {
   nomorPI: string | string[];
   nomorSIM?: string;
   jenisSurat?: string;
-  subJenisDO?: string | null;
-  nomorInvoice?: string;
+  subJenisDO?: string;
+  kepadaNama?: string;
+  kepadaPerusahaan?: string;
+  kepadaAlamat?: string;
+  namaCustomer?: string | string[];
+}
+
+interface ProformaInvoice {
+  id: string;
+  tanggal: string;
+  nomorPI: string;
+  namaCustomer: string;
+  alamatCustomer: string;
+  npwp: string;
+  metodePembayaran: string;
+  produkItems: ProdukItem[];
+  uangMuka: number;
+  includePPN: boolean;
+  ppnNominal: number;
+  ongkosKirim: number;
+  subtotal: number;
+  jumlahTertagih: number;
+  terbilang: string;
+  tanggalJatuhTempo: string;
+  keterangan: string;
+  ttdNama: string;
+  ttdJabatan: string;
+  ttdImage: string;
+  createdBy: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface BeritaAcaraItem {
+  no: number;
+  tanggalMuat: string;
+  namaProduk: string;
+  fot: string;
+  qty: string;
+  noSJ: string;
+  driver: string;
+  nopol: string;
 }
 
 interface BeritaAcaraData {
   id: string;
   nomorSeri: string;
-  nomorPI: string;
+  nomorPI: string | string[];
   namaCustomer: string;
   tanggal: string;
-  pihakPertama: {
-    nama: string;
-    jabatan: string;
-    perusahaan: string;
-  };
-  pihakKedua: {
-    nama: string;
-    alamat: string;
-  };
-  items: {
-    no: number;
-    tanggalMuat: string;
-    namaProduk: string;
-    fot: string;
-    qty: string;
-    noSJ: string;
-    driver: string;
-    nopol: string;
-  }[];
-  ttdId?: string;
-  ttdNama?: string;
-  ttdJabatan?: string;
-  ttdImage?: string;
-  createdAt: Date;
+  pihakPertama: { nama: string; jabatan: string; perusahaan: string };
+  pihakKedua: { nama: string; alamat: string };
+  items: BeritaAcaraItem[];
+  createdAt: any;
 }
 
 interface TTDData {
@@ -175,119 +166,103 @@ const numberToWords = (num: number): string => {
   return result.trim() + " RUPIAH";
 };
 
-const parseInvoiceNumber = (nomor: string) => {
-  const match = nomor.match(/^BAGB-INV(?:-S(\d+))?-(\d{4})$/);
-  if (!match) return null;
-  return {
-    isPartial: !!match[1],
-    partialNum: match[1] ? parseInt(match[1]) : 0,
-    baseNum: parseInt(match[2]),
-  };
-};
+const bulanOptions = [
+  { value: "", label: "Semua Bulan" },
+  { value: "01", label: "Januari" },
+  { value: "02", label: "Februari" },
+  { value: "03", label: "Maret" },
+  { value: "04", label: "April" },
+  { value: "05", label: "Mei" },
+  { value: "06", label: "Juni" },
+  { value: "07", label: "Juli" },
+  { value: "08", label: "Agustus" },
+  { value: "09", label: "September" },
+  { value: "10", label: "Oktober" },
+  { value: "11", label: "November" },
+  { value: "12", label: "Desember" },
+];
 
-export default function BapispFinalPage() {
-  const [piList, setPiList] = useState<ProformaInvoice[]>([]);
-  const [bastList, setBastList] = useState<BeritaAcaraData[]>([]);
-  const [suratList, setSuratList] = useState<SuratMuatInfo[]>([]);
+const tahunOptions = [
+  { value: "", label: "Semua Tahun" },
+  ...Array.from({ length: 5 }, (_, i) => {
+    const year = (new Date().getFullYear() - 2 + i).toString();
+    return { value: year, label: year };
+  }),
+];
+
+export default function BeritaAcaraPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [currentPin, setCurrentPin] = useState("080900");
+  const [isPinSettingsOpen, setIsPinSettingsOpen] = useState(false);
+  const [oldPinInput, setOldPinInput] = useState("");
+  const [newPinInput, setNewPinInput] = useState("");
+  const [confirmPinInput, setConfirmPinInput] = useState("");
+
+  const [baList, setBaList] = useState<BeritaAcaraData[]>([]);
+  const [piMap, setPiMap] = useState<Record<string, ProformaInvoice>>({});
+  const [suratMap, setSuratMap] = useState<Record<string, SuratMuatInfo[]>>({});
   const [ttdList, setTtdList] = useState<TTDData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+
+  const [searchTerm, setSearchTerm] = useState("");
   const [filterTanggal, setFilterTanggal] = useState("");
   const [filterBulan, setFilterBulan] = useState("");
   const [filterTahun, setFilterTahun] = useState("");
-  const [itemsPerPage, setItemsPerPage] = useState(10);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [selectedPI, setSelectedPI] = useState<ProformaInvoice | null>(null);
-  const [selectedOrderTTD, setSelectedOrderTTD] = useState("");
-  const [invoiceNomor, setInvoiceNomor] = useState("");
-  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+
+  const [selectedBA, setSelectedBA] = useState<BeritaAcaraData | null>(null);
+  const [isTTDModalOpen, setIsTTDModalOpen] = useState(false);
+  const [selectedTTDId, setSelectedTTDId] = useState("");
 
   useEffect(() => {
-    fetchData();
+    const savedPin = localStorage.getItem("ba_page_pin");
+    if (savedPin) setCurrentPin(savedPin);
+    const auth = sessionStorage.getItem("ba_page_auth");
+    if (auth === "true") setIsAuthenticated(true);
   }, []);
 
-  const fetchData = async () => {
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchAllData();
+  }, [isAuthenticated]);
+
+  const fetchAllData = async () => {
     setIsLoading(true);
     try {
-      const piQ = query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc"));
-      const piSnap = await getDocs(piQ);
-      const piData = piSnap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          tanggal: data.tanggal || "",
-          nomorPI: data.nomorPI || "",
-          namaCustomer: data.namaCustomer || "",
-          alamatCustomer: data.alamatCustomer || "",
-          npwp: data.npwp || "",
-          metodePembayaran: data.metodePembayaran || "Transfer",
-          produkItems: data.produkItems || [],
-          uangMuka: data.uangMuka || 0,
-          includePPN: data.includePPN || false,
-          ppnNominal: data.ppnNominal || 0,
-          ongkosKirim: data.ongkosKirim || 0,
-          subtotal: data.subtotal || 0,
-          jumlahTertagih: data.jumlahTertagih || 0,
-          terbilang: data.terbilang || "",
-          tanggalJatuhTempo: data.tanggalJatuhTempo || "",
-          keterangan: data.keterangan || "",
-          ttdNama: data.ttdNama || "",
-          ttdJabatan: data.ttdJabatan || "",
-          ttdImage: data.ttdImage || "",
-          createdBy: data.createdBy || "",
-          createdAt: data.createdAt?.toDate(),
-          updatedAt: data.updatedAt?.toDate(),
-          invoiceBaseNumber: data.invoiceBaseNumber || "",
-        } as ProformaInvoice;
-      });
-      setPiList(piData);
+      const baSnap = await getDocs(query(collection(db, "beritaAcara"), orderBy("createdAt", "desc")));
+      const baData: BeritaAcaraData[] = baSnap.docs.map(d => ({ id: d.id, ...d.data() } as BeritaAcaraData));
+      setBaList(baData);
 
-      const baQ = query(collection(db, "beritaAcara"), orderBy("createdAt", "desc"));
-      const baSnap = await getDocs(baQ);
-      const baData = baSnap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          nomorSeri: data.nomorSeri || "",
-          nomorPI: data.nomorPI || "",
-          namaCustomer: data.namaCustomer || "",
-          tanggal: data.tanggal || "",
-          pihakPertama: data.pihakPertama || { nama: "", jabatan: "", perusahaan: "" },
-          pihakKedua: data.pihakKedua || { nama: "", alamat: "" },
-          items: data.items || [],
-          ttdId: data.ttdId || "",
-          ttdNama: data.ttdNama || "",
-          ttdJabatan: data.ttdJabatan || "",
-          ttdImage: data.ttdImage || "",
-          createdAt: data.createdAt?.toDate(),
-        } as BeritaAcaraData;
+      const piSnap = await getDocs(query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc")));
+      const piData: Record<string, ProformaInvoice> = {};
+      piSnap.docs.forEach(d => {
+        const data = d.data() as ProformaInvoice;
+        data.id = d.id;
+        piData[data.nomorPI] = data;
       });
-      setBastList(baData);
+      setPiMap(piData);
 
-      const spQ = query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc"));
-      const spSnap = await getDocs(spQ);
-      const spData = spSnap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          nomorSeri: data.nomorSeri || "",
-          tanggal: data.tanggal || "",
-          items: data.items || [],
-          totalKG: data.totalPengambilanKG || 0,
-          nomorPolisi: data.nomorPolisi || "",
-          driverUnit: data.driverUnit || "",
-          nomorPI: data.nomorPI || "",
-          nomorSIM: data.nomorSIM || "",
-          jenisSurat: data.jenisSurat || "gudangInduk",
-          subJenisDO: data.subJenisDO || null,
-          nomorInvoice: data.nomorInvoice || "",
-        } as SuratMuatInfo;
+      const suratSnap = await getDocs(query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc")));
+      const suratData: Record<string, SuratMuatInfo[]> = {};
+      suratSnap.docs.forEach(d => {
+        const data = d.data() as SuratMuatInfo;
+        data.id = d.id;
+        const rawPI = data.nomorPI;
+        const piList: string[] = [];
+        if (Array.isArray(rawPI)) rawPI.forEach(p => { if (p && typeof p === "string") piList.push(p); });
+        else if (rawPI && typeof rawPI === "string") piList.push(rawPI);
+        piList.forEach(pi => {
+          if (!suratData[pi]) suratData[pi] = [];
+          suratData[pi].push(data);
+        });
       });
-      setSuratList(spData);
+      setSuratMap(suratData);
 
-      const ttdQ = query(collection(db, "ttd"), orderBy("nama", "asc"));
-      const ttdSnap = await getDocs(ttdQ);
-      setTtdList(ttdSnap.docs.map((d) => ({ id: d.id, ...d.data() } as TTDData)));
+      const ttdSnap = await getDocs(query(collection(db, "ttd"), orderBy("nama", "asc")));
+      setTtdList(ttdSnap.docs.map(d => ({ id: d.id, ...d.data() } as TTDData)));
     } catch (error) {
       console.error(error);
     } finally {
@@ -295,365 +270,138 @@ export default function BapispFinalPage() {
     }
   };
 
-  const getBastForPI = (nomorPI: string) => {
-    return bastList.find((b) => b.nomorPI === nomorPI);
-  };
-
-  const getSuratForPI = (nomorPI: string) => {
-    const seen = new Set<string>();
-    return suratList.filter((s) => {
-      let match = false;
-      if (Array.isArray(s.nomorPI)) match = s.nomorPI.includes(nomorPI);
-      else match = s.nomorPI === nomorPI;
-      if (match && !seen.has(s.id)) {
-        seen.add(s.id);
-        return true;
-      }
-      return false;
-    });
-  };
-
-  const getTtdForBast = (bast: BeritaAcaraData | undefined) => {
-    if (!bast || !bast.ttdId) return undefined;
-    return ttdList.find((t) => t.id === bast.ttdId);
-  };
-
-  const getNextInvoiceBaseNumber = async (): Promise<string> => {
-    const piQuery = query(collection(db, "proformaInvoice"), orderBy("invoiceBaseNumber", "asc"));
-    const piSnapshot = await getDocs(piQuery);
-    const suratQuery = query(collection(db, "suratPengangkutan"), orderBy("nomorInvoice", "asc"));
-    const suratSnapshot = await getDocs(suratQuery);
-    const usedBases: number[] = [];
-    piSnapshot.docs.forEach((d) => {
-      const bn = d.data().invoiceBaseNumber;
-      if (bn) usedBases.push(parseInt(bn));
-    });
-    suratSnapshot.docs.forEach((d) => {
-      const ni = d.data().nomorInvoice;
-      if (ni) {
-        const parsed = parseInvoiceNumber(ni);
-        if (parsed) usedBases.push(parsed.baseNum);
-      }
-    });
-    usedBases.sort((a, b) => a - b);
-    let nextBase = 1;
-    for (const num of usedBases) {
-      if (num === nextBase) { nextBase++; } else if (num > nextBase) { break; }
-    }
-    return String(nextBase).padStart(4, "0");
-  };
-
-  const generateInvoiceNumber = async (pi: ProformaInvoice): Promise<string> => {
-    const piRef = doc(db, "proformaInvoice", pi.id);
-    const piSnap = await getDoc(piRef);
-    let baseNumber = piSnap.data()?.invoiceBaseNumber;
-    if (!baseNumber) {
-      baseNumber = await getNextInvoiceBaseNumber();
-      await updateDoc(piRef, { invoiceBaseNumber: baseNumber, updatedAt: serverTimestamp() });
-    }
-    const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", pi.nomorPI));
-    const suratSnap1 = await getDocs(suratQ1);
-    const suratQ2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", pi.nomorPI));
-    const suratSnap2 = await getDocs(suratQ2);
-    const usedPartials = new Set<number>();
-    [suratSnap1, suratSnap2].forEach((snap) => {
-      snap.docs.forEach((d) => {
-        const ni = d.data().nomorInvoice;
-        if (ni && ni.includes("-S") && ni.endsWith(`-${baseNumber}`)) {
-          const match = ni.match(/-S(\d+)-/);
-          if (match) usedPartials.add(parseInt(match[1]));
-        }
-      });
-    });
-    let nextPartial = 1;
-    while (usedPartials.has(nextPartial)) nextPartial++;
-    return `BAGB-INV-S${nextPartial}-${baseNumber}`;
-  };
-
-  const handleOpenInvoice = async (pi: ProformaInvoice) => {
-    setSelectedPI(pi);
-    setSelectedOrderTTD("");
-    setInvoiceNomor("");
-    setIsInvoiceModalOpen(true);
-    setIsGeneratingInvoice(true);
-    try {
-      const piRef = doc(db, "proformaInvoice", pi.id);
-      const piSnap = await getDoc(piRef);
-      let baseNumber = piSnap.data()?.invoiceBaseNumber;
-      if (!baseNumber) {
-        baseNumber = await getNextInvoiceBaseNumber();
-        await updateDoc(piRef, { invoiceBaseNumber: baseNumber, updatedAt: serverTimestamp() });
-      }
-      const nomor = `BAGB-INV-${baseNumber}`;
-      setInvoiceNomor(nomor);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsGeneratingInvoice(false);
+  const handlePinSubmit = () => {
+    if (pinInput === currentPin) {
+      setIsAuthenticated(true);
+      sessionStorage.setItem("ba_page_auth", "true");
+      setPinInput("");
+    } else {
+      alert("PIN salah!");
     }
   };
 
-  const handlePrintInvoice = () => {
-    if (!selectedPI || !invoiceNomor) return;
-    const pi = selectedPI;
-    const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
-    const allSuratForPI = getSuratForPI(pi.nomorPI);
-    const lastSurat = allSuratForPI.length > 0 ? allSuratForPI[allSuratForPI.length - 1] : null;
-    const invoiceDate = lastSurat ? lastSurat.tanggal : pi.tanggal;
-    const invoiceItems = pi.produkItems.map((produk, idx) => {
-      let loadedQty = 0;
-      allSuratForPI.forEach((surat) => {
-        (surat.items || []).forEach((it) => {
-          const match =
-            it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) ||
-            produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
-          if (match) {
-            const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
-            loadedQty += (it.pengambilanZAK || 0) * bobot;
-          }
-        });
-      });
-      const hargaSatuan = produk.hargaSatuan || 0;
-      const hargaPerZakDus = produk.hargaPerZakDus || 0;
-      const kemasan = produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-";
-      const subTotal = loadedQty * hargaSatuan;
-      return {
-        no: idx + 1,
-        namaProduk: produk.namaProduk,
-        produsen: produk.produsen || "",
-        kemasan,
-        fot: produk.fot || "",
-        kuantitas: loadedQty,
-        satuan: "KG",
-        hargaSatuan,
-        hargaPerZakDus,
-        subTotal,
-      };
-    }).filter((it) => it.kuantitas > 0).map((it, idx) => ({ ...it, no: idx + 1 }));
-    const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
-    const dppNilaiLain = 0;
-    const ongkosKirim = pi.ongkosKirim || 0;
-    const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
-    const totalPembayaran = totalSubTotal + dppNilaiLain + ongkosKirim + ppn;
-    const itemsHtml = invoiceItems.map((it) => `
-      <tr>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
-        <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.namaProduk}</td>
-        <td style="padding: 6px 8px; font-size: 9px; border: 1px solid #000; vertical-align: top;">${it.produsen}</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.kemasan}</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.fot}</td>
-        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.kuantitas.toLocaleString("id-ID")} ${it.satuan}</td>
-        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${formatRupiah(it.hargaSatuan)}</td>
-        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${formatRupiah(it.hargaPerZakDus)}</td>
-        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${formatRupiah(it.subTotal)}</td>
-      </tr>
-    `).join("");
-    const emptyRows = Array.from({ length: Math.max(0, 8 - invoiceItems.length) }, (_, i) => `
-      <tr>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${invoiceItems.length + i + 1}</td>
-        <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
-        <td style="padding: 6px 8px; font-size: 9px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
-        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
-        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
-        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
-        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top;">&nbsp;</td>
-      </tr>
-    `).join("");
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice ${invoiceNomor}</title>
-        <style>
-          @page { size: A4; margin: 8mm 10mm 8mm 10mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; font-size: 9px; line-height: 1.3; color: #000; }
-          .page { width: 190mm; margin: 0 auto; position: relative; min-height: 277mm; display: flex; flex-direction: column; }
-          .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .title-bar { text-align: center; background: #15803d; color: white; padding: 4px 0; margin: 4px 0 8px 0; font-weight: bold; font-size: 12px; letter-spacing: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .info-section { display: flex; justify-content: space-between; margin-bottom: 8px; }
-          .customer-box { width: 55%; font-size: 9px; }
-          .customer-box p { margin-bottom: 1px; }
-          .customer-title { font-size: 9px; margin-bottom: 2px; }
-          .customer-name { font-weight: 700; font-size: 10px; }
-          .meta-box { width: 40%; text-align: right; font-size: 9px; }
-          .meta-box p { margin-bottom: 2px; }
-          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 9px; }
-          .data-table th { background: #e8f5e9; font-size: 8px; padding: 4px 2px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table td { border: 1px solid #000; padding: 4px 2px; vertical-align: top; font-size: 9px; }
-          .summary-section { display: flex; justify-content: flex-end; margin-top: 0; }
-          .summary-table { width: 55%; border-collapse: collapse; font-size: 9px; }
-          .summary-table td { border: 1px solid #000; padding: 3px 6px; }
-          .summary-label { text-align: left; font-weight: 600; }
-          .summary-value { text-align: right; font-family: monospace; }
-          .total-row { font-weight: 700; font-size: 10px; }
-          .terbilang-box { border: 1px dashed #000; padding: 4px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
-          .terbilang-label { font-size: 8px; font-weight: 600; margin-bottom: 1px; }
-          .bottom-section { display: flex; justify-content: space-between; margin-top: 8px; }
-          .left-boxes { width: 48%; }
-          .pay-box { border: 1px solid #000; padding: 6px 8px; margin-bottom: 6px; font-size: 9px; }
-          .pay-box p { margin-bottom: 1px; }
-          .pay-title { font-weight: 700; margin-bottom: 3px; }
-          .order-box { border: 1px solid #000; padding: 6px 8px; margin-bottom: 6px; font-size: 9px; }
-          .order-box p { margin-bottom: 1px; }
-          .ttd-box { border: 1px solid #000; padding: 6px 8px; font-size: 9px; }
-          .ttd-box p { margin-bottom: 1px; }
-          .right-signature { width: 48%; text-align: center; font-size: 9px; }
-          .right-signature p { margin-bottom: 2px; }
-          .sig-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
-          .sig-name { font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
-          .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 8px; }
-          .print-btn { background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin: 8px; }
-          .print-bar { text-align: center; padding: 8px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="print-bar no-print">
-          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-        </div>
-        <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
-          <div class="title-bar">I N V O I C E</div>
-          <div class="info-section">
-            <div class="customer-box">
-              <p class="customer-title">Kepada Yth,</p>
-              <p class="customer-name">${pi.namaCustomer || ""}</p>
-              <p>${(pi.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
-              ${pi.npwp ? `<p style="margin-top: 3px;">NP/WP: ${pi.npwp}</p>` : ""}
-            </div>
-            <div class="meta-box">
-              <p><span style="font-weight: 600;">INVOICE NO. :</span> ${invoiceNomor}</p>
-              <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(invoiceDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
-              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${pi.nomorPI || ""}</p>
-            </div>
-          </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width: 24px;">NO</th>
-                <th style="text-align: left; padding-left: 4px;">NAMA PRODUK</th>
-                <th style="text-align: left; padding-left: 4px;">PRODUSEN</th>
-                <th style="width: 50px;">KEMASAN</th>
-                <th style="width: 40px;">FOT</th>
-                <th style="width: 60px;">KUANTITAS</th>
-                <th style="width: 80px;">HARGA SATUAN<br>PER KG</th>
-                <th style="width: 80px;">PER ZAK</th>
-                <th style="width: 90px;">SUB TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>${itemsHtml}${emptyRows}</tbody>
-          </table>
-          <div class="summary-section">
-            <table class="summary-table">
-              <tr><td class="summary-label" style="border: none;"></td><td class="summary-label">TOTAL</td><td class="summary-value">${formatRupiah(totalSubTotal)}</td></tr>
-              <tr><td style="border: none;"></td><td class="summary-label">DPP NILAI LAIN-LAIN</td><td class="summary-value">${formatRupiah(dppNilaiLain)}</td></tr>
-              <tr><td style="border: none;"></td><td class="summary-label">ONGKOS KIRIM</td><td class="summary-value">${ongkosKirim > 0 ? formatRupiah(ongkosKirim) : "Rp -"}</td></tr>
-              <tr><td style="border: none;"></td><td class="summary-label">PPN</td><td class="summary-value">${ppn > 0 ? formatRupiah(ppn) : "Rp -"}</td></tr>
-              <tr><td style="border: none;"></td><td class="summary-label">SUB TOTAL</td><td class="summary-value">${formatRupiah(totalSubTotal + ppn)}</td></tr>
-              <tr><td style="border: none;"></td><td class="summary-label total-row">TOTAL PEMBAYARAN :</td><td class="summary-value total-row">${formatRupiah(totalPembayaran)}</td></tr>
-            </table>
-          </div>
-          <div class="terbilang-box">
-            <div class="terbilang-label">TERBILANG :</div>
-            <div>${numberToWords(Math.round(totalPembayaran))}</div>
-          </div>
-          <div class="bottom-section">
-            <div class="left-boxes">
-              <div class="pay-box">
-                <p class="pay-title">Pembayaran PT. Bukit Agrochemical Baru</p>
-                <p>Bank BRI Cabang Lamandau- Kalimantan Tengah</p>
-                <p>No. Rek : 2232-01000-879-567</p>
-              </div>
-              <div class="order-box">
-                <p style="font-weight: 600;">Dipesan oleh:</p>
-                <p style="font-weight: 700;">${pi.namaCustomer || ""}</p>
-              </div>
-              <div class="ttd-box" style="text-align: center;">
-                <p style="font-weight: 600; text-align: left;">Diorder Oleh:</p>
-                <p style="text-align: left;">PT. Bukit Agrochemical Baru</p>
-                <div style="height: 10px;"></div>
-                ${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 0 auto 2px auto;" />` : `<div style="height: 35px;"></div>`}
-                <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 2px;">
-                  ${orderTTD ? `<p style="font-weight: 700; margin: 0;">${orderTTD.nama}</p>` : `<p style="font-weight: 700; margin: 0;">_________________</p>`}
-                  ${orderTTD ? `<p style="margin: 0; font-size: 8px;">${orderTTD.jabatan}</p>` : ""}
-                </div>
-              </div>
-            </div>
-            <div class="right-signature">
-              <p style="margin-bottom: 30px;">Hormat kami,<br>PT. Bukit Agrochemical Baru</p>
-              <img src="/Picture4.png" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
-              <p style="font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">Sri Setyo Wibowo</p>
-              <p>Manager Keuangan</p>
-            </div>
-          </div>
-          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
-        </div>
-      </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
-    setIsInvoiceModalOpen(false);
+  const handleChangePin = () => {
+    if (oldPinInput !== currentPin) { alert("PIN lama salah!"); return; }
+    if (newPinInput !== confirmPinInput) { alert("Konfirmasi PIN baru tidak cocok!"); return; }
+    if (newPinInput.length < 4) { alert("PIN minimal 4 digit!"); return; }
+    setCurrentPin(newPinInput);
+    localStorage.setItem("ba_page_pin", newPinInput);
+    setIsPinSettingsOpen(false);
+    setOldPinInput("");
+    setNewPinInput("");
+    setConfirmPinInput("");
+    alert("PIN berhasil diubah!");
   };
 
-  const handlePrintBapisp = (pi: ProformaInvoice) => {
-    const bast = getBastForPI(pi.nomorPI);
-    if (!bast || !bast.ttdId) return;
-    const spList = getSuratForPI(pi.nomorPI);
-    const ttd = getTtdForBast(bast);
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    const baHtml = generateBAHtml(bast, ttd, pi);
-    const piHtml = generatePIHtml(pi, ttd);
-    const spHtml = generateSPHtml(spList, pi);
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>BAPISP-Final ${pi.nomorPI}</title>
-        <style>
-          @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-          @media print {
-            body { margin: 0; padding: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-            .no-print { display: none !important; }
-            .page-break { page-break-after: always; }
-          }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
-          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; padding-bottom: 10mm; }
-          .page-break { page-break-after: always; }
-          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="print-bar no-print">
-          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-        </div>
-        ${baHtml}
-        <div class="page-break"></div>
-        ${piHtml}
-        <div class="page-break"></div>
-        ${spHtml}
-      </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
+  const getTTDForBA = (baId: string) => {
+    const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
+    return mapping[baId] || null;
   };
 
-  const generateBAHtml = (bast: BeritaAcaraData, ttd: TTDData | undefined, pi: ProformaInvoice) => {
+  const getJumlahSP = (nomorPI: string | string[]) => {
+    const piList = Array.isArray(nomorPI) ? nomorPI : [nomorPI];
+    let count = 0;
+    piList.forEach(pi => { if (suratMap[pi]) count += suratMap[pi].length; });
+    return count;
+  };
+
+  const filteredData = baList.filter(ba => {
+    const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
+    const piData = piMap[piNomor];
+    const customerName = piData?.namaCustomer || ba.namaCustomer || "";
+    const matchSearch =
+      (piNomor || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (ba.nomorSeri || "").toLowerCase().includes(searchTerm.toLowerCase());
+    const matchTanggal = filterTanggal ? ba.tanggal === filterTanggal : true;
+    const date = new Date(ba.tanggal);
+    const matchBulan = filterBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === filterBulan : true;
+    const matchTahun = filterTahun ? date.getFullYear().toString() === filterTahun : true;
+    return matchSearch && matchTanggal && matchBulan && matchTahun;
+  });
+
+  const handleSelectTTD = (ba: BeritaAcaraData) => {
+    setSelectedBA(ba);
+    const existing = getTTDForBA(ba.id);
+    setSelectedTTDId(existing?.ttdId || "");
+    setIsTTDModalOpen(true);
+  };
+
+  const handleSaveTTD = () => {
+    if (!selectedBA) return;
+    const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
+    if (!selectedTTDId) {
+      delete mapping[selectedBA.id];
+      localStorage.setItem("ba_ttd_mapping", JSON.stringify(mapping));
+      setIsTTDModalOpen(false);
+      setSelectedBA(null);
+      setSelectedTTDId("");
+      setBaList([...baList]);
+      return;
+    }
+    const ttd = ttdList.find(t => t.id === selectedTTDId);
+    if (!ttd) return;
+    mapping[selectedBA.id] = { ttdId: ttd.id, nama: ttd.nama, jabatan: ttd.jabatan, ttdImage: ttd.ttdImage };
+    localStorage.setItem("ba_ttd_mapping", JSON.stringify(mapping));
+    setIsTTDModalOpen(false);
+    setSelectedBA(null);
+    setSelectedTTDId("");
+    setBaList([...baList]);
+  };
+
+  const isSentToBapispFinal = (baId: string) => {
+    const queue = JSON.parse(localStorage.getItem("bapisp_final_queue") || "[]");
+    return queue.some((q: any) => q.baId === baId);
+  };
+
+  const handleSendToBapispFinal = (ba: BeritaAcaraData) => {
+    const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
+    const pi = piMap[piNomor];
+    const ttd = getTTDForBA(ba.id);
+    const suratList: SuratMuatInfo[] = [];
+    if (Array.isArray(ba.nomorPI)) {
+      ba.nomorPI.forEach(p => { if (suratMap[p]) suratList.push(...suratMap[p]); });
+    } else {
+      if (suratMap[ba.nomorPI]) suratList.push(...suratMap[ba.nomorPI]);
+    }
+    const payload = {
+      baId: ba.id,
+      nomorSeri: ba.nomorSeri,
+      nomorPI: ba.nomorPI,
+      namaCustomer: pi?.namaCustomer || ba.namaCustomer,
+      alamatCustomer: pi?.alamatCustomer || "",
+      tanggalBA: ba.tanggal,
+      items: ba.items,
+      ttd: ttd,
+      suratPengangkutan: suratList,
+      proformaInvoice: pi || null,
+      sentAt: new Date().toISOString(),
+    };
+    const queue = JSON.parse(localStorage.getItem("bapisp_final_queue") || "[]");
+    const existingIndex = queue.findIndex((q: any) => q.baId === ba.id);
+    if (existingIndex >= 0) queue[existingIndex] = payload;
+    else queue.push(payload);
+    localStorage.setItem("bapisp_final_queue", JSON.stringify(queue));
+    alert("Berita Acara berhasil dikirim ke BAPISP Final!");
+    setBaList([...baList]);
+  };
+
+  const handlePrintCombined = (ba: BeritaAcaraData) => {
+    const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
+    const pi = piMap[piNomor];
+    if (!pi) { alert("Data Proforma Invoice tidak ditemukan!"); return; }
+    const suratList: SuratMuatInfo[] = [];
+    if (Array.isArray(ba.nomorPI)) {
+      ba.nomorPI.forEach(p => { if (suratMap[p]) suratList.push(...suratMap[p]); });
+    } else {
+      if (suratMap[ba.nomorPI]) suratList.push(...suratMap[ba.nomorPI]);
+    }
+    const ttd = getTTDForBA(ba.id);
     const now = new Date();
     const hari = now.toLocaleDateString("id-ID", { weekday: "long" });
     const tanggalLengkap = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-    const rowsHtml = bast.items.map((it) => `
+
+    const baRowsHtml = ba.items.map(it => `
       <tr>
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.tanggalMuat}</td>
@@ -665,86 +413,8 @@ export default function BapispFinalPage() {
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nopol}</td>
       </tr>
     `).join("");
-    return `
-      <div class="page">
-        <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
-        <div style="text-align: center; margin: 8px 0 12px 0;">
-          <h1 style="font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline;">BERITA ACARA SERAH TERIMA BARANG</h1>
-          <p style="font-size: 11px; font-weight: 600;">${bast.nomorSeri}</p>
-        </div>
-        <div style="padding: 0 4px;">
-          <p style="margin-bottom: 12px; font-size: 10px;">Kami yang bertanda tangan di bawah ini, pada hari ${hari}, ${tanggalLengkap}</p>
-          <div style="margin-bottom: 10px;">
-            <p style="font-weight: 700; margin-bottom: 4px; font-size: 10px;">Selanjutnya disebut Pihak Pertama.</p>
-            <table style="width: 100%; margin-bottom: 8px; font-size: 10px;">
-              <tr><td style="padding: 2px 0; vertical-align: top; width: 100px; font-weight: 600;">Nama</td><td>: ${ttd?.nama || "............................"}</td></tr>
-              <tr><td style="padding: 2px 0; vertical-align: top; font-weight: 600;">Perusahaan</td><td>: PT Bukit Agrochemical Baru</td></tr>
-              <tr><td style="padding: 2px 0; vertical-align: top; font-weight: 600;">Jabatan</td><td>: ${ttd?.jabatan || "............................"}</td></tr>
-            </table>
-          </div>
-          <div style="margin-bottom: 10px;">
-            <p style="font-weight: 700; margin-bottom: 4px; font-size: 10px;">Selanjutnya yang disebut Pihak Kedua.</p>
-            <table style="width: 100%; margin-bottom: 8px; font-size: 10px;">
-              <tr><td style="padding: 2px 0; vertical-align: top; width: 100px; font-weight: 600;">Nama</td><td>: ${pi.namaCustomer}</td></tr>
-              <tr><td style="padding: 2px 0; vertical-align: top; font-weight: 600;">Alamat</td><td>: ${(pi.alamatCustomer || "").replace(/\n/g, " ")}</td></tr>
-            </table>
-          </div>
-          <p style="margin-bottom: 12px; font-size: 10px; text-align: justify;">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px;">
-            <thead>
-              <tr style="background: #f0fdf4; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 30px;">No</th>
-                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 80px;">Tanggal Muat</th>
-                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center;">Nama Produk</th>
-                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 80px;">FOT / No DO</th>
-                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 70px;">QTY</th>
-                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 120px;">No SJ</th>
-                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 90px;">Driver</th>
-                <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 80px;">Nopol</th>
-              </tr>
-            </thead>
-            <tbody>${rowsHtml}</tbody>
-          </table>
-          <p style="margin-bottom: 16px; font-size: 10px; text-align: justify;">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
-          <table style="width: 100%; border-collapse: collapse; margin-top: 30px;">
-            <tr>
-              <td style="width: 50%; text-align: center; padding: 0 10px;">
-                <p style="font-size: 9px; margin-bottom: 4px;">(Pihak Kedua)</p>
-              </td>
-              <td style="width: 50%; text-align: center; padding: 0 10px;">
-                <p style="font-size: 9px; margin-bottom: 4px;">(Pihak Pertama)</p>
-              </td>
-            </tr>
-            <tr>
-              <td style="width: 50%; text-align: center; padding: 0 10px; height: 60px; vertical-align: top;">
-                <div style="height: 60px;"></div>
-              </td>
-              <td style="width: 50%; text-align: center; padding: 0 10px; height: 60px; vertical-align: top;">
-                ${ttd ? `
-                  <div style="position: relative; display: inline-block; width: 140px; height: 60px;">
-                    <img src="/LogoAGRO.png" alt="Stampel" style="position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 80px; height: auto; opacity: 0.85; pointer-events: none; z-index: 1;" onerror="this.style.display='none'" />
-                    <img src="${ttd.ttdImage}" alt="TTD" style="position: absolute; top: 5px; left: 50%; transform: translateX(-50%); height: 50px; object-fit: contain; z-index: 2; display: block;" onerror="this.style.display='none'" />
-                  </div>
-                ` : `<div style="height: 60px;"></div>`}
-              </td>
-            </tr>
-            <tr>
-              <td style="width: 50%; text-align: center; padding: 0 10px;">
-                <p style="font-size: 10px; font-weight: 700; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${pi.namaCustomer}</p>
-              </td>
-              <td style="width: 50%; text-align: center; padding: 0 10px;">
-                <p style="font-size: 10px; font-weight: 700; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${ttd?.nama || "........................"}</p>
-                <p style="font-size: 9px; color: #333; margin-top: 2px;">${ttd?.jabatan || ""}</p>
-              </td>
-            </tr>
-          </table>
-        </div>
-      </div>
-    `;
-  };
 
-  const generatePIHtml = (pi: ProformaInvoice, orderTTD?: TTDData) => {
-    const produkRows = (pi.produkItems || []).map((p, idx) => `
+    const piProdukRows = (pi.produkItems || []).map((p, idx) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${idx + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600; height: 28px;">${p.namaProduk || ""}</td>
@@ -756,7 +426,7 @@ export default function BapispFinalPage() {
       </tr>
     `).join("");
     const emptyRowsCount = Math.max(0, 10 - (pi.produkItems || []).length);
-    const emptyRows = Array.from({ length: emptyRowsCount }, (_, i) => `
+    const piEmptyRows = Array.from({ length: emptyRowsCount }, (_, i) => `
       <tr>
         <td style="text-align: center; padding: 5px 3px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">${(pi.produkItems || []).length + i + 1}</td>
         <td style="padding: 5px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; height: 28px;">&nbsp;</td>
@@ -770,125 +440,50 @@ export default function BapispFinalPage() {
     const createdAtStr = pi.createdAt instanceof Date
       ? pi.createdAt.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
       : "-";
-    return `
-      <div class="page">
-        <img src="/LogoAGRO.png" alt="Watermark" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.08; pointer-events: none; z-index: 0;" onerror="this.style.display='none'" />
-        <div style="position: relative; z-index: 1;">
-          <img src="/logo.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>');" />
-          <div style="text-align: center; margin: 8px 0 10px 0; padding: 5px 0; background: #dcfce7; border-top: 2px solid #16a34a; border-bottom: 2px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-            <h1 style="color: #111; font-size: 15px; margin: 0; font-weight: bold; letter-spacing: 3px;">PROFORMA INVOICE</h1>
-          </div>
-          <div style="margin-bottom: 10px;">
-            <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth,</p>
-            <div style="display: flex; justify-content: space-between; gap: 0;">
-              <div style="flex: 1; border: 1px solid #000; padding: 8px 10px; min-height: 75px;">
-                <p style="font-size: 11px; font-weight: 700; color: #000; margin: 0 0 3px 0;">${pi.namaCustomer || ""}</p>
-                <p style="font-size: 9px; color: #333; line-height: 1.5;">${(pi.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
-              </div>
-              <div style="width: 250px; padding: 0 0 0 10px;">
-                <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
-                  <span style="color: #333; min-width: 90px;">Tanggal</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${pi.tanggal || ""}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
-                  <span style="color: #333; min-width: 90px;">No Invoice</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${pi.nomorPI || ""}</span>
-                </div>
-                <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
-                  <span style="color: #333; min-width: 90px;">Metode Pembayaran</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${pi.metodePembayaran || ""}</span>
-                </div>
-                ${pi.npwp ? `<div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;"><span style="color: #333; min-width: 90px;">NPWP</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${pi.npwp}</span></div>` : ""}
-              </div>
-            </div>
-          </div>
-          <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
-            <thead>
-              <tr style="background: #ffedd5; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 28px;">NO</th>
-                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: left; padding-left: 8px;">Nama Produk</th>
-                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 45px;">Fot</th>
-                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 90px;">Produsen</th>
-                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 60px;">Kuantitas<br>(kg)</th>
-                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 95px;">Harga Satuan</th>
-                <th style="color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; width: 105px;">Total Harga</th>
-              </tr>
-            </thead>
-            <tbody>${produkRows}${emptyRows}</tbody>
-          </table>
-          <div style="display: flex; border: 1px solid #000; border-top: none;">
-            <div style="flex: 1; padding: 8px 10px; border-right: 1px solid #000;">
-              <div style="font-size: 9px; color: #333; margin-bottom: 3px; font-weight: 600;">Terbilang :</div>
-              <div style="font-size: 10px; color: #000; font-weight: 700; text-transform: uppercase; line-height: 1.4;">${pi.terbilang || "-"}</div>
-            </div>
-            <div style="width: 250px; padding: 0;">
-              <div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;">
-                <span style="color: #333;">Subtotal</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(pi.subtotal)}</span>
-              </div>
-              ${(pi.uangMuka || 0) > 0 ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">Uang Muka</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(pi.uangMuka)}</span></div>` : ""}
-              ${pi.includePPN ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">PPN 11%</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(pi.ppnNominal)}</span></div>` : ""}
-              ${(pi.ongkosKirim || 0) > 0 ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">Ongkos Kirim</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(pi.ongkosKirim)}</span></div>` : ""}
-              <div style="display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: none; background: #f0fdf4; border-top: 1px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                <span style="font-weight: 700; color: #000;">Jumlah Tertagih</span><span style="font-size: 10px; color: #000; font-weight: 700; font-family: monospace;">${formatRupiah(pi.jumlahTertagih)}</span>
-              </div>
-              <div style="padding: 5px 10px; text-align: right; border-top: 1px solid #ddd; font-size: 11px;">
-                <span style="color: #666; font-size: 11px;">Tanggal Jatuh Tempo : </span><span style="color: #dc2626; font-weight: 700; font-size: 11px;">${pi.tanggalJatuhTempo || ""}</span>
-              </div>
-              <div style="padding: 4px 10px; text-align: right; border-top: 1px solid #eee; font-size: 10px; color: #666;">Dibuat: ${createdAtStr}</div>
-            </div>
-          </div>
-          <table style="width: 100%; border-collapse: collapse; border: 1px solid #000; border-top: none;">
-            <tbody>
-              <tr>
-                <td style="width: 50%; vertical-align: bottom; padding: 8px 10px; border-right: 1px solid #000; font-size: 9px; line-height: 1.6; color: #333;">
-                  <p style="font-size: 9px; font-weight: 700; color: #000; margin-bottom: 5px;">Pembayaran mohon ditransfer via rekening:</p>
-                  <p><strong style="color: #000; font-size: 9px;">BANK MANDIRI</strong> - Cabang Lamandau</p>
-                  <p>a/n PT Bukit Agrochemical Baru</p>
-                  <p>No. Rek : 159-00-1205477-0</p>
-                  <p style="margin-top: 3px;"><strong style="color: #000; font-size: 9px;">BANK BRI</strong> - Cabang Lamandau</p>
-                  <p>a/n PT Bukit Agrochemical Baru</p>
-                  <p>No. Rek : 2232-01000-879-567</p>
-                  <div style="margin-top: 8px; padding-top: 6px; border-top: 1px dashed #ccc;">
-                    <p style="font-size: 9px; font-weight: 700; color: #000; margin-bottom: 2px;">Dipesan oleh:</p>
-                    <p style="font-size: 10px; font-weight: 700; color: #000;">${pi.namaCustomer || ""}</p>
-                  </div>
-                  <div style="margin-top: 6px;">
-                    <p style="font-size: 9px; font-weight: 600; color: #000; margin-bottom: 2px;">Diorder Oleh:</p>
-                    <p style="font-size: 9px; color: #333; margin-bottom: 2px;">PT. Bukit Agrochemical Baru</p>
-                    ${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 2px 0;" onerror="this.style.display='none'" />` : `<div style="height: 35px;"></div>`}
-                    <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 2px; display: inline-block; min-width: 120px;">
-                      ${orderTTD ? `<p style="font-weight: 700; margin: 0; font-size: 9px;">${orderTTD.nama}</p><p style="margin: 0; font-size: 8px; color: #555;">${orderTTD.jabatan}</p>` : `<p style="font-weight: 700; margin: 0; font-size: 9px;">_________________</p>`}
-                    </div>
-                  </div>
-                </td>
-                <td style="width: 50%; vertical-align: bottom; text-align: center; padding: 8px 10px; font-size: 9px;">
-                  <p style="margin-bottom: 30px;">Hormat kami,<br>PT. Bukit Agrochemical Baru</p>
-                  <img src="/Picture4.png" alt="TTD" style="max-height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
-                  <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">Sri Setyo Wibowo</p>
-                  <p style="font-size: 8px; color: #555;">Manager Keuangan</p>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    `;
-  };
 
-  const generateSPHtml = (spList: SuratMuatInfo[], pi: ProformaInvoice) => {
-    return spList.map((surat) => {
+    let spHtml = "";
+    suratList.forEach((surat, sIdx) => {
       const isGI = !surat.jenisSurat || surat.jenisSurat === "gudangInduk";
+      const isDikuasakan = surat.jenisSurat === "do" && surat.subJenisDO === "dikuasakan";
       const piDisplay = Array.isArray(surat.nomorPI) ? surat.nomorPI.join(", ") : surat.nomorPI;
-      const itemsHtml = (surat.items || []).map((it, idx) => `
+      const spItemsHtml = (surat.items || []).map((it, idx) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI ? (piDisplay || "-") : (it.nomorPO || "-")}</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (it.nomorPI || piDisplay || "-") : (it.nomorPO || "-")}</td>
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
         </tr>
       `).join("");
-      return `
-        <div class="page" style="width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000;">
+
+      let recipientBox = "";
+      if (isGI) {
+        recipientBox = `<div style="border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px;">
+          <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth :</p>
+          <p style="font-size: 11px; font-weight: 700;">Bapak Kepala Gudang Induk</p>
+          <p style="font-size: 11px; font-weight: 700;">PT Bukit Agrochemical Baru</p>
+          <p style="font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px;">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p>
+        </div>`;
+      } else if (isDikuasakan) {
+        const customerName = Array.isArray(surat.namaCustomer) ? surat.namaCustomer[0] : surat.namaCustomer;
+        recipientBox = `<div style="border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px;">
+          <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth :</p>
+          <p style="font-size: 11px; font-weight: 700;">${customerName || ""}</p>
+          <p style="font-size: 11px; font-weight: 700;">${customerName || ""}</p>
+        </div>`;
+      } else {
+        recipientBox = `<div style="border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px;">
+          <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth :</p>
+          <p style="font-size: 11px; font-weight: 700;">${surat.kepadaNama || ""}</p>
+          <p style="font-size: 11px; font-weight: 700;">${surat.kepadaPerusahaan || ""}</p>
+          <p style="font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px;">${(surat.kepadaAlamat || "").replace(/\n/g, "<br>")}</p>
+        </div>`;
+      }
+
+      spHtml += `
+        <div style="page-break-before: always;">
           <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
           <div style="text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">SURAT PENGANGKUTAN</div>
           <div style="margin-bottom: 12px;">
@@ -898,33 +493,27 @@ export default function BapispFinalPage() {
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;">
               <span style="font-weight: 600;">Nomor Seri : ${surat.nomorSeri}</span>
             </div>
-            ${piDisplay ? `<div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;"><span style="font-weight: 600;">Nomor PI : ${piDisplay}</span></div>` : ""}
           </div>
-          <div style="border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px;">
-            <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth :</p>
-            <p style="font-size: 11px; font-weight: 700;">Bapak Kepala Gudang Induk</p>
-            <p style="font-size: 11px; font-weight: 700;">PT Bukit Agrochemical Baru</p>
-            <p style="font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px;">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p>
-          </div>
-          <div style="font-size: 10px; margin-bottom: 8px;">
-            <p style="margin-bottom: 2px;">Dengan Hormat,</p>
-            <p style="margin-bottom: 2px;">Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p>
+          ${recipientBox}
+          <div style="margin-bottom: 8px; font-size: 10px;">
+            <p>Dengan Hormat,</p>
+            <p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p>
           </div>
           <div style="margin-bottom: 10px;">
             <div style="text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact;">DASAR PENGANGKUTAN</div>
             <table style="width: 100%; border-collapse: collapse;">
               <thead>
-                <tr style="background: #f0fdf4; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
-                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 30px;">NO</th>
-                  ${!isGI ? `<th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 100px;">NOMOR SUB DO</th>` : ""}
-                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 100px;">NOMOR PI</th>
-                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center;">JENIS PUPUK</th>
-                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 60px;">PARTY</th>
-                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 100px;">PENGAMBILAN<br>ZAK</th>
-                  <th style="font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; width: 60px;">SISA</th>
+                <tr>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 30px;">NO</th>
+                  ${!isGI ? `<th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">NOMOR SUB DO</th>` : ""}
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">NOMOR PI</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact;">JENIS PUPUK</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 60px;">PARTY</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">PENGAMBILAN<br>ZAK</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 60px;">SISA</th>
                 </tr>
               </thead>
-              <tbody>${itemsHtml}</tbody>
+              <tbody>${spItemsHtml}</tbody>
             </table>
           </div>
           <div style="margin-bottom: 10px;">
@@ -947,292 +536,393 @@ export default function BapispFinalPage() {
             </table>
           </div>
           <div style="margin-top: 10px; font-size: 9px;">
-            <p style="margin-bottom: 2px; font-weight: 700;">Notes :</p>
-            <p style="margin-bottom: 2px;">- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
-            <p style="margin-bottom: 2px;">- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
-            <p style="margin-bottom: 2px;">- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
+            <p style="font-weight: 700;">Notes :</p>
+            <p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
+            <p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
+            <p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
           </div>
-          <table style="width: 100%; border-collapse: collapse; margin-top: auto;">
-            <tr>
-              <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 20px 10px 0;">
-                <p style="font-size: 9px; margin-bottom: 45px;">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-                <img src="/Picture2.png" alt="TTD" style="max-height: 105px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
-                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">HENDRA PRAMASYANTO</p>
-              </td>
-              <td style="width: 50%; text-align: center; vertical-align: bottom; padding: 20px 10px 0;">
-                <p style="font-size: 9px; margin-bottom: 45px;">Diangkut oleh,<br>Driver</p>
-                <div style="height: 105px;"></div>
-                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${surat.driverUnit || ""}</p>
-              </td>
-            </tr>
-          </table>
-          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: 10px;" onerror="this.style.display='none'" />
+          <div style="display: flex; justify-content: space-between; margin-top: 30px; align-items: flex-end;">
+            <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
+              <p style="font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4;">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+              <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
+                <img src="/Picture2.png" alt="TTD" style="max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block;" onerror="this.style.display='none'" />
+              </div>
+              <p style="font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto;">HENDRA PRAMASYANTO</p>
+            </div>
+            <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
+              <p style="font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4;">Diangkut oleh,<br>Driver</p>
+              <div style="min-height: 60px; margin-bottom: 4px;"></div>
+              <p style="font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto;">${surat.driverUnit || ""}</p>
+            </div>
+          </div>
+          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: auto; padding-top: 10px;" onerror="this.style.display='none'" />
         </div>
       `;
-    }).join('<div class="page-break"></div>');
+    });
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Dokumen Gabungan ${ba.nomorSeri}</title>
+        <style>
+          @page { size: A4 portrait; margin: 10mm 12mm 10mm 12mm; }
+          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
+          .doc-page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
+          .doc-page-pi { width: 182mm; margin: 0 auto; position: relative; min-height: 257mm; }
+          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+          @media print { .print-bar { display: none !important; } .page-break { page-break-before: always; } }
+        </style>
+      </head>
+      <body>
+        <div class="print-bar no-print">
+          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
+        </div>
+
+        <div class="doc-page">
+          <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
+          <div style="text-align: center; margin: 8px 0 12px 0;">
+            <h1 style="font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline;">BERITA ACARA SERAH TERIMA BARANG</h1>
+            <p style="font-size: 11px; font-weight: 600;">${ba.nomorSeri}</p>
+          </div>
+          <div style="padding: 0 4px; flex: 1;">
+            <p style="margin-bottom: 12px; font-size: 10px;">Kami yang bertanda tangan di bawah ini, pada hari ${hari}, ${tanggalLengkap}</p>
+            <div style="margin-bottom: 10px;">
+              <p style="font-weight: 700; margin-bottom: 4px; font-size: 10px;">Selanjutnya disebut Pihak Pertama.</p>
+              <table style="width: 100%; margin-bottom: 8px; font-size: 10px;">
+                <tr><td style="width: 100px; font-weight: 600; padding: 2px 0; vertical-align: top;">Nama</td><td style="padding: 2px 0; vertical-align: top;">: ${ttd?.nama || "........................"}</td></tr>
+                <tr><td style="width: 100px; font-weight: 600; padding: 2px 0; vertical-align: top;">Perusahaan</td><td style="padding: 2px 0; vertical-align: top;">: PT Bukit Agrochemical Baru</td></tr>
+                <tr><td style="width: 100px; font-weight: 600; padding: 2px 0; vertical-align: top;">Jabatan</td><td style="padding: 2px 0; vertical-align: top;">: ${ttd?.jabatan || "........................"}</td></tr>
+              </table>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <p style="font-weight: 700; margin-bottom: 4px; font-size: 10px;">Selanjutnya yang disebut Pihak Kedua.</p>
+              <table style="width: 100%; margin-bottom: 8px; font-size: 10px;">
+                <tr><td style="width: 100px; font-weight: 600; padding: 2px 0; vertical-align: top;">Nama</td><td style="padding: 2px 0; vertical-align: top;">: ${ba.pihakKedua?.nama || pi.namaCustomer || ""}</td></tr>
+                <tr><td style="width: 100px; font-weight: 600; padding: 2px 0; vertical-align: top;">Alamat</td><td style="padding: 2px 0; vertical-align: top;">: ${(ba.pihakKedua?.alamat || pi.alamatCustomer || "").replace(/\n/g, " ")}</td></tr>
+              </table>
+            </div>
+            <p style="margin-bottom: 12px; font-size: 10px;">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px;">
+              <thead>
+                <tr>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 30px;">No</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 80px;">Tanggal Muat</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact;">Nama Produk</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 80px;">FOT / No DO</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 70px;">QTY</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 120px;">No SJ</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 90px;">Driver</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 80px;">Nopol</th>
+                </tr>
+              </thead>
+              <tbody>${baRowsHtml}</tbody>
+            </table>
+            <p style="margin-bottom: 16px; font-size: 10px; text-align: justify;">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
+            <div style="display: flex; justify-content: space-between; margin-top: 30px;">
+              <div style="width: 45%; text-align: center;">
+                <p style="font-size: 9px; margin-bottom: 50px;">${pi.namaCustomer}<br>(Pihak Kedua)</p>
+                <div style="height: 50px;"></div>
+                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${pi.namaCustomer}</p>
+              </div>
+              <div style="width: 45%; text-align: center;">
+                <p style="font-size: 9px; margin-bottom: 50px;">PT Bukit Agrochemical Baru<br>(Pihak Pertama)</p>
+                <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
+                  ${ttd?.ttdImage ? `<img src="${ttd.ttdImage}" style="max-height: 50px; object-fit: contain; display: block;" />` : `<div style="min-height: 50px;"></div>`}
+                </div>
+                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${ttd?.nama || "_________________"}</p>
+                <p style="font-size: 9px; color: #333; margin-top: 2px;">${ttd?.jabatan || "PT Bukit Agrochemical Baru"}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="page-break"></div>
+
+        <div class="doc-page-pi" style="page-break-before: always;">
+          <img src="/LogoAGRO.png" alt="Watermark" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.08; pointer-events: none; z-index: 0;" onerror="this.style.display='none'" />
+          <div style="position: relative; z-index: 1;">
+            <img src="/logo.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>');" />
+            <div style="text-align: center; margin: 8px 0 10px 0; padding: 5px 0; background: #dcfce7; border-top: 2px solid #16a34a; border-bottom: 2px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
+              <h1 style="color: #111; font-size: 15px; margin: 0; font-weight: bold; letter-spacing: 3px;">PROFORMA INVOICE</h1>
+            </div>
+            <div style="margin-bottom: 10px;">
+              <p style="font-size: 9px; color: #333; margin-bottom: 2px;">Kepada Yth,</p>
+              <div style="display: flex; justify-content: space-between; gap: 0;">
+                <div style="flex: 1; border: 1px solid #000; padding: 8px 10px; min-height: 75px;">
+                  <p style="font-size: 11px; font-weight: 700; color: #000; margin: 0 0 3px 0;">${pi.namaCustomer || ""}</p>
+                  <p style="font-size: 9px; color: #333; line-height: 1.5;">${(pi.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
+                </div>
+                <div style="width: 250px; padding: 0 0 0 10px;">
+                  <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
+                    <span style="color: #333; min-width: 90px;">Tanggal</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${pi.tanggal || ""}</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
+                    <span style="color: #333; min-width: 90px;">No Invoice</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${pi.nomorPI || ""}</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;">
+                    <span style="color: #333; min-width: 90px;">Metode Pembayaran</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${pi.metodePembayaran || ""}</span>
+                  </div>
+                  ${pi.npwp ? `<div style="display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd;"><span style="color: #333; min-width: 90px;">NPWP</span><span style="margin: 0 3px;">:</span><span style="color: #000; font-weight: 600; text-align: right; flex: 1;">${pi.npwp}</span></div>` : ""}
+                </div>
+              </div>
+            </div>
+            <table style="width: 100%; border-collapse: collapse; margin-bottom: 0;">
+              <thead>
+                <tr>
+                  <th style="background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 28px;">NO</th>
+                  <th style="background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: left; padding-left: 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">Nama Produk</th>
+                  <th style="background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 45px;">Fot</th>
+                  <th style="background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: left; padding-left: 8px; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 90px;">Produsen</th>
+                  <th style="background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 60px;">Kuantitas<br>(kg)</th>
+                  <th style="background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 95px;">Harga Satuan</th>
+                  <th style="background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 105px;">Total Harga</th>
+                </tr>
+              </thead>
+              <tbody>${piProdukRows}${piEmptyRows}</tbody>
+            </table>
+            <div style="display: flex; border: 1px solid #000; border-top: none;">
+              <div style="flex: 1; padding: 8px 10px; border-right: 1px solid #000;">
+                <div style="font-size: 9px; color: #333; margin-bottom: 3px; font-weight: 600;">Terbilang :</div>
+                <div style="font-size: 10px; color: #000; font-weight: 700; text-transform: uppercase; line-height: 1.4;">${pi.terbilang || "-"}</div>
+              </div>
+              <div style="width: 250px; padding: 0;">
+                <div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;">
+                  <span style="color: #333;">Subtotal</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(pi.subtotal)}</span>
+                </div>
+                ${(pi.uangMuka || 0) > 0 ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">Uang Muka</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(pi.uangMuka)}</span></div>` : ""}
+                ${pi.includePPN ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">PPN 11%</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(pi.ppnNominal)}</span></div>` : ""}
+                ${(pi.ongkosKirim || 0) > 0 ? `<div style="display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px;"><span style="color: #333;">Ongkos Kirim</span><span style="font-weight: 600; font-family: monospace; font-size: 9px;">${formatRupiah(pi.ongkosKirim)}</span></div>` : ""}
+                <div style="display: flex; justify-content: space-between; padding: 5px 10px; border-bottom: none; background: #f0fdf4; border-top: 1px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact; font-size: 9px;">
+                  <span style="font-weight: 700; color: #000;">Jumlah Tertagih</span><span style="font-size: 10px; color: #000; font-weight: 700; font-family: monospace;">${formatRupiah(pi.jumlahTertagih)}</span>
+                </div>
+                <div style="padding: 5px 10px; text-align: right; border-top: 1px solid #ddd; font-size: 11px;">
+                  <span style="color: #666; font-size: 11px;">Tanggal Jatuh Tempo : </span><span style="color: #dc2626; font-weight: 700; font-size: 11px;">${pi.tanggalJatuhTempo || ""}</span>
+                </div>
+                <div style="padding: 4px 10px; text-align: right; border-top: 1px solid #eee; font-size: 10px; color: #666;">Dibuat: ${createdAtStr}</div>
+              </div>
+            </div>
+            <div style="display: flex; border: 1px solid #000; border-top: none;">
+              <div style="flex: 1; padding: 8px 10px; border-right: 1px solid #000;">
+                <p style="font-size: 9px; font-weight: 700; color: #000; margin-bottom: 5px;">Pembayaran mohon ditransfer via rekening:</p>
+                <div style="font-size: 8px; line-height: 1.6; color: #333;">
+                  <p><strong style="color: #000; font-size: 9px;">BANK MANDIRI</strong> - Cabang Lamandau</p>
+                  <p>a/n PT Bukit Agrochemical Baru</p>
+                  <p>No. Rek : 159-00-1205477-0</p>
+                  <p style="margin-top: 3px;"><strong style="color: #000; font-size: 9px;">BANK BRI</strong> - Cabang Lamandau</p>
+                  <p>a/n PT Bukit Agrochemical Baru</p>
+                  <p>No. Rek : 2232-01000-879-567</p>
+                </div>
+              </div>
+              <div style="width: 180px; padding: 8px 10px; text-align: center;">
+                <p style="font-size: 9px; color: #333; margin-bottom: 6px;">Dengan Hormat</p>
+                ${pi.ttdImage ? `<img src="${pi.ttdImage}" style="height: 40px; object-fit: contain; margin: 0 auto 4px auto; display: block;" />` : `<div style="height: 40px;"></div>`}
+                <p style="font-size: 10px; font-weight: 700; color: #000; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">${pi.ttdNama || ""}</p>
+                <p style="font-size: 8px; color: #555;">${pi.ttdJabatan ? `(${pi.ttdJabatan})` : ""}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        ${spHtml}
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
-  const filteredPI = piList.filter((pi) => {
-    const bast = getBastForPI(pi.nomorPI);
-    if (!bast || !bast.ttdId) return false;
-    const date = new Date(pi.tanggal);
-    const matchTanggal = filterTanggal ? pi.tanggal === filterTanggal : true;
-    const matchBulan = filterBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === filterBulan : true;
-    const matchTahun = filterTahun ? date.getFullYear().toString() === filterTahun : true;
-    return matchTanggal && matchBulan && matchTahun;
-  });
-
-  const totalPages = Math.ceil(filteredPI.length / itemsPerPage);
-  const paginatedPI = filteredPI.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-
-  const bulanOptions = [
-    { value: "", label: "Semua Bulan" },
-    { value: "01", label: "Januari" },
-    { value: "02", label: "Februari" },
-    { value: "03", label: "Maret" },
-    { value: "04", label: "April" },
-    { value: "05", label: "Mei" },
-    { value: "06", label: "Juni" },
-    { value: "07", label: "Juli" },
-    { value: "08", label: "Agustus" },
-    { value: "09", label: "September" },
-    { value: "10", label: "Oktober" },
-    { value: "11", label: "November" },
-    { value: "12", label: "Desember" },
+  const columns = [
+    {
+      key: "no",
+      header: "NO",
+      width: "50px",
+      render: (row: BeritaAcaraData & { __index?: number }) => <span className="text-sm text-gray-900">{(row.__index ?? 0) + 1}</span>,
+    },
+    {
+      key: "nomorPI",
+      header: "NOMOR PI",
+      width: "150px",
+      render: (row: BeritaAcaraData) => {
+        const piNomor = Array.isArray(row.nomorPI) ? row.nomorPI[0] : row.nomorPI;
+        return <span className="font-mono font-semibold text-green-700">{piNomor}</span>;
+      },
+    },
+    {
+      key: "namaCustomer",
+      header: "CUSTOMER",
+      render: (row: BeritaAcaraData) => {
+        const piNomor = Array.isArray(row.nomorPI) ? row.nomorPI[0] : row.nomorPI;
+        const pi = piMap[piNomor];
+        return <span className="font-medium text-gray-800">{pi?.namaCustomer || row.namaCustomer || "-"}</span>;
+      },
+    },
+    {
+      key: "tanggal",
+      header: "TANGGAL BA",
+      width: "120px",
+      render: (row: BeritaAcaraData) => <span className="text-sm text-gray-600">{row.tanggal}</span>,
+    },
+    {
+      key: "nomorSeri",
+      header: "NOMOR BA",
+      width: "180px",
+      render: (row: BeritaAcaraData) => <span className="font-mono text-sm font-bold text-indigo-700">{row.nomorSeri}</span>,
+    },
+    {
+      key: "jumlahSP",
+      header: "JUMLAH SP",
+      width: "100px",
+      render: (row: BeritaAcaraData) => {
+        const count = getJumlahSP(row.nomorPI);
+        return <span className="px-2 py-1 rounded-md text-xs font-bold bg-blue-100 text-blue-700">{count} Surat</span>;
+      },
+    },
+    {
+      key: "statusTTD",
+      header: "STATUS TTD",
+      width: "120px",
+      render: (row: BeritaAcaraData) => {
+        const ttd = getTTDForBA(row.id);
+        if (ttd) {
+          return <span className="px-2 py-1 rounded-md text-xs font-bold bg-green-100 text-green-700">{ttd.nama}</span>;
+        }
+        return <span className="px-2 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-700">Belum TTD</span>;
+      },
+    },
+    {
+      key: "aksi",
+      header: "AKSI",
+      width: "220px",
+      render: (row: BeritaAcaraData) => {
+        const hasTTD = !!getTTDForBA(row.id);
+        const sent = isSentToBapispFinal(row.id);
+        return (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={(e) => { e.stopPropagation(); handleSelectTTD(row); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-1"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" /></svg>
+              TTD
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); handlePrintCombined(row); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-green-600 hover:bg-green-700 text-white transition-colors flex items-center gap-1"
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+              Print
+            </button>
+            {hasTTD && (
+              <button
+                onClick={(e) => { e.stopPropagation(); handleSendToBapispFinal(row); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 ${sent ? "bg-purple-100 text-purple-700" : "bg-purple-600 hover:bg-purple-700 text-white"}`}
+                title={sent ? "Sudah dikirim ke BAPISP Final" : "Kirim ke BAPISP Final"}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                {sent ? "Terkirim" : "BAPISP"}
+              </button>
+            )}
+          </div>
+        );
+      },
+    },
   ];
 
-  const tahunOptions = [
-    { value: "", label: "Semua Tahun" },
-    ...Array.from({ length: 5 }, (_, i) => {
-      const year = (new Date().getFullYear() - 2 + i).toString();
-      return { value: year, label: year };
-    }),
-  ];
-
-  const perPageOptions = [
-    { value: "5", label: "5 per halaman" },
-    { value: "10", label: "10 per halaman" },
-    { value: "25", label: "25 per halaman" },
-    { value: "50", label: "50 per halaman" },
-  ];
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-green-50 to-emerald-100">
+        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+          <div className="text-center mb-6">
+            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+            </div>
+            <h2 className="text-xl font-bold text-gray-900">Akses Berita Acara</h2>
+            <p className="text-sm text-gray-500 mt-1">Masukkan PIN untuk melanjutkan</p>
+          </div>
+          <input
+            type="password"
+            inputMode="numeric"
+            maxLength={6}
+            value={pinInput}
+            onChange={(e) => setPinInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handlePinSubmit(); }}
+            className="w-full px-4 py-3 text-center text-2xl tracking-widest border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 mb-4"
+            placeholder="••••••"
+          />
+          <Button variant="primary" className="w-full" onClick={handlePinSubmit}>Masuk</Button>
+          <p className="text-xs text-gray-400 text-center mt-4">PIN default: 080900</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <Header title="BAPISP Final" subtitle="Dokumen Final Berita Acara + Proforma Invoice + Surat Pengangkutan (Sudah TTD) + Invoice" />
+      <div className="flex items-start sm:items-center justify-between gap-4">
+        <Header title="Daftar Proforma Invoice dengan Berita Acara" subtitle="Pilih PI untuk mencetak dokumen gabungan BA + PI + SP" />
+        <Button variant="secondary" onClick={() => setIsPinSettingsOpen(true)}>
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          Pengaturan PIN
+        </Button>
+      </div>
 
       <Card>
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <div className="p-2 bg-indigo-100 rounded-lg">
-              <svg className="w-5 h-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-sm font-semibold text-gray-800">Daftar Dokumen Final</h3>
-              <p className="text-xs text-gray-500">Hanya menampilkan PI yang sudah memiliki Berita Acara dan TTD</p>
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            <input
+              type="text"
+              placeholder="Cari nomor PI, customer, nomor BA..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+            />
           </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Filter Tanggal</label>
-            <input type="date" value={filterTanggal} onChange={(e) => { setFilterTanggal(e.target.value); setCurrentPage(1); }} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white" />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Filter Bulan</label>
-            <select value={filterBulan} onChange={(e) => { setFilterBulan(e.target.value); setCurrentPage(1); }} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white">
-              {bulanOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Filter Tahun</label>
-            <select value={filterTahun} onChange={(e) => { setFilterTahun(e.target.value); setCurrentPage(1); }} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white">
-              {tahunOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tampilan Per Halaman</label>
-            <select value={String(itemsPerPage)} onChange={(e) => { setItemsPerPage(parseInt(e.target.value)); setCurrentPage(1); }} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white">
-              {perPageOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={() => { setFilterTanggal(""); setFilterBulan(""); setFilterTahun(""); setCurrentPage(1); }}
-              className="w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
-            >
-              Reset Filter
-            </button>
-          </div>
+          <Input label="Filter Tanggal" type="date" value={filterTanggal} onChange={(e) => setFilterTanggal(e.target.value)} />
+          <Select label="Filter Bulan" value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)} options={bulanOptions} />
+          <Select label="Filter Tahun" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} options={tahunOptions} />
         </div>
 
         <div className="text-sm text-gray-500 mb-4">
-          Menampilkan {paginatedPI.length} dari {filteredPI.length} data
+          Menampilkan {filteredData.length} dari {baList.length} data
           {filterTanggal && ` | Tanggal: ${filterTanggal}`}
           {filterBulan && ` | Bulan: ${bulanOptions.find((b) => b.value === filterBulan)?.label}`}
           {filterTahun && ` | Tahun: ${filterTahun}`}
-          {` | Halaman ${currentPage} dari ${totalPages || 1}`}
         </div>
 
-        {isLoading ? (
-          <div className="flex justify-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-700"></div>
-          </div>
-        ) : filteredPI.length === 0 ? (
-          <div className="flex flex-col items-center py-12 text-gray-400">
-            <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-            </svg>
-            <p className="font-medium">Belum ada dokumen final yang tersedia</p>
-            <p className="text-sm mt-1">Dokumen akan muncul setelah Berita Acara diterbitkan dan ditandatangani</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-indigo-50 border-b border-indigo-100">
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">No</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Nomor PI</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Tanggal PI</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Customer</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Tanggal BA</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Nomor BA</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-800 uppercase">Jumlah SP</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-800 uppercase">Status</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-800 uppercase">Aksi</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {paginatedPI.map((pi, idx) => {
-                  const bast = getBastForPI(pi.nomorPI);
-                  const spCount = getSuratForPI(pi.nomorPI).length;
-                  const ttd = getTtdForBast(bast);
-                  return (
-                    <tr key={pi.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-gray-900">{(currentPage - 1) * itemsPerPage + idx + 1}</td>
-                      <td className="px-4 py-3 font-mono font-bold text-green-700">{pi.nomorPI}</td>
-                      <td className="px-4 py-3 text-gray-600">{pi.tanggal}</td>
-                      <td className="px-4 py-3 text-gray-800">{pi.namaCustomer}</td>
-                      <td className="px-4 py-3 text-gray-600">{bast?.tanggal || "-"}</td>
-                      <td className="px-4 py-3 font-mono text-indigo-700">{bast?.nomorSeri || "-"}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="px-2 py-1 rounded-md text-xs font-bold bg-blue-100 text-blue-700">{spCount} Surat</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <span className="px-2 py-1 rounded-md text-xs font-bold border bg-green-100 text-green-700 border-green-200">
-                          {ttd ? "Sudah TTD" : "Belum TTD"}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center gap-2 justify-center">
-                          <button
-                            onClick={() => handlePrintBapisp(pi)}
-                            disabled={!ttd}
-                            className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${
-                              ttd
-                                ? "bg-green-600 hover:bg-green-700 text-white"
-                                : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                            }`}
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                            </svg>
-                            Print BAPISP
-                          </button>
-                          <button
-                            onClick={() => handleOpenInvoice(pi)}
-                            className="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                            </svg>
-                            Invoice
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-6">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                currentPage === 1 ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white"
-              }`}
-            >
-              Sebelumnya
-            </button>
-            <div className="flex items-center gap-2">
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                <button
-                  key={page}
-                  onClick={() => setCurrentPage(page)}
-                  className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${
-                    currentPage === page ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                  }`}
-                >
-                  {page}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-              disabled={currentPage === totalPages}
-              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                currentPage === totalPages ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white"
-              }`}
-            >
-              Selanjutnya
-            </button>
-          </div>
-        )}
+        <Table
+          columns={columns}
+          data={filteredData.map((row, idx) => ({ ...row, __index: idx }))}
+          isLoading={isLoading}
+          emptyMessage="Belum ada data berita acara"
+          keyExtractor={(row) => row.id}
+        />
       </Card>
 
-      <Modal
-        isOpen={isInvoiceModalOpen}
-        onClose={() => setIsInvoiceModalOpen(false)}
-        title="Print Invoice"
-        size="md"
-        footer={
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsInvoiceModalOpen(false)}>Batal</Button>
-            <Button variant="primary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice}>Print Invoice</Button>
-          </div>
-        }
-      >
+      <Modal isOpen={isTTDModalOpen} onClose={() => setIsTTDModalOpen(false)} title="Pilih TTD" size="md" footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={() => setIsTTDModalOpen(false)}>Batal</Button>
+          <Button variant="primary" onClick={handleSaveTTD}>Simpan</Button>
+        </div>
+      }>
         <div className="space-y-4">
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Invoice</p>
-            <p className="text-lg font-mono font-bold text-green-700">{invoiceNomor || "Memuat..."}</p>
-            {isGeneratingInvoice && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor invoice...</p>}
-          </div>
-          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-            <p className="text-sm text-blue-700"><span className="font-semibold">Dipesan Oleh:</span> {selectedPI?.namaCustomer || "-"}</p>
-          </div>
-          <p className="text-sm text-gray-600">Pilih TTD untuk bagian <strong>Diorder Oleh</strong>:</p>
           <Select
             label="Pilih TTD"
-            value={selectedOrderTTD}
-            onChange={(e) => setSelectedOrderTTD(e.target.value)}
-            options={[
-              { value: "", label: "Pilih tanda tangan..." },
-              ...ttdList.map((ttd) => ({
-                value: ttd.id,
-                label: `${ttd.nama} - ${ttd.jabatan}`,
-              })),
-            ]}
+            value={selectedTTDId}
+            onChange={(e) => setSelectedTTDId(e.target.value)}
+            options={[{ value: "", label: "Pilih tanda tangan..." }, ...ttdList.map((ttd) => ({ value: ttd.id, label: `${ttd.nama} - ${ttd.jabatan}` }))]}
           />
-          {selectedOrderTTD && (() => {
-            const ttd = ttdList.find((t) => t.id === selectedOrderTTD);
+          {selectedTTDId && (() => {
+            const ttd = ttdList.find(t => t.id === selectedTTDId);
             if (!ttd) return null;
             return (
               <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-4">
@@ -1244,6 +934,30 @@ export default function BapispFinalPage() {
               </div>
             );
           })()}
+          <p className="text-xs text-gray-500">Kosongkan pilihan untuk menghapus TTD yang sudah dipilih.</p>
+        </div>
+      </Modal>
+
+      <Modal isOpen={isPinSettingsOpen} onClose={() => setIsPinSettingsOpen(false)} title="Pengaturan PIN" size="md" footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={() => setIsPinSettingsOpen(false)}>Batal</Button>
+          <Button variant="primary" onClick={handleChangePin}>Ubah PIN</Button>
+        </div>
+      }>
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">PIN Lama</label>
+            <input type="password" inputMode="numeric" value={oldPinInput} onChange={(e) => setOldPinInput(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">PIN Baru</label>
+            <input type="password" inputMode="numeric" value={newPinInput} onChange={(e) => setNewPinInput(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Konfirmasi PIN Baru</label>
+            <input type="password" inputMode="numeric" value={confirmPinInput} onChange={(e) => setConfirmPinInput(e.target.value)} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
+          </div>
+          <p className="text-xs text-gray-500">PIN minimal 4 digit. PIN default adalah 080900.</p>
         </div>
       </Modal>
     </div>
