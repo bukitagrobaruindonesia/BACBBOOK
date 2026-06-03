@@ -6,16 +6,11 @@ import {
   getDocs,
   query,
   orderBy,
-  doc,
-  updateDoc,
-  serverTimestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
-import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
 import Card from "@/app/components/ui/Card";
 import Button from "@/app/components/ui/Button";
-import Modal from "@/app/components/ui/Modal";
 import Select from "@/app/components/ui/Select";
 
 interface ProformaInvoice {
@@ -132,7 +127,6 @@ const numberToWords = (num: number): string => {
   const teens = ["SEPULUH", "SEBELAS", "DUA BELAS", "TIGA BELAS", "EMPAT BELAS", "LIMA BELAS", "ENAM BELAS", "TUJUH BELAS", "DELAPAN BELAS", "SEMBILAN BELAS"];
   const tens = ["", "", "DUA PULUH", "TIGA PULUH", "EMPAT PULUH", "LIMA PULUH", "ENAM PULUH", "TUJUH PULUH", "DELAPAN PULUH", "SEMBILAN PULUH"];
   const thousands = ["", "RIBU", "JUTA", "MILIAR", "TRILIUN"];
-
   const convertThreeDigits = (n: number): string => {
     let result = "";
     const hundreds = Math.floor(n / 100);
@@ -153,7 +147,6 @@ const numberToWords = (num: number): string => {
     }
     return result.trim();
   };
-
   if (num < 0) return "MINUS " + numberToWords(-num);
   let result = "";
   let i = 0;
@@ -172,8 +165,7 @@ const numberToWords = (num: number): string => {
   return result.trim() + " RUPIAH";
 };
 
-export default function BapispPage() {
-  const { user } = useAuth();
+export default function BapispFinalPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
@@ -182,16 +174,14 @@ export default function BapispPage() {
   const [suratList, setSuratList] = useState<SuratMuatInfo[]>([]);
   const [ttdList, setTtdList] = useState<TTDData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [selectedPI, setSelectedPI] = useState<ProformaInvoice | null>(null);
-  const [selectedBast, setSelectedBast] = useState<BeritaAcaraData | null>(null);
-  const [isTtdModalOpen, setIsTtdModalOpen] = useState(false);
-  const [selectedTtdId, setSelectedTtdId] = useState("");
-  const [isPrinting, setIsPrinting] = useState(false);
+  const [filterTanggal, setFilterTanggal] = useState("");
+  const [filterBulan, setFilterBulan] = useState("");
+  const [filterTahun, setFilterTahun] = useState("");
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchData();
-    }
+    if (isAuthenticated) fetchData();
   }, [isAuthenticated]);
 
   const fetchData = async () => {
@@ -300,11 +290,8 @@ export default function BapispPage() {
     const seen = new Set<string>();
     return suratList.filter((s) => {
       let match = false;
-      if (Array.isArray(s.nomorPI)) {
-        match = s.nomorPI.includes(nomorPI);
-      } else {
-        match = s.nomorPI === nomorPI;
-      }
+      if (Array.isArray(s.nomorPI)) match = s.nomorPI.includes(nomorPI);
+      else match = s.nomorPI === nomorPI;
       if (match && !seen.has(s.id)) {
         seen.add(s.id);
         return true;
@@ -313,70 +300,29 @@ export default function BapispPage() {
     });
   };
 
-  const getLastSpDateForPI = (nomorPI: string): Date | null => {
-    const spItems = getSuratForPI(nomorPI);
-    if (spItems.length === 0) return null;
-    const dates = spItems
-      .map((s) => (s.tanggal ? new Date(s.tanggal) : null))
-      .filter((d): d is Date => d !== null && !isNaN(d.getTime()));
-    if (dates.length === 0) return null;
-    return new Date(Math.max(...dates.map((d) => d.getTime())));
+  const getTtdForBast = (bast: BeritaAcaraData | undefined) => {
+    if (!bast || !bast.ttdId) return undefined;
+    return ttdList.find((t) => t.id === bast.ttdId);
   };
 
-  const isTtdAccessible = (nomorPI: string): boolean => {
-    const lastSpDate = getLastSpDateForPI(nomorPI);
-    if (!lastSpDate) return false;
-    const now = new Date();
-    const diffMs = now.getTime() - lastSpDate.getTime();
-    const diffDays = diffMs / (1000 * 60 * 60 * 24);
-    return diffDays >= 1;
-  };
-
-  const getTtdStatus = (bast: BeritaAcaraData | undefined) => {
-    if (!bast) return { label: "Belum Ada BA", color: "bg-gray-100 text-gray-500" };
-    if (bast.ttdId && bast.ttdNama) {
-      return { label: "Sudah TTD", color: "bg-green-100 text-green-700 border-green-200" };
-    }
-    return { label: "Belum TTD", color: "bg-yellow-100 text-yellow-700 border-yellow-200" };
-  };
-
-  const handleOpenTtdModal = (pi: ProformaInvoice) => {
+  const filteredPI = piList.filter((pi) => {
     const bast = getBastForPI(pi.nomorPI);
-    if (!bast) return;
-    setSelectedPI(pi);
-    setSelectedBast(bast);
-    setSelectedTtdId(bast.ttdId || "");
-    setIsTtdModalOpen(true);
-  };
+    if (!bast || !bast.ttdId) return false;
+    const date = new Date(pi.tanggal);
+    const matchTanggal = filterTanggal ? pi.tanggal === filterTanggal : true;
+    const matchBulan = filterBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === filterBulan : true;
+    const matchTahun = filterTahun ? date.getFullYear().toString() === filterTahun : true;
+    return matchTanggal && matchBulan && matchTahun;
+  });
 
-  const handleSaveTtd = async () => {
-    if (!selectedPI || !selectedBast || !selectedTtdId) return;
-    const ttd = ttdList.find((t) => t.id === selectedTtdId);
-    if (!ttd) return;
-    setIsPrinting(true);
-    try {
-      await updateDoc(doc(db, "beritaAcara", selectedBast.id), {
-        ttdId: ttd.id,
-        ttdNama: ttd.nama,
-        ttdJabatan: ttd.jabatan,
-        ttdImage: ttd.ttdImage,
-        updatedAt: serverTimestamp(),
-      });
-      fetchData();
-      setIsTtdModalOpen(false);
-      setSelectedTtdId("");
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsPrinting(false);
-    }
-  };
+  const totalPages = Math.ceil(filteredPI.length / itemsPerPage);
+  const paginatedPI = filteredPI.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  const handlePrint = (pi: ProformaInvoice) => {
+  const handlePrintFinal = (pi: ProformaInvoice) => {
     const bast = getBastForPI(pi.nomorPI);
-    if (!bast) return;
+    if (!bast || !bast.ttdId) return;
     const spList = getSuratForPI(pi.nomorPI);
-    const ttd = bast.ttdId ? ttdList.find((t) => t.id === bast.ttdId) : undefined;
+    const ttd = getTtdForBast(bast);
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const baHtml = generateBAHtml(bast, ttd, pi);
@@ -386,7 +332,7 @@ export default function BapispPage() {
       <!DOCTYPE html>
       <html>
       <head>
-        <title>BAPISP ${pi.nomorPI}</title>
+        <title>BAPISP-Final ${pi.nomorPI}</title>
         <style>
           @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
           @media print {
@@ -730,6 +676,37 @@ export default function BapispPage() {
     }).join('<div class="page-break"></div>');
   };
 
+  const bulanOptions = [
+    { value: "", label: "Semua Bulan" },
+    { value: "01", label: "Januari" },
+    { value: "02", label: "Februari" },
+    { value: "03", label: "Maret" },
+    { value: "04", label: "April" },
+    { value: "05", label: "Mei" },
+    { value: "06", label: "Juni" },
+    { value: "07", label: "Juli" },
+    { value: "08", label: "Agustus" },
+    { value: "09", label: "September" },
+    { value: "10", label: "Oktober" },
+    { value: "11", label: "November" },
+    { value: "12", label: "Desember" },
+  ];
+
+  const tahunOptions = [
+    { value: "", label: "Semua Tahun" },
+    ...Array.from({ length: 5 }, (_, i) => {
+      const year = (new Date().getFullYear() - 2 + i).toString();
+      return { value: year, label: year };
+    }),
+  ];
+
+  const perPageOptions = [
+    { value: "5", label: "5 per halaman" },
+    { value: "10", label: "10 per halaman" },
+    { value: "25", label: "25 per halaman" },
+    { value: "50", label: "50 per halaman" },
+  ];
+
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -740,8 +717,8 @@ export default function BapispPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-800">Akses BAPISP</h2>
-            <p className="text-sm text-gray-500 mt-1">Masukkan PIN untuk mengakses Berita Acara, Proforma Invoice, dan Surat Pengangkutan</p>
+            <h2 className="text-xl font-bold text-gray-800">Akses BAPISP Final</h2>
+            <p className="text-sm text-gray-500 mt-1">Masukkan PIN untuk mengakses dokumen final BA + PI + SP</p>
           </div>
           <form onSubmit={handlePinSubmit} className="space-y-4">
             <div>
@@ -776,10 +753,7 @@ export default function BapispPage() {
 
   return (
     <div className="space-y-6">
-      <Header
-        title="BAPISP"
-        subtitle="Berita Acara, Proforma Invoice, dan Surat Pengangkutan"
-      />
+      <Header title="BAPISP Final" subtitle="Dokumen Final Berita Acara + Proforma Invoice + Surat Pengangkutan (Sudah TTD)" />
 
       <Card>
         <div className="flex items-center justify-between mb-4">
@@ -790,8 +764,8 @@ export default function BapispPage() {
               </svg>
             </div>
             <div>
-              <h3 className="text-sm font-semibold text-gray-800">Daftar Proforma Invoice dengan Berita Acara</h3>
-              <p className="text-xs text-gray-500">Pilih PI untuk mencetak dokumen gabungan BA + PI + SP</p>
+              <h3 className="text-sm font-semibold text-gray-800">Daftar Dokumen Final</h3>
+              <p className="text-xs text-gray-500">Hanya menampilkan PI yang sudah memiliki Berita Acara dan TTD</p>
             </div>
           </div>
           <button
@@ -802,17 +776,58 @@ export default function BapispPage() {
           </button>
         </div>
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Filter Tanggal</label>
+            <input type="date" value={filterTanggal} onChange={(e) => { setFilterTanggal(e.target.value); setCurrentPage(1); }} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white" />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Filter Bulan</label>
+            <select value={filterBulan} onChange={(e) => { setFilterBulan(e.target.value); setCurrentPage(1); }} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white">
+              {bulanOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Filter Tahun</label>
+            <select value={filterTahun} onChange={(e) => { setFilterTahun(e.target.value); setCurrentPage(1); }} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white">
+              {tahunOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tampilan Per Halaman</label>
+            <select value={String(itemsPerPage)} onChange={(e) => { setItemsPerPage(parseInt(e.target.value)); setCurrentPage(1); }} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all bg-white">
+              {perPageOptions.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+            </select>
+          </div>
+          <div className="flex items-end">
+            <button
+              onClick={() => { setFilterTanggal(""); setFilterBulan(""); setFilterTahun(""); setCurrentPage(1); }}
+              className="w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl text-sm font-semibold transition-colors"
+            >
+              Reset Filter
+            </button>
+          </div>
+        </div>
+
+        <div className="text-sm text-gray-500 mb-4">
+          Menampilkan {paginatedPI.length} dari {filteredPI.length} data
+          {filterTanggal && ` | Tanggal: ${filterTanggal}`}
+          {filterBulan && ` | Bulan: ${bulanOptions.find((b) => b.value === filterBulan)?.label}`}
+          {filterTahun && ` | Tahun: ${filterTahun}`}
+          {` | Halaman ${currentPage} dari ${totalPages || 1}`}
+        </div>
+
         {isLoading ? (
           <div className="flex justify-center py-8">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-700"></div>
           </div>
-        ) : piList.filter((pi) => getBastForPI(pi.nomorPI)).length === 0 ? (
+        ) : filteredPI.length === 0 ? (
           <div className="flex flex-col items-center py-12 text-gray-400">
             <svg className="w-12 h-12 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
-            <p className="font-medium">Belum ada Berita Acara yang tersedia</p>
-            <p className="text-sm mt-1">Berita Acara akan muncul setelah diterbitkan dari Riwayat Transaksi</p>
+            <p className="font-medium">Belum ada dokumen final yang tersedia</p>
+            <p className="text-sm mt-1">Dokumen akan muncul setelah Berita Acara diterbitkan dan ditandatangani</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -821,24 +836,25 @@ export default function BapispPage() {
                 <tr className="bg-indigo-50 border-b border-indigo-100">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">No</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Nomor PI</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Tanggal PI</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Customer</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Tanggal BA</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-indigo-800 uppercase">Nomor BA</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-800 uppercase">Jumlah SP</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-800 uppercase">Status TTD</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-800 uppercase">Status</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-indigo-800 uppercase">Aksi</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {piList.filter((pi) => getBastForPI(pi.nomorPI)).map((pi, idx) => {
+                {paginatedPI.map((pi, idx) => {
                   const bast = getBastForPI(pi.nomorPI);
                   const spCount = getSuratForPI(pi.nomorPI).length;
-                  const ttdAccessible = isTtdAccessible(pi.nomorPI);
-                  const ttdStatus = getTtdStatus(bast);
+                  const ttd = getTtdForBast(bast);
                   return (
                     <tr key={pi.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-gray-900">{idx + 1}</td>
+                      <td className="px-4 py-3 text-gray-900">{(currentPage - 1) * itemsPerPage + idx + 1}</td>
                       <td className="px-4 py-3 font-mono font-bold text-green-700">{pi.nomorPI}</td>
+                      <td className="px-4 py-3 text-gray-600">{pi.tanggal}</td>
                       <td className="px-4 py-3 text-gray-800">{pi.namaCustomer}</td>
                       <td className="px-4 py-3 text-gray-600">{bast?.tanggal || "-"}</td>
                       <td className="px-4 py-3 font-mono text-indigo-700">{bast?.nomorSeri || "-"}</td>
@@ -846,37 +862,25 @@ export default function BapispPage() {
                         <span className="px-2 py-1 rounded-md text-xs font-bold bg-blue-100 text-blue-700">{spCount} Surat</span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${ttdStatus.color}`}>
-                          {ttdStatus.label}
+                        <span className="px-2 py-1 rounded-md text-xs font-bold border bg-green-100 text-green-700 border-green-200">
+                          {ttd ? "Sudah TTD" : "Belum TTD"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <div className="flex items-center gap-2 justify-center">
-                          <button
-                            onClick={() => handleOpenTtdModal(pi)}
-                            disabled={!ttdAccessible}
-                            title={ttdAccessible ? "Tambah / Ubah TTD" : "TTD tersedia 1 hari setelah SP terakhir"}
-                            className={`px-2 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${
-                              ttdAccessible
-                                ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                                : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                            }`}
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                            TTD
-                          </button>
-                          <button
-                            onClick={() => handlePrint(pi)}
-                            className="px-2 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 bg-green-600 hover:bg-green-700 text-white"
-                          >
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                            </svg>
-                            Print
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handlePrintFinal(pi)}
+                          disabled={!ttd}
+                          className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 mx-auto ${
+                            ttd
+                              ? "bg-green-600 hover:bg-green-700 text-white"
+                              : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                          }`}
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                          </svg>
+                          Print Final
+                        </button>
                       </td>
                     </tr>
                   );
@@ -885,87 +889,43 @@ export default function BapispPage() {
             </table>
           </div>
         )}
-      </Card>
 
-      <Modal
-        isOpen={isTtdModalOpen}
-        onClose={() => setIsTtdModalOpen(false)}
-        title="Pilih Tanda Tangan Pihak Pertama"
-        size="md"
-        footer={
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsTtdModalOpen(false)}>Batal</Button>
-            <Button
-              variant="primary"
-              onClick={handleSaveTtd}
-              disabled={!selectedTtdId || isPrinting}
-              isLoading={isPrinting}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6">
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                currentPage === 1 ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white"
+              }`}
             >
-              Simpan TTD
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-4">
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor PI</p>
-            <p className="text-lg font-bold text-green-700">{selectedPI?.nomorPI}</p>
-          </div>
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Customer</p>
-            <p className="text-sm font-semibold text-gray-800">{selectedPI?.namaCustomer}</p>
-          </div>
-          <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-200">
-            <p className="text-xs text-indigo-600 uppercase tracking-wide mb-1">Preview Dokumen</p>
-            <div className="space-y-1 text-sm text-gray-700">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                <span>Berita Acara Serah Terima Barang</span>
-                <span className="text-xs text-gray-500">{selectedBast?.nomorSeri}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500"></span>
-                <span>Proforma Invoice</span>
-                <span className="text-xs text-gray-500">{selectedPI?.nomorPI}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                <span>Surat Pengangkutan</span>
-                <span className="text-xs text-gray-500">{getSuratForPI(selectedPI?.nomorPI || "").length} dokumen</span>
-              </div>
+              Sebelumnya
+            </button>
+            <div className="flex items-center gap-2">
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${
+                    currentPage === page ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
             </div>
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                currentPage === totalPages ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 text-white"
+              }`}
+            >
+              Selanjutnya
+            </button>
           </div>
-          <div>
-            <p className="text-sm text-gray-600 mb-2">Pilih TTD untuk Pihak Pertama (Berita Acara):</p>
-            <Select
-              label="Pilih TTD"
-              value={selectedTtdId}
-              onChange={(e) => setSelectedTtdId(e.target.value)}
-              options={[
-                { value: "", label: "Pilih tanda tangan..." },
-                ...ttdList.map((ttd) => ({
-                  value: ttd.id,
-                  label: `${ttd.nama} - ${ttd.jabatan}`,
-                })),
-              ]}
-            />
-          </div>
-          {selectedTtdId && (() => {
-            const ttd = ttdList.find((t) => t.id === selectedTtdId);
-            if (!ttd) return null;
-            return (
-              <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 flex items-center gap-4">
-                <img src={ttd.ttdImage} alt="TTD" className="h-16 object-contain bg-white rounded-lg border border-gray-200" />
-                <div>
-                  <p className="text-sm font-semibold text-gray-900">{ttd.nama}</p>
-                  <p className="text-xs text-gray-500">{ttd.jabatan}</p>
-                  <p className="text-xs text-gray-500">PT Bukit Agrochemical Baru</p>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      </Modal>
+        )}
+      </Card>
     </div>
   );
 }

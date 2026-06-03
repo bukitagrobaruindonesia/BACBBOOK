@@ -543,25 +543,6 @@ export default function RekapProformaInvoicePage() {
     return String(nextBase).padStart(4, "0");
   };
 
-  const getPartialCountForPI = async (nomorPI: string): Promise<number> => {
-    const q = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
-    const snapshot = await getDocs(q);
-    const partials: number[] = [];
-    snapshot.docs.forEach((d) => {
-      const ni = d.data().nomorInvoice;
-      if (ni && ni.includes("-S")) {
-        const match = ni.match(/-S(\d+)-/);
-        if (match) { partials.push(parseInt(match[1])); }
-      }
-    });
-    partials.sort((a, b) => a - b);
-    let nextPartial = 1;
-    for (const num of partials) {
-      if (num === nextPartial) { nextPartial++; } else if (num > nextPartial) { break; }
-    }
-    return nextPartial - 1;
-  };
-
   const generateInvoiceNumber = async (surat: SuratMuatInfo): Promise<string> => {
     if (!selectedItem) return "";
     const suratRef = doc(db, "suratPengangkutan", surat.id);
@@ -578,9 +559,23 @@ export default function RekapProformaInvoicePage() {
       baseNumber = await getNextInvoiceBaseNumber();
       await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
     }
-    const partialCount = await getPartialCountForPI(selectedItem.nomorPI);
-    const partialNum = partialCount + 1;
-    const nomor = `BAGB-INV-S${partialNum}-${baseNumber}`;
+    const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", selectedItem.nomorPI));
+    const suratSnap1 = await getDocs(suratQ1);
+    const suratQ2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", selectedItem.nomorPI));
+    const suratSnap2 = await getDocs(suratQ2);
+    const usedPartials = new Set<number>();
+    [suratSnap1, suratSnap2].forEach((snap) => {
+      snap.docs.forEach((d) => {
+        const ni = d.data().nomorInvoice;
+        if (ni && ni.includes("-S") && ni.endsWith(`-${baseNumber}`)) {
+          const match = ni.match(/-S(\d+)-/);
+          if (match) usedPartials.add(parseInt(match[1]));
+        }
+      });
+    });
+    let nextPartial = 1;
+    while (usedPartials.has(nextPartial)) nextPartial++;
+    const nomor = `BAGB-INV-S${nextPartial}-${baseNumber}`;
     await updateDoc(suratRef, { nomorInvoice: nomor });
     return nomor;
   };
@@ -1090,6 +1085,7 @@ export default function RekapProformaInvoicePage() {
     let no = 1;
     suratList.forEach((surat) => {
       (surat.items || []).forEach((it) => {
+        if (it.nomorPI && it.nomorPI !== selectedItem.nomorPI) return;
         const piProd = selectedItem.produkItems.find((p) =>
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
           it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
@@ -1211,7 +1207,10 @@ export default function RekapProformaInvoicePage() {
               </div>
               <div class="signature-box">
                 <p class="signature-title">${ttd.nama}<br>(Pihak Pertama)</p>
-                <div style="height: 50px;"></div>
+                <div style="position: relative; display: inline-block; margin-bottom: 4px;">
+                  <img src="${ttd.ttdImage}" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
+                  <img src="/LogoAGRO.png" alt="Stampel" style="position: absolute; top: -15px; right: -30px; width: 70px; height: auto; opacity: 0.9; pointer-events: none;" onerror="this.style.display='none'" />
+                </div>
                 <p class="signature-name">${ttd.nama}</p>
                 <p class="signature-role">${ttd.jabatan}</p>
               </div>
@@ -2692,6 +2691,7 @@ export default function RekapProformaInvoicePage() {
                     const rows: React.ReactNode[] = [];
                     suratList.forEach((surat) => {
                       (surat.items || []).forEach((it) => {
+                        if (it.nomorPI && it.nomorPI !== selectedItem.nomorPI) return;
                         const piProd = selectedItem.produkItems.find((p) =>
                           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
                           it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
