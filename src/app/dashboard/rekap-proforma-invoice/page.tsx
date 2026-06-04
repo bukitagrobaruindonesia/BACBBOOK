@@ -279,6 +279,9 @@ export default function RekapProformaInvoicePage() {
     nomorPolisi: "",
     driverUnit: "",
     nomorSIM: "",
+    kepadaNama: "",
+    kepadaPerusahaan: "",
+    kepadaAlamat: "",
     items: [] as EditSuratItem[],
   });
 
@@ -757,6 +760,9 @@ export default function RekapProformaInvoicePage() {
       nomorPolisi: surat.nomorPolisi,
       driverUnit: surat.driverUnit,
       nomorSIM: surat.nomorSIM || "",
+      kepadaNama: surat.kepadaNama || "",
+      kepadaPerusahaan: surat.kepadaPerusahaan || "",
+      kepadaAlamat: surat.kepadaAlamat || "",
       items: (surat.items || []).map((it) => {
         const pengambilan = it.pengambilanZAK || 0;
         const sisa = parseFloat(it.sisa || "0") || 0;
@@ -841,7 +847,8 @@ export default function RekapProformaInvoicePage() {
         fot: it.fot || "",
       }));
       const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
-      const updateData = {
+      const isGI = !selectedSurat.jenisSurat || selectedSurat.jenisSurat === "gudangInduk";
+      const updateData: Record<string, any> = {
         tanggal: editSuratForm.tanggal,
         nomorSeri: newNomorSeri,
         nomorPolisi: editSuratForm.nomorPolisi.trim(),
@@ -851,6 +858,11 @@ export default function RekapProformaInvoicePage() {
         totalPengambilanKG: totalPengambilanKG,
         updatedAt: serverTimestamp(),
       };
+      if (!isGI) {
+        updateData.kepadaNama = editSuratForm.kepadaNama.trim();
+        updateData.kepadaPerusahaan = editSuratForm.kepadaPerusahaan.trim();
+        updateData.kepadaAlamat = editSuratForm.kepadaAlamat.trim();
+      }
       await updateDoc(doc(db, "suratPengangkutan", selectedSurat.id), updateData);
       const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", selectedSurat.nomorSeri));
       const transaksiSnapshot = await getDocs(transaksiQuery);
@@ -883,7 +895,6 @@ export default function RekapProformaInvoicePage() {
           });
         }
       }
-      const isGI = !selectedSurat.jenisSurat || selectedSurat.jenisSurat === "gudangInduk";
       if (isGI) {
         const productMapOld: Record<string, number> = {};
         const productMapNew: Record<string, number> = {};
@@ -1305,52 +1316,42 @@ export default function RekapProformaInvoicePage() {
   const handleExportExcel = () => {
     const exportData: any[] = [];
     filteredData.forEach((item) => {
-      const produkRows = item.produkItems.map((p, idx) => ({
-        "No": idx + 1,
-        "Nama Produk": p.namaProduk,
-        "FOT": p.fot || "",
-        "Produsen": p.produsen || "",
-        "Kuantitas": p.kuantitas || 0,
-        "Satuan": p.satuan || "",
-        "Harga Satuan": p.hargaSatuan || 0,
-        "Harga Per ZAK/DUS": p.hargaPerZakDus || 0,
-        "Total Harga": p.totalHarga || 0,
-        "PPN 11%": p.includePPN ? (p.ppnNominal || ((p.kuantitas || 0) * (p.hargaSatuan || 0) * 0.11)) : 0,
-      }));
       const suratList = getSuratMuatForPI(item.nomorPI);
-      const suratRows = suratList.map((s, idx) => ({
-        "No Surat": idx + 1,
-        "Nomor Seri": s.nomorSeri,
-        "Tanggal Surat": s.tanggal,
-        "Driver": s.driverUnit,
-        "No Polisi": s.nomorPolisi,
-        "Total KG": s.totalKG,
-      }));
-      exportData.push({
-        "Tanggal PI": item.tanggal,
-        "Nomor PI": item.nomorPI,
-        "Nama Customer": item.namaCustomer,
-        "Alamat": item.alamatCustomer,
-        "NPWP": item.npwp || "",
-        "Metode Pembayaran": item.metodePembayaran,
-        "Subtotal": item.subtotal,
-        "Total PPN": item.ppnNominal,
-        "Uang Muka": item.uangMuka || 0,
-        "Ongkos Kirim": item.ongkosKirim || 0,
-        "Jumlah Tertagih": item.jumlahTertagih,
-        "Terbilang": item.terbilang,
-        "Jatuh Tempo": item.tanggalJatuhTempo,
-        "Keterangan": item.keterangan,
-        "Status Pengangkutan": getStatusPengangkutan(item),
-        "Status Pelunasan": item.statusPelunasan || getPaymentStatus(item),
-        "Jumlah Dibayar": item.jumlahUangDibayar || 0,
-        "Tanggal Pembayaran": item.tanggalPembayaran || "",
-        "Sisa (KG)": item.sisaPengambilanKG || 0,
-        "Dibuat Oleh": item.createdBy,
-        "Produk Count": item.produkItems.length,
-        "Produk Detail": JSON.stringify(produkRows),
-        "Surat Muat Count": suratList.length,
-        "Surat Muat Detail": JSON.stringify(suratRows),
+      const produkStatus = getProdukLoadStatus(item);
+      const bastCheck = async () => {
+        const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
+        const snap1 = await getDocs(q1);
+        const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
+        const snap2 = await getDocs(q2);
+        return !snap1.empty || !snap2.empty;
+      };
+      item.produkItems.forEach((produk, pidx) => {
+        const status = produkStatus.find((p) => p.namaProduk === produk.namaProduk);
+        const loaded = status?.loaded || 0;
+        const sisa = status?.remaining || (produk.kuantitas || 0);
+        const matchingSurat = suratList.filter((s) =>
+          (s.items || []).some((it) =>
+            it.jenisPupuk && (
+              it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) ||
+              produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
+            )
+          )
+        );
+        const noSP = matchingSurat.map((s) => s.nomorSeri).join(", ");
+        const invoiceNum = item.invoiceBaseNumber ? `BAGB-INV-${item.invoiceBaseNumber}` : "";
+        exportData.push({
+          "Tanggal": item.tanggal,
+          "No PI": item.nomorPI,
+          "Nama Customer": item.namaCustomer,
+          "Nama Produk": produk.namaProduk,
+          "FOT": produk.fot || "",
+          "Kuantitas (Kg)": produk.kuantitas || 0,
+          "Di Ambil": loaded,
+          "Sisa": sisa,
+          "Invoice": invoiceNum,
+          "No SP": noSP,
+          "BA": item.statusPengangkutan === "complete" ? "Sudah" : "Belum",
+        });
       });
     });
     exportToExcel(exportData, `Rekap_Proforma_Invoice_${new Date().toISOString().split("T")[0]}`, "Rekap PI");
@@ -2507,6 +2508,16 @@ export default function RekapProformaInvoicePage() {
         <form onSubmit={handleUpdateSurat} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Input label="Tanggal" type="date" value={editSuratForm.tanggal} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, tanggal: e.target.value }))} required />
+            {selectedSurat && selectedSurat.jenisSurat !== "gudangInduk" && (
+              <div className="md:col-span-2 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">Informasi Penerima</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <Input label="Kepada Yth (Nama)" type="text" value={editSuratForm.kepadaNama} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaNama: e.target.value }))} required />
+                  <Input label="Nama Perusahaan" type="text" value={editSuratForm.kepadaPerusahaan} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaPerusahaan: e.target.value }))} required />
+                  <Input label="Alamat" type="text" value={editSuratForm.kepadaAlamat} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaAlamat: e.target.value }))} required className="md:col-span-2" />
+                </div>
+              </div>
+            )}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
               <div className="flex gap-2">
