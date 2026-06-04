@@ -233,8 +233,8 @@ export default function SuratPengangkutanPage() {
       const prefix = `BAGB-SP-DO/${year}/${roman}`;
       const q = query(
         collection(db, "suratPengangkutan"),
-        where("nomorSeri", ">=", prefix),
-        where("nomorSeri", "<=", prefix + "\uf8ff")
+        where("jenisSurat", "==", "do"),
+        where("subJenisDO", "==", "dikuasakan")
       );
       const snapshot = await getDocs(q);
       const numbers: number[] = [];
@@ -262,8 +262,8 @@ export default function SuratPengangkutanPage() {
     const prefix = `BAGB-DO-${nomorSubDO}-${perusahaan}-SP-`;
     const q = query(
       collection(db, "suratPengangkutan"),
-      where("nomorSeri", ">=", prefix),
-      where("nomorSeri", "<=", prefix + "\uf8ff")
+      where("jenisSurat", "==", "do"),
+      where("subJenisDO", "==", "mandiri")
     );
     const snapshot = await getDocs(q);
     const numbers: number[] = [];
