@@ -197,37 +197,18 @@ export default function SuratPengangkutanPage() {
   };
 
   const generateNomorSeriDO = () => {
-    if (subJenisDO === "dikuasakan") {
-      const now = new Date();
-      const year = now.getFullYear();
-      const roman = getRomanMonth(now.getMonth() + 1);
-      const prefix = `BAGB-SP-DO/${year}/${roman}`;
-      const numbers: number[] = [];
-      existingSuratList.forEach((s) => {
-        if (s.nomorSeri.startsWith(prefix)) {
-          const parts = s.nomorSeri.split("/");
-          const last = parseInt(parts[parts.length - 1]);
-          if (!isNaN(last)) numbers.push(last);
-        }
-      });
-      numbers.sort((a, b) => a - b);
-      let nextUrut = 1;
-      for (const num of numbers) {
-        if (num === nextUrut) nextUrut++;
-        else if (num > nextUrut) break;
+  if (subJenisDO === "dikuasakan") {
+    const now = new Date();
+    const year = now.getFullYear();
+    const roman = getRomanMonth(now.getMonth() + 1);
+    const prefix = `BAGB-SP-DO/${year}/${roman}`;
+    const numbers: number[] = [];
+    existingSuratList.forEach((s) => {
+      if (s.nomorSeri.startsWith(prefix)) {
+        const parts = s.nomorSeri.split("/");
+        const last = parseInt(parts[parts.length - 1]);
+        if (!isNaN(last)) numbers.push(last);
       }
-      return `${prefix}/${String(nextUrut).padStart(4, "0")}`;
-    }
-    const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
-    const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
-    if (!nomorSubDO) return "";
-    const perusahaan = formData.kepadaPerusahaan.trim();
-    if (!perusahaan) return "";
-    const prefix = `BAGB-DO ${nomorSubDO} -SP PT ${perusahaan} - `;
-    const existing = existingSuratList.filter((s) => s.nomorSeri.startsWith(prefix));
-    const numbers = existing.map((s) => {
-      const lastPart = s.nomorSeri.slice(prefix.length);
-      return parseInt(lastPart) || 0;
     });
     numbers.sort((a, b) => a - b);
     let nextUrut = 1;
@@ -235,8 +216,30 @@ export default function SuratPengangkutanPage() {
       if (num === nextUrut) nextUrut++;
       else if (num > nextUrut) break;
     }
-    return `${prefix}${String(nextUrut).padStart(4, "0")}`;
-  };
+    return `${prefix}/${String(nextUrut).padStart(4, "0")}`;
+  }
+  const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
+  const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
+  if (!nomorSubDO) return "";
+  const perusahaan = formData.kepadaPerusahaan.trim();
+  if (!perusahaan) return "";
+  const prefix = `BAGB-DO ${nomorSubDO} - ${perusahaan} - SP `;
+  const numbers: number[] = [];
+  existingSuratList.forEach((s) => {
+    if (s.nomorSeri.startsWith(prefix)) {
+      const lastPart = s.nomorSeri.slice(prefix.length);
+      const num = parseInt(lastPart);
+      if (!isNaN(num)) numbers.push(num);
+    }
+  });
+  numbers.sort((a, b) => a - b);
+  let nextUrut = 1;
+  for (const num of numbers) {
+    if (num === nextUrut) nextUrut++;
+    else if (num > nextUrut) break;
+  }
+  return `${prefix}${String(nextUrut).padStart(4, "0")}`;
+};
 
   const generateNomorSeri = () => {
     if (jenisSurat === "gudangInduk") {
