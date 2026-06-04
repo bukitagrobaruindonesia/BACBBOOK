@@ -165,8 +165,9 @@ const parseNomorSeri = (nomorSeri: string) => {
 };
 
 const validateNomorSeriFormat = (value: string) => {
-  const regex = /^BAGB-SP\/\d{4}\/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\/\d{4}$/;
-  return regex.test(value.trim());
+  const giRegex = /^BAGB-SP\/\d{4}\/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\/\d{4}$/;
+  const doRegex = /^BAGB-SP-DO.+-\d{4}$/;
+  return giRegex.test(value.trim()) || doRegex.test(value.trim());
 };
 
 const parseInvoiceNumber = (nomor: string) => {
@@ -441,7 +442,7 @@ export default function RekapProformaInvoicePage() {
   const checkNomorSeriExists = (value: string, excludeNomorSeri?: string) => {
     if (!value.trim()) { setNomorSeriError(""); return false; }
     if (!validateNomorSeriFormat(value)) {
-      setNomorSeriError("Format nomor seri tidak valid. Gunakan format: BAGB-SP/2026/V/0001");
+      setNomorSeriError("Format nomor seri tidak valid.");
       return true;
     }
     const exists = existingSuratList.some((s) =>
@@ -1219,7 +1220,7 @@ export default function RekapProformaInvoicePage() {
           <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
         </div>
         <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
           <div class="title-bar">
             <h1>BERITA ACARA SERAH TERIMA BARANG</h1>
             <p>${baData.nomorSeri}</p>
@@ -1267,7 +1268,7 @@ export default function RekapProformaInvoicePage() {
               <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
                 <p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK PERTAMA</p>
                 <div style="position: relative; width: 100%; min-height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;">
-                  <img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.25; object-fit: contain; z-index: 1;" onerror="this.style.display='none'" />
+                  <img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.25; object-fit: contain; z-index: 1;" onerror="this.style.display=\'none\'" />
                   <div style="position: relative; z-index: 2; min-height: 70px;"></div>
                 </div>
                 <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">_________________</p>
@@ -1469,9 +1470,9 @@ export default function RekapProformaInvoicePage() {
           <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
         </div>
         <div class="page">
-          <img src="/LogoAGRO.png" alt="Watermark" class="watermark" onerror="this.style.display='none'" />
+          <img src="/LogoAGRO.png" alt="Watermark" class="watermark" onerror="this.style.display=\'none\'" />
           <div class="content-layer">
-            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>');" />
+            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'; this.parentElement.insertAdjacentHTML(\'afterbegin\', \'<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>\');" />
             <div class="invoice-title">
               <h1>PROFORMA INVOICE</h1>
             </div>
@@ -1639,7 +1640,7 @@ export default function RekapProformaInvoicePage() {
           <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
         </div>
         <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
           <div class="title-bar">SURAT PENGANGKUTAN</div>
           <div class="info-section">
             <div class="info-row">
@@ -1700,7 +1701,7 @@ export default function RekapProformaInvoicePage() {
             <div class="signature-box">
               <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
               <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
-                <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" />
+                <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display=\'none\'" />
               </div>
               <p class="signature-name">HENDRA PRAMASYANTO</p>
             </div>
@@ -1710,7 +1711,7 @@ export default function RekapProformaInvoicePage() {
               <p class="signature-name">${surat.driverUnit || ""}</p>
             </div>
           </div>
-          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
         </div>
       </body>
       </html>
@@ -1869,7 +1870,7 @@ export default function RekapProformaInvoicePage() {
           <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
         </div>
         <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
           <div class="title-bar">I N V O I C E</div>
           <div class="info-section">
             <div class="customer-box">
@@ -1938,12 +1939,12 @@ export default function RekapProformaInvoicePage() {
             </div>
             <div class="right-signature">
               <p style="margin-bottom: 30px;">Hormat kami,<br>PT. Bukit Agrochemical Baru</p>
-              <img src="/Picture4.png" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
+              <img src="/Picture4.png" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display=\'none\'" />
               <p style="font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">Sri Setyo Wibowo</p>
               <p>Manager Keuangan</p>
             </div>
           </div>
-          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
         </div>
       </body>
       </html>
@@ -1951,6 +1952,105 @@ export default function RekapProformaInvoicePage() {
     printWindow.document.write(html);
     printWindow.document.close();
     setIsInvoiceModalOpen(false);
+  };
+
+  const handleSuratItemChange = (idx: number, field: string, value: string) => {
+    setEditSuratForm((prev) => {
+      const newItems = [...prev.items];
+      const item = { ...newItems[idx], [field]: value };
+      if (field === "pengambilanZAK") {
+        const zak = parseFloat(value) || 0;
+        const maxZAK = item.maxZAK || 0;
+        if (maxZAK > 0) {
+          if (zak >= maxZAK) { item.pengambilanZAK = String(maxZAK); item.sisa = "0"; }
+          else { item.sisa = String(Math.max(0, maxZAK - zak)); }
+        }
+      }
+      newItems[idx] = item;
+      return { ...prev, items: newItems };
+    });
+  };
+
+  const addSuratItem = () => {
+    setEditSuratForm((prev) => ({
+      ...prev,
+      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0, fot: "" }],
+    }));
+  };
+
+  const removeSuratItem = (idx: number) => {
+    setEditSuratForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
+  };
+
+  const handleGenerateNomorSeriEdit = () => {
+    if (editSuratForm.jenisSurat === "gudangInduk") {
+      const current = editSuratForm.nomorSeri;
+      const parts = current.split("/");
+      if (parts.length !== 4) return;
+      const prefix = `${parts[0]}/${parts[1]}/${parts[2]}`;
+      const numbers: number[] = [];
+      existingSuratList.forEach((s) => {
+        if (s.nomorSeri === selectedSurat?.nomorSeri) return;
+        if (s.nomorSeri.startsWith(prefix + "/")) {
+          const p = s.nomorSeri.split("/");
+          const last = parseInt(p[p.length - 1]);
+          if (!isNaN(last)) numbers.push(last);
+        }
+      });
+      numbers.sort((a, b) => a - b);
+      let nextUrut = 1;
+      for (const num of numbers) {
+        if (num === nextUrut) nextUrut++;
+        else if (num > nextUrut) break;
+      }
+      const newNomorSeri = `${prefix}/${String(nextUrut).padStart(4, "0")}`;
+      setEditSuratForm((prev) => ({ ...prev, nomorSeri: newNomorSeri }));
+      setNomorSeriError("");
+    } else {
+      const firstItem = editSuratForm.items.find((it) => it.nomorSubDO.trim() !== "");
+      const nomorDO = firstItem?.nomorSubDO?.trim() || "";
+      const sopir = editSuratForm.driverUnit.trim();
+      const perusahaan = editSuratForm.kepadaPerusahaan.trim();
+      if (!nomorDO || !sopir || !perusahaan) return;
+      const prefix = `BAGB-SP-DO${nomorDO} ${sopir} - ${perusahaan} - `;
+      const existing = existingSuratList.filter((s) =>
+        s.nomorSeri.startsWith(prefix) && s.nomorSeri !== selectedSurat?.nomorSeri
+      );
+      const numbers = existing.map((s) => {
+        const lastPart = s.nomorSeri.slice(prefix.length);
+        return parseInt(lastPart) || 0;
+      });
+      numbers.sort((a, b) => a - b);
+      let nextUrut = 1;
+      for (const num of numbers) {
+        if (num === nextUrut) nextUrut++;
+        else if (num > nextUrut) break;
+      }
+      const newNomorSeri = `${prefix}${String(nextUrut).padStart(4, "0")}`;
+      setEditSuratForm((prev) => ({ ...prev, nomorSeri: newNomorSeri }));
+      setNomorSeriError("");
+    }
+  };
+
+  const handleEditProdukChange = (index: number, field: string, value: string) => {
+    setEditForm((prev) => {
+      const newItems = [...prev.produkItems];
+      newItems[index] = { ...newItems[index], [field]: value };
+      return { ...prev, produkItems: newItems };
+    });
+  };
+
+  const addEditProdukItem = () => {
+    setEditForm((prev) => ({
+      ...prev,
+      produkItems: [...prev.produkItems, { namaProduk: "", fot: "", produsen: "", kuantitas: 0, satuan: "KG", hargaSatuan: 0, hargaPerZakDus: 0, bobotPerUnit: 50, jumlahIsiBotol: 1, totalHarga: 0, includePPN: false, ppnNominal: 0 }],
+    }));
+  };
+
+  const removeEditProdukItem = (index: number) => {
+    if (editForm.produkItems.length > 1) {
+      setEditForm((prev) => ({ ...prev, produkItems: prev.produkItems.filter((_, i) => i !== index) }));
+    }
   };
 
   const bulanOptions = [
@@ -2118,80 +2218,6 @@ export default function RekapProformaInvoicePage() {
       ),
     },
   ];
-
-  const handleSuratItemChange = (idx: number, field: string, value: string) => {
-    setEditSuratForm((prev) => {
-      const newItems = [...prev.items];
-      const item = { ...newItems[idx], [field]: value };
-      if (field === "pengambilanZAK") {
-        const zak = parseFloat(value) || 0;
-        const maxZAK = item.maxZAK || 0;
-        if (maxZAK > 0) {
-          if (zak >= maxZAK) { item.pengambilanZAK = String(maxZAK); item.sisa = "0"; }
-          else { item.sisa = String(Math.max(0, maxZAK - zak)); }
-        }
-      }
-      newItems[idx] = item;
-      return { ...prev, items: newItems };
-    });
-  };
-
-  const addSuratItem = () => {
-    setEditSuratForm((prev) => ({
-      ...prev,
-      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0, fot: "" }],
-    }));
-  };
-
-  const removeSuratItem = (idx: number) => {
-    setEditSuratForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
-  };
-
-  const handleGenerateNomorSeriEdit = () => {
-    const current = editSuratForm.nomorSeri;
-    const parts = current.split("/");
-    if (parts.length !== 4) return;
-    const prefix = `${parts[0]}/${parts[1]}/${parts[2]}`;
-    const numbers: number[] = [];
-    existingSuratList.forEach((s) => {
-      if (s.nomorSeri === selectedSurat?.nomorSeri) return;
-      if (s.nomorSeri.startsWith(prefix + "/")) {
-        const p = s.nomorSeri.split("/");
-        const last = parseInt(p[p.length - 1]);
-        if (!isNaN(last)) numbers.push(last);
-      }
-    });
-    numbers.sort((a, b) => a - b);
-    let nextUrut = 1;
-    for (const num of numbers) {
-      if (num === nextUrut) nextUrut++;
-      else if (num > nextUrut) break;
-    }
-    const newNomorSeri = `${prefix}/${String(nextUrut).padStart(4, "0")}`;
-    setEditSuratForm((prev) => ({ ...prev, nomorSeri: newNomorSeri }));
-    setNomorSeriError("");
-  };
-
-  const handleEditProdukChange = (index: number, field: string, value: string) => {
-    setEditForm((prev) => {
-      const newItems = [...prev.produkItems];
-      newItems[index] = { ...newItems[index], [field]: value };
-      return { ...prev, produkItems: newItems };
-    });
-  };
-
-  const addEditProdukItem = () => {
-    setEditForm((prev) => ({
-      ...prev,
-      produkItems: [...prev.produkItems, { namaProduk: "", fot: "", produsen: "", kuantitas: 0, satuan: "KG", hargaSatuan: 0, hargaPerZakDus: 0, bobotPerUnit: 50, jumlahIsiBotol: 1, totalHarga: 0, includePPN: false, ppnNominal: 0 }],
-    }));
-  };
-
-  const removeEditProdukItem = (index: number) => {
-    if (editForm.produkItems.length > 1) {
-      setEditForm((prev) => ({ ...prev, produkItems: prev.produkItems.filter((_, i) => i !== index) }));
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -2482,12 +2508,12 @@ export default function RekapProformaInvoicePage() {
                   {editForm.produkItems.map((item, index) => (
                     <tr key={index}>
                       <td className="px-3 py-2 text-sm text-gray-900">{index + 1}</td>
-                      <td className="px-3 py-2"><input type="text" value={item.namaProduk} onChange={(e) => handleEditProdukChange(index, "namaProduk", e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /></td>
-                      <td className="px-3 py-2"><input type="text" value={item.fot || ""} onChange={(e) => handleEditProdukChange(index, "fot", e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /></td>
-                      <td className="px-3 py-2"><input type="text" value={item.produsen || ""} onChange={(e) => handleEditProdukChange(index, "produsen", e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /></td>
-                      <td className="px-3 py-2"><input type="text" inputMode="decimal" value={String(item.kuantitas)} onChange={(e) => handleEditProdukChange(index, "kuantitas", e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /></td>
-                      <td className="px-3 py-2">
-                        <select value={item.satuan} onChange={(e) => handleEditProdukChange(index, "satuan", e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm">
+                      <td className="px-3 py-2 overflow-visible"><input type="text" value={item.namaProduk} onChange={(e) => handleEditProdukChange(index, "namaProduk", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:py-2 focus:px-3 focus:text-base focus:shadow-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-10 focus:relative" /></td>
+                      <td className="px-3 py-2 overflow-visible"><input type="text" value={item.fot || ""} onChange={(e) => handleEditProdukChange(index, "fot", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:py-2 focus:px-3 focus:text-base focus:shadow-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-10 focus:relative" /></td>
+                      <td className="px-3 py-2 overflow-visible"><input type="text" value={item.produsen || ""} onChange={(e) => handleEditProdukChange(index, "produsen", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:py-2 focus:px-3 focus:text-base focus:shadow-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-10 focus:relative" /></td>
+                      <td className="px-3 py-2 overflow-visible"><input type="text" inputMode="decimal" value={String(item.kuantitas)} onChange={(e) => handleEditProdukChange(index, "kuantitas", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:py-2 focus:px-3 focus:text-base focus:shadow-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-10 focus:relative" /></td>
+                      <td className="px-3 py-2 overflow-visible">
+                        <select value={item.satuan} onChange={(e) => handleEditProdukChange(index, "satuan", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:py-2 focus:px-3 focus:text-base focus:shadow-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-10 focus:relative">
                           <option value="KG">KG</option>
                           <option value="ZAK">ZAK</option>
                           <option value="DUS">DUS</option>
@@ -2495,7 +2521,7 @@ export default function RekapProformaInvoicePage() {
                           <option value="BOTOL">BOTOL</option>
                         </select>
                       </td>
-                      <td className="px-3 py-2"><input type="text" inputMode="decimal" value={String(item.hargaSatuan)} onChange={(e) => handleEditProdukChange(index, "hargaSatuan", e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /></td>
+                      <td className="px-3 py-2 overflow-visible"><input type="text" inputMode="decimal" value={String(item.hargaSatuan)} onChange={(e) => handleEditProdukChange(index, "hargaSatuan", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:py-2 focus:px-3 focus:text-base focus:shadow-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-10 focus:relative" /></td>
                       <td className="px-3 py-2 text-sm font-mono text-gray-700">{formatRupiah(item.hargaPerZakDus || 0)}</td>
                       <td className="px-3 py-2 text-center"><input type="checkbox" checked={item.includePPN || false} onChange={(e) => handleEditProdukChange(index, "includePPN", e.target.checked ? "true" : "")} className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" /></td>
                       <td className="px-3 py-2 text-center">
@@ -2537,55 +2563,55 @@ export default function RekapProformaInvoicePage() {
                 </p>
               )}
             </div>
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jenis Surat</label>
+              <select
+                value={editSuratForm.jenisSurat}
+                onChange={(e) => setEditSuratForm((prev) => ({ ...prev, jenisSurat: e.target.value }))}
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm"
+              >
+                <option value="gudangInduk">Gudang Induk</option>
+                <option value="do">DO (Delivery Order)</option>
+              </select>
+            </div>
+            {editSuratForm.jenisSurat === "do" && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Sub Jenis DO</label>
+                <select
+                  value={editSuratForm.subJenisDO}
+                  onChange={(e) => setEditSuratForm((prev) => ({ ...prev, subJenisDO: e.target.value }))}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm"
+                >
+                  <option value="">Pilih Sub Jenis</option>
+                  <option value="mandiri">DO Mandiri</option>
+                  <option value="dikuasakan">DO Dikuasakan</option>
+                </select>
+              </div>
+            )}
             <Input label="Nomor Polisi" type="text" value={editSuratForm.nomorPolisi} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, nomorPolisi: e.target.value }))} required />
             <Input label="Driver Unit" type="text" value={editSuratForm.driverUnit} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, driverUnit: e.target.value }))} required />
             <Input label="Nomor SIM" type="text" value={editSuratForm.nomorSIM} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, nomorSIM: e.target.value }))} className="md:col-span-2" />
-            {editSuratForm.jenisSurat !== "gudangInduk" && (
-              <>
+          </div>
+          {editSuratForm.jenisSurat !== "gudangInduk" && (
+            <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+              <h4 className="text-sm font-semibold text-gray-700 mb-4">Informasi Penerima</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Input label="Kepada Yth (Nama)" type="text" value={editSuratForm.kepadaNama} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaNama: e.target.value }))} placeholder="Contoh: Bapak Kepala Gudang" required />
+                <Input label="Nama Perusahaan" type="text" value={editSuratForm.kepadaPerusahaan} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaPerusahaan: e.target.value }))} placeholder="Contoh: PT Bukit Agrochemical Baru" required />
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jenis Surat</label>
-                  <select
-                    value={editSuratForm.jenisSurat}
-                    onChange={(e) => setEditSuratForm((prev) => ({ ...prev, jenisSurat: e.target.value }))}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm"
-                  >
-                    <option value="do">DO (Delivery Order)</option>
-                    <option value="gudangInduk">Gudang Induk</option>
-                  </select>
-                </div>
-                {editSuratForm.jenisSurat === "do" && (
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-semibold text-gray-700 mb-1.5">Sub Jenis DO</label>
-                    <select
-                      value={editSuratForm.subJenisDO}
-                      onChange={(e) => setEditSuratForm((prev) => ({ ...prev, subJenisDO: e.target.value }))}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm"
-                    >
-                      <option value="">Pilih Sub Jenis</option>
-                      <option value="mandiri">DO Mandiri</option>
-                      <option value="dikuasakan">DO Dikuasakan</option>
-                    </select>
-                  </div>
-                )}
-                <div className="md:col-span-2">
-                  <Input label="Nama Penerima" type="text" value={editSuratForm.kepadaNama} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaNama: e.target.value }))} required />
-                </div>
-                <div className="md:col-span-2">
-                  <Input label="Perusahaan Penerima" type="text" value={editSuratForm.kepadaPerusahaan} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaPerusahaan: e.target.value }))} required />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Alamat Penerima</label>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Alamat</label>
                   <textarea
                     value={editSuratForm.kepadaAlamat}
                     onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaAlamat: e.target.value }))}
                     rows={3}
+                    placeholder="Contoh: Desa Sungai Rangit, Pangkalan Lada"
                     className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none text-sm"
                     required
                   />
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
           <div className="space-y-4">
             <h4 className="text-sm font-semibold text-gray-700">Item Pengangkutan</h4>
             {editSuratForm.items.map((item, idx) => (
