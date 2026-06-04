@@ -2226,7 +2226,7 @@ export default function RekapProformaInvoicePage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="relative w-full sm:w-96">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-            <input type="text" placeholder="Cari nomor PI, customer..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
+            <input type="text" placeholder="Cari nomor PI, customer..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200" />
           </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={handleExportExcel}>
@@ -2483,7 +2483,7 @@ export default function RekapProformaInvoicePage() {
             <Input label="Ongkos Kirim" type="text" value={editForm.ongkosKirim} onChange={(e) => setEditForm((prev) => ({ ...prev, ongkosKirim: e.target.value }))} />
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Keterangan</label>
-              <textarea value={editForm.keterangan} onChange={(e) => setEditForm((prev) => ({ ...prev, keterangan: e.target.value }))} rows={3} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none" />
+              <textarea value={editForm.keterangan} onChange={(e) => setEditForm((prev) => ({ ...prev, keterangan: e.target.value }))} rows={3} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200" />
             </div>
           </div>
           <div className="space-y-4">
@@ -2523,8 +2523,8 @@ export default function RekapProformaInvoicePage() {
                       </td>
                       <td className="px-3 py-2 overflow-visible"><input type="text" inputMode="decimal" value={String(item.hargaSatuan)} onChange={(e) => handleEditProdukChange(index, "hargaSatuan", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:py-2 focus:px-3 focus:text-base focus:shadow-xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-10 focus:relative" /></td>
                       <td className="px-3 py-2 text-sm font-mono text-gray-700">{formatRupiah(item.hargaPerZakDus || 0)}</td>
-                      <td className="px-3 py-2 text-center"><input type="checkbox" checked={item.includePPN || false} onChange={(e) => handleEditProdukChange(index, "includePPN", e.target.checked ? "true" : "")} className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" /></td>
-                      <td className="px-3 py-2 text-center">
+                      <td className="px-3 py-2 text-center overflow-visible"><input type="checkbox" checked={item.includePPN || false} onChange={(e) => handleEditProdukChange(index, "includePPN", e.target.checked ? "true" : "")} className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" /></td>
+                      <td className="px-3 py-2 text-center overflow-visible">
                         <button type="button" onClick={() => removeEditProdukItem(index)} className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors" disabled={editForm.produkItems.length === 1}>
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
@@ -2553,7 +2553,7 @@ export default function RekapProformaInvoicePage() {
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
               <div className="flex gap-2">
-                <input type="text" value={editSuratForm.nomorSeri} readOnly className={`w-full px-4 py-3 border rounded-xl focus:outline-none transition-all font-mono text-sm bg-gray-100 ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`} />
+                <input type="text" value={editSuratForm.nomorSeri} readOnly className={`w-full px-4 py-3 border rounded-xl focus:outline-none transition-all font-mono text-sm bg-gray-100 transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200 ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`} />
                 <button type="button" onClick={handleGenerateNomorSeriEdit} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold whitespace-nowrap transition-colors">Generate</button>
               </div>
               {nomorSeriError && (
@@ -2568,7 +2568,7 @@ export default function RekapProformaInvoicePage() {
               <select
                 value={editSuratForm.jenisSurat}
                 onChange={(e) => setEditSuratForm((prev) => ({ ...prev, jenisSurat: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm"
+                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200"
               >
                 <option value="gudangInduk">Gudang Induk</option>
                 <option value="do">DO (Delivery Order)</option>
@@ -2580,7 +2580,7 @@ export default function RekapProformaInvoicePage() {
                 <select
                   value={editSuratForm.subJenisDO}
                   onChange={(e) => setEditSuratForm((prev) => ({ ...prev, subJenisDO: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200"
                 >
                   <option value="">Pilih Sub Jenis</option>
                   <option value="mandiri">DO Mandiri</option>
@@ -2605,7 +2605,7 @@ export default function RekapProformaInvoicePage() {
                     onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaAlamat: e.target.value }))}
                     rows={3}
                     placeholder="Contoh: Desa Sungai Rangit, Pangkalan Lada"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none text-sm"
+                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200"
                     required
                   />
                 </div>
@@ -2723,7 +2723,7 @@ export default function RekapProformaInvoicePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Pembayaran</label>
-                <input type="text" inputMode="decimal" value={paymentForm.jumlahUangDibayar} onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
+                <input type="text" inputMode="decimal" value={paymentForm.jumlahUangDibayar} onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200" />
               </div>
               <Input label="Tanggal Pembayaran" type="date" value={paymentForm.tanggalPembayaran} onChange={(e) => setPaymentForm((prev) => ({ ...prev, tanggalPembayaran: e.target.value }))} />
             </div>
