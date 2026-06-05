@@ -97,7 +97,6 @@ interface DOItem {
 interface SuratDOItem {
   nomorSubDO: string;
   nomorPO: string;
-  jenisPupuk: string;
   pengambilanZAK: number;
   bobotPerUnit: number;
 }
@@ -253,15 +252,11 @@ export default function SuratPengangkutanPage() {
     }
   };
 
-  const getLoadedKGForDO = (nomorSubDO: string, nomorPO: string, namaProduk: string) => {
+  const getLoadedKGForDO = (nomorSubDO: string, nomorPO: string) => {
     let total = 0;
     suratDOList.forEach((surat) => {
       surat.items.forEach((item) => {
-        if (
-          item.nomorSubDO === nomorSubDO &&
-          item.nomorPO === nomorPO &&
-          item.jenisPupuk === namaProduk
-        ) {
+        if (item.nomorSubDO === nomorSubDO && item.nomorPO === nomorPO) {
           total += (item.pengambilanZAK || 0) * (item.bobotPerUnit || 50);
         }
       });
@@ -270,14 +265,14 @@ export default function SuratPengangkutanPage() {
   };
 
   const getSisaDO = (doItem: DOItem) => {
-    const loaded = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk);
+    const loaded = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO);
     return Math.max(0, (doItem.partyKG || 0) - loaded);
   };
 
   const getAvailableDO = (currentItemId: number) => {
     return doList.filter((doItem) => {
       const sisa = getSisaDO(doItem);
-      const usedInOtherItem = items.find((it) => it.id !== currentItemId && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO && it.jenisPupuk === doItem.namaProduk);
+      const usedInOtherItem = items.find((it) => it.id !== currentItemId && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO);
       if (usedInOtherItem) return false;
       return sisa > 0;
     });
