@@ -605,6 +605,19 @@ export default function SuratPengangkutanPage() {
     const validProducts = getValidProductsForPI(pi);
     const prod = validProducts[produkIndex];
     if (!prod) return;
+
+    const currentItem = items.find((it) => it.id === itemId);
+    if (currentItem && currentItem.nomorSubDO.trim()) {
+      const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
+      if (doItem && doItem.namaProduk !== prod.namaProduk) {
+        setErrors((prev) => ({
+          ...prev,
+          [`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]: `Produk ${prod.namaProduk} tidak cocok dengan DO ${currentItem.nomorSubDO} (produk: ${doItem.namaProduk})`,
+        }));
+        return;
+      }
+    }
+
     const bobot = getBobotPerUnit(prod.namaProduk);
     const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
     const loaded = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
@@ -631,6 +644,14 @@ export default function SuratPengangkutanPage() {
         };
       })
     );
+
+    if (errors[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]) {
+      setErrors((prev) => {
+        const n = { ...prev };
+        delete n[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`];
+        return n;
+      });
+    }
   };
 
   const addItem = () => {
@@ -822,6 +843,12 @@ export default function SuratPengangkutanPage() {
           newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} dari PI ${item.nomorPI} sudah dipilih di Item ${productKeys[key] + 1}`;
         } else {
           productKeys[key] = idx;
+        }
+      }
+      if (isMandiri && item.nomorSubDO.trim()) {
+        const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+        if (doItem && item.jenisPupuk !== doItem.namaProduk) {
+          newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} tidak cocok dengan DO ${item.nomorSubDO} (produk: ${doItem.namaProduk})`;
         }
       }
     });

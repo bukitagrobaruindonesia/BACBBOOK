@@ -60,6 +60,7 @@ interface SuratDoc {
   driverUnit?: string;
   items: SuratPengangkutanItem[];
   createdBy: string;
+  nomorPI?: string[];
 }
 
 export default function InputDOPage() {
@@ -135,6 +136,7 @@ export default function InputDOPage() {
         driverUnit: doc.data().driverUnit || "",
         items: doc.data().items || [],
         createdBy: doc.data().createdBy || "",
+        nomorPI: doc.data().nomorPI || [],
       } as SuratDoc));
       setSuratList(data);
     } catch (error) {
@@ -495,6 +497,9 @@ export default function InputDOPage() {
                                     </span>
                                   </div>
                                   <p className="text-xs text-gray-500 mb-1">Tanggal: {new Date(surat.tanggal).toLocaleDateString("id-ID")}</p>
+                                  {surat.nomorPI && surat.nomorPI.length > 0 && (
+                                    <p className="text-xs text-gray-700 mb-1 font-medium">Nomor PI: {surat.nomorPI.join(", ")}</p>
+                                  )}
                                   {surat.driverUnit && (
                                     <p className="text-xs text-gray-500 mb-1">Driver: {surat.driverUnit}</p>
                                   )}
