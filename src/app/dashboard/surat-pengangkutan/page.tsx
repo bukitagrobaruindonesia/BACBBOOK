@@ -129,6 +129,14 @@ const parseNomorSeriGI = (nomorSeri: string) => {
   return { prefix, year, roman, urut };
 };
 
+const formatParty = (kg: number) => {
+  if (kg >= 1000) {
+    const mt = kg / 1000;
+    return mt % 1 === 0 ? `${mt.toFixed(0)} MT` : `${mt.toFixed(2)} MT`;
+  }
+  return `${kg.toLocaleString()} KG`;
+};
+
 export default function SuratPengangkutanPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -596,8 +604,8 @@ export default function SuratPengangkutanPage() {
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
           maxZAK: finalMaxZAK,
-          party: hasDO ? item.party : String(maxZAKPI),
-          sisa: hasDO ? item.party : String(maxZAKPI),
+          party: hasDO ? item.party : formatParty(piKuantitas),
+          sisa: hasDO ? String(partyZAKDO) : String(maxZAKPI),
           pengambilanZAK: "",
         };
       })
@@ -643,8 +651,8 @@ export default function SuratPengangkutanPage() {
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
           maxZAK: finalMaxZAK,
-          party: hasDO ? item.party : String(maxZAKPI),
-          sisa: hasDO ? item.party : String(maxZAKPI),
+          party: hasDO ? item.party : formatParty(piKuantitas),
+          sisa: hasDO ? String(partyZAKDO) : String(maxZAKPI),
           pengambilanZAK: "",
         };
       })
@@ -711,8 +719,8 @@ export default function SuratPengangkutanPage() {
             return {
               ...item,
               maxZAK: finalMaxZAK,
-              party: hasDO ? item.party : String(maxZAKPI),
-              sisa: hasDO ? item.party : String(maxZAKPI),
+              party: hasDO ? item.party : formatParty(piKuantitas),
+              sisa: hasDO ? String(partyZAKDO) : String(maxZAKPI),
               piLoadedKG: loaded,
               pengambilanZAK: "",
             };
@@ -791,7 +799,7 @@ export default function SuratPengangkutanPage() {
         const updated = { ...item, [field]: value };
         if (field === "pengambilanZAK") {
           const zak = parseFloat(value) || 0;
-          const partyZAK = parseFloat(item.party) || 0;
+          const partyZAK = item.bobotPerUnit > 0 ? Math.floor(item.doPartyKG / item.bobotPerUnit) : 0;
           if (item.maxZAK > 0 && zak > item.maxZAK) {
             updated.pengambilanZAK = String(item.maxZAK);
             updated.sisa = String(Math.max(0, partyZAK - item.maxZAK));
@@ -1584,7 +1592,7 @@ export default function SuratPengangkutanPage() {
                       <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Pilih produk dari PI atau DO" error={errors[`jenisPupuk_${idx}`]} required readOnly />
                     </div>
                     {isMandiri && (
-                      <Input label="Party (ZAK)" type="text" value={item.party} readOnly />
+                      <Input label="Party" type="text" value={item.party} readOnly />
                     )}
                     <div>
                       <Input label={`Pengambilan (ZAK)${item.maxZAK > 0 ? ` - Max: ${item.maxZAK}` : ""}`} type="number" value={item.pengambilanZAK} onChange={(e) => handleItemChange(item.id, "pengambilanZAK", e.target.value)} placeholder={item.maxZAK > 0 ? `Max ${item.maxZAK} ZAK` : "Contoh: 100"} />
