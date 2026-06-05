@@ -842,8 +842,7 @@ export default function RekapProformaInvoicePage() {
   const handleUpdateSurat = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedSurat || !selectedItem) return;
-    const newNomorSeri = editSuratForm.nomorSeri.trim();
-    if (checkNomorSeriExists(newNomorSeri, selectedSurat.nomorSeri)) { return; }
+
     setIsSubmitting(true);
     try {
       const oldItems = selectedSurat.items || [];
@@ -861,7 +860,6 @@ export default function RekapProformaInvoicePage() {
       const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
       const updateData: any = {
         tanggal: editSuratForm.tanggal,
-        nomorSeri: newNomorSeri,
         nomorPolisi: editSuratForm.nomorPolisi.trim(),
         driverUnit: editSuratForm.driverUnit.trim(),
         nomorSIM: editSuratForm.nomorSIM.trim() || null,
@@ -882,8 +880,7 @@ export default function RekapProformaInvoicePage() {
       if (!transaksiSnapshot.empty) {
         await updateDoc(doc(db, "transaksiBarangKeluar", transaksiSnapshot.docs[0].id), {
           ...updateData,
-          nomorSeri: newNomorSeri,
-        });
+          });
       }
       const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const delta = oldTotalKG - totalPengambilanKG;
@@ -1988,56 +1985,6 @@ export default function RekapProformaInvoicePage() {
     setEditSuratForm((prev) => ({ ...prev, items: prev.items.filter((_, i) => i !== idx) }));
   };
 
-  const handleGenerateNomorSeriEdit = () => {
-    if (editSuratForm.jenisSurat === "gudangInduk") {
-      const current = editSuratForm.nomorSeri;
-      const parts = current.split("/");
-      if (parts.length !== 4) return;
-      const prefix = `${parts[0]}/${parts[1]}/${parts[2]}`;
-      const numbers: number[] = [];
-      existingSuratList.forEach((s) => {
-        if (s.nomorSeri === selectedSurat?.nomorSeri) return;
-        if (s.nomorSeri.startsWith(prefix + "/")) {
-          const p = s.nomorSeri.split("/");
-          const last = parseInt(p[p.length - 1]);
-          if (!isNaN(last)) numbers.push(last);
-        }
-      });
-      numbers.sort((a, b) => a - b);
-      let nextUrut = 1;
-      for (const num of numbers) {
-        if (num === nextUrut) nextUrut++;
-        else if (num > nextUrut) break;
-      }
-      const newNomorSeri = `${prefix}/${String(nextUrut).padStart(4, "0")}`;
-      setEditSuratForm((prev) => ({ ...prev, nomorSeri: newNomorSeri }));
-      setNomorSeriError("");
-    } else {
-      const firstItem = editSuratForm.items.find((it) => it.nomorSubDO.trim() !== "");
-      const nomorDO = firstItem?.nomorSubDO?.trim() || "";
-      const sopir = editSuratForm.driverUnit.trim();
-      const perusahaan = editSuratForm.kepadaPerusahaan.trim();
-      if (!nomorDO || !sopir || !perusahaan) return;
-      const prefix = `BAGB-SP-DO${nomorDO} ${sopir} - ${perusahaan} - `;
-      const existing = existingSuratList.filter((s) =>
-        s.nomorSeri.startsWith(prefix) && s.nomorSeri !== selectedSurat?.nomorSeri
-      );
-      const numbers = existing.map((s) => {
-        const lastPart = s.nomorSeri.slice(prefix.length);
-        return parseInt(lastPart) || 0;
-      });
-      numbers.sort((a, b) => a - b);
-      let nextUrut = 1;
-      for (const num of numbers) {
-        if (num === nextUrut) nextUrut++;
-        else if (num > nextUrut) break;
-      }
-      const newNomorSeri = `${prefix}${String(nextUrut).padStart(4, "0")}`;
-      setEditSuratForm((prev) => ({ ...prev, nomorSeri: newNomorSeri }));
-      setNomorSeriError("");
-    }
-  };
-
   const handleEditProdukChange = (index: number, field: string, value: string) => {
     setEditForm((prev) => {
       const newItems = [...prev.produkItems];
@@ -2550,7 +2497,7 @@ export default function RekapProformaInvoicePage() {
       <Modal isOpen={isEditSuratModalOpen} onClose={() => setIsEditSuratModalOpen(false)} title={`Edit Surat Muat - ${selectedSurat?.nomorSeri}`} size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditSuratModalOpen(false)}>Batal</Button>
-          <Button variant="primary" onClick={handleUpdateSurat} isLoading={isSubmitting} disabled={!!nomorSeriError}>Simpan Perubahan</Button>
+          <Button variant="primary" onClick={handleUpdateSurat} isLoading={isSubmitting}>Simpan Perubahan</Button>
         </div>
       }>
         <form onSubmit={handleUpdateSurat} className="space-y-6">
@@ -2558,16 +2505,9 @@ export default function RekapProformaInvoicePage() {
             <Input label="Tanggal" type="date" value={editSuratForm.tanggal} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, tanggal: e.target.value }))} required />
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
-              <div className="flex gap-2">
-                <input type="text" value={editSuratForm.nomorSeri} readOnly className={`w-full px-4 py-3 border rounded-xl focus:outline-none transition-all font-mono text-sm bg-gray-100 transition-all duration-200 focus:w-auto focus:min-w-[400px] focus:py-3 focus:px-4 focus:text-base focus:shadow-2xl focus:z-50 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200 ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`} />
-                <button type="button" onClick={handleGenerateNomorSeriEdit} className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-sm font-semibold whitespace-nowrap transition-colors">Generate</button>
+              <div className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 font-mono text-sm text-gray-800">
+                {editSuratForm.nomorSeri}
               </div>
-              {nomorSeriError && (
-                <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                  {nomorSeriError}
-                </p>
-              )}
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jenis Surat</label>
