@@ -118,11 +118,10 @@ export default function InputProformaInvoicePage() {
   useEffect(() => {
     fetchStockGudang();
     fetchTTD();
-    fetchExistingPI();
     fetchCustomers();
     fetchFOT();
     generateTanggalJatuhTempo();
-    generateNomorPI();
+    initializePINumber();
   }, []);
 
   useEffect(() => {
@@ -142,21 +141,29 @@ export default function InputProformaInvoicePage() {
     setFormData((prev) => ({ ...prev, tanggalJatuhTempo: dateStr }));
   };
 
-  const generateNomorPI = async () => {
+  const initializePINumber = async () => {
     try {
-      const q = query(collection(db, "proformaInvoice"), orderBy("nomorPI", "asc"));
-      const snapshot = await getDocs(q);
-      const nums = snapshot.docs
-        .map((d) => d.data().nomorPI)
-        .filter((n): n is string => typeof n === "string" && n.startsWith("BAGB-PI-"))
-        .map((n) => parseInt(n.replace("BAGB-PI-", ""), 10))
-        .filter((n) => !isNaN(n));
+      const snapshot = await getDocs(collection(db, "proformaInvoice"));
+      const nomorPIs: string[] = [];
+      const nums: number[] = [];
+      
+      snapshot.docs.forEach((d) => {
+        const val = d.data().nomorPI;
+        if (typeof val === "string" && val.trim() !== "") {
+          nomorPIs.push(val.trim().toUpperCase());
+          if (val.startsWith("BAGB-PI-")) {
+            const num = parseInt(val.replace("BAGB-PI-", ""), 10);
+            if (!isNaN(num)) nums.push(num);
+          }
+        }
+      });
+      
+      setExistingPIList(nomorPIs);
       
       const maxNum = nums.length > 0 ? Math.max(...nums) : 0;
       const nextNum = maxNum + 1;
       const nextPI = `BAGB-PI-${String(nextNum).padStart(3, "0")}`;
       setFormData((prev) => ({ ...prev, nomorPI: nextPI }));
-      setExistingPIList((prev) => [...prev, nextPI]);
     } catch (error) {
       console.error(error);
     }
@@ -177,18 +184,6 @@ export default function InputProformaInvoicePage() {
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as TTDData));
       setTtdList(data);
-    } catch (error) { console.error(error); }
-  };
-
-  const fetchExistingPI = async () => {
-    try {
-      const q = query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc"));
-      const snapshot = await getDocs(q);
-      const nomorPIs = snapshot.docs.map((doc) => {
-        const data = doc.data();
-        return (data.nomorPI || "").toString().trim().toUpperCase();
-      }).filter((pi) => pi !== "");
-      setExistingPIList(nomorPIs);
     } catch (error) { console.error(error); }
   };
 
@@ -269,10 +264,6 @@ export default function InputProformaInvoicePage() {
       });
       fetchCustomers();
     } catch (error) { console.error(error); }
-  };
-
-  const saveCustomerToHistory = async (nama: string, alamat: string, npwp: string) => {
-    await ensureCustomerExists(nama, alamat, npwp);
   };
 
   const handleDeleteCustomer = async (id: string) => {
@@ -392,7 +383,7 @@ export default function InputProformaInvoicePage() {
       const price = parseFloat(item.hargaSatuan) || 0;
       const baseTotal = qty * price;
       if (item.includePPN) {
-        const itemPPN = baseTotal * 0.11;
+      const itemPPN = baseTotal * 0.11;
         ppnTotal += itemPPN;
         subtotal += baseTotal + itemPPN;
       } else {
@@ -599,8 +590,7 @@ export default function InputProformaInvoicePage() {
       });
       setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
       generateTanggalJatuhTempo();
-      generateNomorPI();
-      fetchExistingPI();
+      initializePINumber();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
       console.error(error);
