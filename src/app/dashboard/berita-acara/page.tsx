@@ -360,9 +360,9 @@ export default function BeritaAcaraPage() {
       if (suratMap[ba.nomorPI]) suratList.push(...suratMap[ba.nomorPI]);
     }
     const ttd = getTTDForBA(ba.id);
-    const now = new Date();
-    const hari = now.toLocaleDateString("id-ID", { weekday: "long" });
-    const tanggalLengkap = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+    const baDate = new Date(ba.tanggal);
+    const hari = baDate.toLocaleDateString("id-ID", { weekday: "long" });
+    const tanggalLengkap = baDate.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
 
     const baRowsHtml = ba.items.map(it => `
       <tr>
