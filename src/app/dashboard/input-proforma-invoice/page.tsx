@@ -35,6 +35,7 @@ interface TTDData {
 
 interface CustomerData {
   id: string;
+  customerId: string;
   namaCustomer: string;
   alamatCustomer: string;
   npwp: string;
@@ -121,6 +122,7 @@ export default function InputProformaInvoicePage() {
     fetchCustomers();
     fetchFOT();
     generateTanggalJatuhTempo();
+    generateNomorPI();
   }, []);
 
   useEffect(() => {
@@ -138,6 +140,26 @@ export default function InputProformaInvoicePage() {
     today.setHours(16, 0, 0, 0);
     const dateStr = today.toISOString().split("T")[0] + " 16.00 WIB";
     setFormData((prev) => ({ ...prev, tanggalJatuhTempo: dateStr }));
+  };
+
+  const generateNomorPI = async () => {
+    try {
+      const q = query(collection(db, "proformaInvoice"), orderBy("nomorPI", "asc"));
+      const snapshot = await getDocs(q);
+      const nums = snapshot.docs
+        .map((d) => d.data().nomorPI)
+        .filter((n): n is string => typeof n === "string" && n.startsWith("BAGB-PI-"))
+        .map((n) => parseInt(n.replace("BAGB-PI-", ""), 10))
+        .filter((n) => !isNaN(n));
+      
+      const maxNum = nums.length > 0 ? Math.max(...nums) : 0;
+      const nextNum = maxNum + 1;
+      const nextPI = `BAGB-PI-${String(nextNum).padStart(3, "0")}`;
+      setFormData((prev) => ({ ...prev, nomorPI: nextPI }));
+      setExistingPIList((prev) => [...prev, nextPI]);
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   const fetchStockGudang = async () => {
@@ -192,7 +214,34 @@ export default function InputProformaInvoicePage() {
     } catch (error) { console.error(error); }
   };
 
-  const saveCustomerToHistory = async (nama: string, alamat: string, npwp: string) => {
+  const generateCustomerId = async (): Promise<string> => {
+    try {
+      const q = query(collection(db, "customers"), orderBy("customerId", "asc"));
+      const snapshot = await getDocs(q);
+      const ids = snapshot.docs
+        .map((d) => d.data().customerId)
+        .filter((id): id is string => typeof id === "string" && id.startsWith("BAGB-CS-"))
+        .map((id) => parseInt(id.replace("BAGB-CS-", ""), 10))
+        .filter((n) => !isNaN(n))
+        .sort((a, b) => a - b);
+      
+      if (ids.length === 0) return "BAGB-CS-001";
+      
+      let nextId = 1;
+      for (const id of ids) {
+        if (id !== nextId) {
+          return `BAGB-CS-${String(nextId).padStart(3, "0")}`;
+        }
+        nextId++;
+      }
+      return `BAGB-CS-${String(nextId).padStart(3, "0")}`;
+    } catch (error) {
+      console.error(error);
+      return "BAGB-CS-001";
+    }
+  };
+
+  const ensureCustomerExists = async (nama: string, alamat: string, npwp: string) => {
     if (!nama.trim() || !alamat.trim()) return;
     const normalizedName = nama.trim().toLowerCase();
     const existing = customerList.find((c) => c.namaCustomer.trim().toLowerCase() === normalizedName);
@@ -209,7 +258,9 @@ export default function InputProformaInvoicePage() {
       return;
     }
     try {
+      const customerId = await generateCustomerId();
       await addDoc(collection(db, "customers"), {
+        customerId,
         namaCustomer: nama.trim(),
         alamatCustomer: alamat.trim(),
         npwp: npwp.trim() || "",
@@ -218,6 +269,10 @@ export default function InputProformaInvoicePage() {
       });
       fetchCustomers();
     } catch (error) { console.error(error); }
+  };
+
+  const saveCustomerToHistory = async (nama: string, alamat: string, npwp: string) => {
+    await ensureCustomerExists(nama, alamat, npwp);
   };
 
   const handleDeleteCustomer = async (id: string) => {
@@ -483,6 +538,7 @@ export default function InputProformaInvoicePage() {
     setIsSubmitting(true);
     setSuccessMessage("");
     try {
+      await ensureCustomerExists(formData.namaCustomer, formData.alamatCustomer, formData.npwp);
       const selectedTTD = ttdList.find((t) => t.id === formData.selectedTTD);
       await addDoc(collection(db, "proformaInvoice"), {
         tanggal: formData.tanggal,
@@ -522,7 +578,6 @@ export default function InputProformaInvoicePage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      await saveCustomerToHistory(formData.namaCustomer, formData.alamatCustomer, formData.npwp);
       setSuccessMessage("Proforma Invoice berhasil disimpan!");
       setFormData({
         tanggal: new Date().toISOString().split("T")[0],
@@ -544,6 +599,8 @@ export default function InputProformaInvoicePage() {
       });
       setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
       generateTanggalJatuhTempo();
+      generateNomorPI();
+      fetchExistingPI();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
       console.error(error);
@@ -633,7 +690,7 @@ export default function InputProformaInvoicePage() {
                 )}
                 {showCustomerDropdown && formData.namaCustomer && customerDropdownOptions.length === 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-4 text-center">
-                    <p className="text-sm text-gray-500">Customer baru - alamat akan disimpan setelah submit</p>
+                    <p className="text-sm text-gray-500">Customer baru - akan dibuatkan ID otomatis setelah submit</p>
                   </div>
                 )}
               </div>
@@ -813,9 +870,11 @@ export default function InputProformaInvoicePage() {
         </div>
         <div className="flex items-center justify-end gap-4 pt-4">
           <Button type="button" variant="outline" onClick={() => {
+            const currentNomorPI = formData.nomorPI;
             setFormData({
               tanggal: new Date().toISOString().split("T")[0],
-              nomorPI: "", namaCustomer: "", alamatCustomer: "", npwp: "",
+              nomorPI: currentNomorPI,
+              namaCustomer: "", alamatCustomer: "", npwp: "",
               metodePembayaran: "Transfer", uangMuka: "", ppnNominal: 0,
               ongkosKirim: "", jumlahUangDibayar: "", subtotal: 0,
               jumlahTertagih: 0, terbilang: "", tanggalJatuhTempo: "",
@@ -839,6 +898,7 @@ export default function InputProformaInvoicePage() {
             <table className="w-full">
               <thead className="sticky top-0 bg-white">
                 <tr className="bg-green-50">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Customer ID</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Nama Customer</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Alamat</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">NPWP</th>
@@ -848,6 +908,7 @@ export default function InputProformaInvoicePage() {
               <tbody className="divide-y divide-gray-100">
                 {filteredCustomers.map((customer) => (
                   <tr key={customer.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm font-medium text-blue-700">{customer.customerId || "-"}</td>
                     <td className="px-4 py-3 text-sm font-medium text-gray-900">{editingCustomer?.id === customer.id ? <input type="text" value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /> : customer.namaCustomer}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{editingCustomer?.id === customer.id ? <input type="text" value={editCustomerAddress} onChange={(e) => setEditCustomerAddress(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /> : customer.alamatCustomer}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">{editingCustomer?.id === customer.id ? <input type="text" value={editCustomerNpwp} onChange={(e) => setEditCustomerNpwp(e.target.value)} className="w-full px-2 py-1 border border-gray-300 rounded text-sm" /> : customer.npwp || "-"}</td>
@@ -867,7 +928,7 @@ export default function InputProformaInvoicePage() {
                     </td>
                   </tr>
                 ))}
-                {filteredCustomers.length === 0 && (<tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-500">Belum ada data customer</td></tr>)}
+                {filteredCustomers.length === 0 && (<tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-500">Belum ada data customer</td></tr>)}
               </tbody>
             </table>
           </div>
