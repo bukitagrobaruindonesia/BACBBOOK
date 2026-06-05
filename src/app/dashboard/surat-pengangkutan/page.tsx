@@ -65,8 +65,10 @@ interface SuratPengangkutanItem {
   fot: string;
   nomorPI: string;
   namaCustomer: string;
-  kuantitasOrdered: number;
-  loadedKG: number;
+  doPartyKG: number;
+  doLoadedKG: number;
+  piKuantitas: number;
+  piLoadedKG: number;
 }
 
 interface ExistingSurat {
@@ -97,6 +99,7 @@ interface DOItem {
 interface SuratDOItem {
   nomorSubDO: string;
   nomorPO: string;
+  jenisPupuk: string;
   pengambilanZAK: number;
   bobotPerUnit: number;
 }
@@ -252,11 +255,15 @@ export default function SuratPengangkutanPage() {
     }
   };
 
-  const getLoadedKGForDO = (nomorSubDO: string, nomorPO: string) => {
+  const getLoadedKGForDO = (nomorSubDO: string, nomorPO: string, namaProduk: string) => {
     let total = 0;
     suratDOList.forEach((surat) => {
       surat.items.forEach((item) => {
-        if (item.nomorSubDO === nomorSubDO && item.nomorPO === nomorPO) {
+        if (
+          item.nomorSubDO === nomorSubDO &&
+          item.nomorPO === nomorPO &&
+          item.jenisPupuk === namaProduk
+        ) {
           total += (item.pengambilanZAK || 0) * (item.bobotPerUnit || 50);
         }
       });
@@ -265,14 +272,14 @@ export default function SuratPengangkutanPage() {
   };
 
   const getSisaDO = (doItem: DOItem) => {
-    const loaded = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO);
+    const loaded = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk);
     return Math.max(0, (doItem.partyKG || 0) - loaded);
   };
 
   const getAvailableDO = (currentItemId: number) => {
     return doList.filter((doItem) => {
       const sisa = getSisaDO(doItem);
-      const usedInOtherItem = items.find((it) => it.id !== currentItemId && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO);
+      const usedInOtherItem = items.find((it) => it.id !== currentItemId && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO && it.jenisPupuk === doItem.namaProduk);
       if (usedInOtherItem) return false;
       return sisa > 0;
     });
@@ -283,12 +290,16 @@ export default function SuratPengangkutanPage() {
     if (!doItem) return;
     const stock = getStockForProduct(doItem.namaProduk);
     const bobot = stock ? stock.bobotPerUnit : 50;
-    const sisaKG = getSisaDO(doItem);
-    const maxZAK = Math.floor(sisaKG / bobot);
+    const loadedDO = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk);
+    const sisaDO = Math.max(0, (doItem.partyKG || 0) - loadedDO);
+    const maxZAKDO = Math.floor(sisaDO / bobot);
 
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== itemId) return item;
+        const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
+        const maxZAKPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
+        const finalMaxZAK = item.piKuantitas > 0 ? Math.min(maxZAKDO, maxZAKPI) : maxZAKDO;
         return {
           ...item,
           nomorSubDO: doItem.nomorSubDO,
@@ -296,12 +307,12 @@ export default function SuratPengangkutanPage() {
           jenisPupuk: doItem.namaProduk,
           fot: doItem.fot,
           bobotPerUnit: bobot,
-          maxZAK: maxZAK,
-          sisa: String(maxZAK),
-          party: String(maxZAK),
-          pengambilanZAK: maxZAK > 0 ? String(maxZAK) : "",
-          kuantitasOrdered: doItem.partyKG,
-          loadedKG: doItem.partyKG - sisaKG,
+          doPartyKG: doItem.partyKG,
+          doLoadedKG: loadedDO,
+          maxZAK: finalMaxZAK,
+          sisa: String(finalMaxZAK),
+          party: String(finalMaxZAK),
+          pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
           namaCustomer: doItem.namaPerusahaan,
         };
       })
@@ -555,42 +566,39 @@ export default function SuratPengangkutanPage() {
     let bobot = 50;
     let fot = "";
     let jenisPupuk = "";
-    let maxZAK = 0;
-    let sisa = "";
-    let kuantitasOrdered = 0;
-    let loadedKG = 0;
-    let pengambilanZAK = "";
+    let piKuantitas = 0;
+    let piLoadedKG = 0;
 
     if (firstProd) {
       bobot = getBobotPerUnit(firstProd.namaProduk);
       fot = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
       jenisPupuk = firstProd.namaProduk;
-      kuantitasOrdered = firstProd.kuantitas || 0;
-      loadedKG = await getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk);
-      let remaining = Math.max(0, kuantitasOrdered - loadedKG);
-      if (pi.sisaPengambilanKG !== undefined && pi.sisaPengambilanKG >= 0) {
-        remaining = Math.min(remaining, pi.sisaPengambilanKG);
-      }
-      maxZAK = Math.floor(remaining / bobot);
-      sisa = String(maxZAK);
-      pengambilanZAK = maxZAK > 0 ? String(maxZAK) : "";
+      piKuantitas = firstProd.kuantitas || 0;
+      piLoadedKG = await getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk);
     }
 
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== itemId) return item;
+        const hasDO = item.nomorSubDO.trim() !== "";
+        const doSisa = hasDO ? Math.max(0, item.doPartyKG - item.doLoadedKG) : 0;
+        const maxZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 999999;
+        const piSisa = Math.max(0, piKuantitas - piLoadedKG);
+        const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
+        const finalMaxZAK = hasDO ? Math.min(maxZAKDO, maxZAKPI) : maxZAKPI;
         return {
           ...item,
           nomorPI: pi.nomorPI,
           namaCustomer: pi.namaCustomer,
-          jenisPupuk,
-          fot,
-          bobotPerUnit: bobot,
-          maxZAK,
-          sisa,
-          pengambilanZAK,
-          kuantitasOrdered,
-          loadedKG,
+          jenisPupuk: hasDO ? item.jenisPupuk : jenisPupuk,
+          fot: hasDO ? item.fot : fot,
+          bobotPerUnit: hasDO ? item.bobotPerUnit : bobot,
+          piKuantitas: piKuantitas,
+          piLoadedKG: piLoadedKG,
+          maxZAK: finalMaxZAK,
+          sisa: String(finalMaxZAK),
+          party: String(finalMaxZAK),
+          pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
         };
       })
     );
@@ -600,32 +608,55 @@ export default function SuratPengangkutanPage() {
     const validProducts = getValidProductsForPI(pi);
     const prod = validProducts[produkIndex];
     if (!prod) return;
+
+    const currentItem = items.find((it) => it.id === itemId);
+    if (currentItem && currentItem.nomorSubDO.trim()) {
+      const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
+      if (doItem && doItem.namaProduk !== prod.namaProduk) {
+        setErrors((prev) => ({
+          ...prev,
+          [`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]: `Produk ${prod.namaProduk} tidak cocok dengan DO ${currentItem.nomorSubDO} (produk: ${doItem.namaProduk})`,
+        }));
+        return;
+      }
+    }
+
     const bobot = getBobotPerUnit(prod.namaProduk);
     const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
-    const loaded = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
-    const ordered = prod.kuantitas || 0;
-    let remaining = Math.max(0, ordered - loaded);
-    if (pi.sisaPengambilanKG !== undefined && pi.sisaPengambilanKG >= 0) {
-      remaining = Math.min(remaining, pi.sisaPengambilanKG);
-    }
-    const maxZAK = Math.floor(remaining / bobot);
+    const piLoadedKG = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
+    const piKuantitas = prod.kuantitas || 0;
 
     setItems((prev) =>
       prev.map((item) => {
         if (item.id !== itemId) return item;
+        const hasDO = item.nomorSubDO.trim() !== "";
+        const doSisa = hasDO ? Math.max(0, item.doPartyKG - item.doLoadedKG) : 0;
+        const maxZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 999999;
+        const piSisa = Math.max(0, piKuantitas - piLoadedKG);
+        const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
+        const finalMaxZAK = hasDO ? Math.min(maxZAKDO, maxZAKPI) : maxZAKPI;
         return {
           ...item,
-          jenisPupuk: prod.namaProduk,
-          fot: fot,
-          bobotPerUnit: bobot,
-          maxZAK: maxZAK,
-          sisa: String(maxZAK),
-          kuantitasOrdered: ordered,
-          loadedKG: loaded,
-          pengambilanZAK: maxZAK > 0 ? String(maxZAK) : "",
+          jenisPupuk: hasDO ? item.jenisPupuk : prod.namaProduk,
+          fot: hasDO ? item.fot : fot,
+          bobotPerUnit: hasDO ? item.bobotPerUnit : bobot,
+          piKuantitas: piKuantitas,
+          piLoadedKG: piLoadedKG,
+          maxZAK: finalMaxZAK,
+          sisa: String(finalMaxZAK),
+          party: String(finalMaxZAK),
+          pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
         };
       })
     );
+
+    if (errors[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]) {
+      setErrors((prev) => {
+        const n = { ...prev };
+        delete n[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`];
+        return n;
+      });
+    }
   };
 
   const addItem = () => {
@@ -645,8 +676,10 @@ export default function SuratPengangkutanPage() {
         fot: "",
         nomorPI: "",
         namaCustomer: "",
-        kuantitasOrdered: 0,
-        loadedKG: 0,
+        doPartyKG: 0,
+        doLoadedKG: 0,
+        piKuantitas: 0,
+        piLoadedKG: 0,
       },
     ]);
   };
@@ -657,6 +690,37 @@ export default function SuratPengangkutanPage() {
     const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
     const bobot = firstProd ? getBobotPerUnit(firstProd.namaProduk) : 50;
     const fot = firstProd ? (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim() : "";
+
+    let piKuantitas = 0;
+    let piLoadedKG = 0;
+
+    if (firstProd) {
+      piKuantitas = firstProd.kuantitas || 0;
+      getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk).then((loaded) => {
+        piLoadedKG = loaded;
+        const piSisa = Math.max(0, piKuantitas - loaded);
+        const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
+
+        setItems((prev) =>
+          prev.map((item) => {
+            if (item.id !== newId) return item;
+            const hasDO = item.nomorSubDO.trim() !== "";
+            const doSisa = hasDO ? Math.max(0, item.doPartyKG - item.doLoadedKG) : 0;
+            const maxZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 999999;
+            const finalMaxZAK = hasDO ? Math.min(maxZAKDO, maxZAKPI) : maxZAKPI;
+            return {
+              ...item,
+              maxZAK: finalMaxZAK,
+              sisa: String(finalMaxZAK),
+              party: String(finalMaxZAK),
+              piLoadedKG: loaded,
+              pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
+            };
+          })
+        );
+      });
+    }
+
     setItems((prev) => [
       ...prev,
       {
@@ -672,32 +736,12 @@ export default function SuratPengangkutanPage() {
         fot: fot,
         nomorPI: pi.nomorPI,
         namaCustomer: pi.namaCustomer,
-        kuantitasOrdered: firstProd ? firstProd.kuantitas || 0 : 0,
-        loadedKG: 0,
+        doPartyKG: 0,
+        doLoadedKG: 0,
+        piKuantitas: piKuantitas,
+        piLoadedKG: piLoadedKG,
       },
     ]);
-    if (firstProd) {
-      getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk).then((loaded) => {
-        const ordered = firstProd.kuantitas || 0;
-        let remaining = Math.max(0, ordered - loaded);
-        if (pi.sisaPengambilanKG !== undefined && pi.sisaPengambilanKG >= 0) {
-          remaining = Math.min(remaining, pi.sisaPengambilanKG);
-        }
-        const maxZAK = Math.floor(remaining / bobot);
-        setItems((prev) =>
-          prev.map((item) => {
-            if (item.id !== newId) return item;
-            return {
-              ...item,
-              maxZAK: maxZAK,
-              sisa: String(maxZAK),
-              loadedKG: loaded,
-              pengambilanZAK: maxZAK > 0 ? String(maxZAK) : "",
-            };
-          })
-        );
-      });
-    }
   };
 
   const removeItem = (id: number) => {
@@ -817,6 +861,12 @@ export default function SuratPengangkutanPage() {
           newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} dari PI ${item.nomorPI} sudah dipilih di Item ${productKeys[key] + 1}`;
         } else {
           productKeys[key] = idx;
+        }
+      }
+      if (isMandiri && item.nomorSubDO.trim()) {
+        const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+        if (doItem && item.jenisPupuk !== doItem.namaProduk) {
+          newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} tidak cocok dengan DO ${item.nomorSubDO} (produk: ${doItem.namaProduk})`;
         }
       }
     });
@@ -1532,7 +1582,7 @@ export default function SuratPengangkutanPage() {
                       </div>
                     )}
                     <div className="md:col-span-3">
-                      <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Pilih produk dari PI" error={errors[`jenisPupuk_${idx}`]} required readOnly />
+                      <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Pilih produk dari PI atau DO" error={errors[`jenisPupuk_${idx}`]} required readOnly />
                     </div>
                     {isMandiri && (
                       <Input label="Party (ZAK)" type="text" value={item.party} readOnly />
@@ -1553,12 +1603,23 @@ export default function SuratPengangkutanPage() {
                         </p>
                       )}
                     </div>
-                    {item.kuantitasOrdered > 0 && (
-                      <div className="md:col-span-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                        <div className="flex justify-between text-xs text-blue-700">
-                          <span>Total Dipesan: <strong>{item.kuantitasOrdered.toLocaleString()} KG</strong></span>
-                          <span>Sudah Dimuat: <strong>{item.loadedKG.toLocaleString()} KG</strong></span>
-                          <span>Sisa: <strong>{Math.max(0, item.kuantitasOrdered - item.loadedKG).toLocaleString()} KG</strong></span>
+                    {item.nomorSubDO && item.doPartyKG > 0 && (
+                      <div className="md:col-span-3 p-3 bg-green-50 rounded-lg border border-green-200">
+                        <p className="text-xs font-semibold text-green-800 mb-1">Info DO</p>
+                        <div className="flex justify-between text-xs text-green-700">
+                          <span>Party DO: <strong>{item.doPartyKG.toLocaleString()} KG</strong></span>
+                          <span>Sudah Dimuat DO: <strong>{item.doLoadedKG.toLocaleString()} KG</strong></span>
+                          <span>Sisa DO: <strong>{Math.max(0, item.doPartyKG - item.doLoadedKG).toLocaleString()} KG</strong></span>
+                        </div>
+                      </div>
+                    )}
+                    {item.nomorPI && item.piKuantitas > 0 && (
+                      <div className="md:col-span-3 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                        <p className="text-xs font-semibold text-purple-800 mb-1">Info PI</p>
+                        <div className="flex justify-between text-xs text-purple-700">
+                          <span>Total PI: <strong>{item.piKuantitas.toLocaleString()} KG</strong></span>
+                          <span>Sudah Dimuat PI: <strong>{item.piLoadedKG.toLocaleString()} KG</strong></span>
+                          <span>Sisa PI: <strong>{Math.max(0, item.piKuantitas - item.piLoadedKG).toLocaleString()} KG</strong></span>
                         </div>
                       </div>
                     )}
