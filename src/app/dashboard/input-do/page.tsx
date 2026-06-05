@@ -39,16 +39,27 @@ interface StockItem {
   namaBarang: string;
 }
 
-interface SuratItem {
+interface SuratPengangkutanItem {
   nomorSubDO: string;
   nomorPO: string;
+  jenisPupuk: string;
   pengambilanZAK: number;
   bobotPerUnit: number;
+  totalKG: number;
+  nomorPI: string;
+  namaCustomer: string;
 }
 
 interface SuratDoc {
   id: string;
-  items: SuratItem[];
+  nomorSeri: string;
+  tanggal: string;
+  jenisSurat: string;
+  subJenisDO: string;
+  nomorPolisi?: string;
+  driverUnit?: string;
+  items: SuratPengangkutanItem[];
+  createdBy: string;
 }
 
 export default function InputDOPage() {
@@ -63,6 +74,7 @@ export default function InputDOPage() {
   const [filterBulan, setFilterBulan] = useState("");
   const [filterTahun, setFilterTahun] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [expandedDOId, setExpandedDOId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     nomorSubDO: "",
@@ -115,7 +127,14 @@ export default function InputDOPage() {
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((doc) => ({
         id: doc.id,
+        nomorSeri: doc.data().nomorSeri || "",
+        tanggal: doc.data().tanggal || "",
+        jenisSurat: doc.data().jenisSurat || "",
+        subJenisDO: doc.data().subJenisDO || "",
+        nomorPolisi: doc.data().nomorPolisi || "",
+        driverUnit: doc.data().driverUnit || "",
         items: doc.data().items || [],
+        createdBy: doc.data().createdBy || "",
       } as SuratDoc));
       setSuratList(data);
     } catch (error) {
@@ -123,11 +142,15 @@ export default function InputDOPage() {
     }
   };
 
-  const getLoadedKG = (nomorSubDO: string, nomorPO: string) => {
+  const getLoadedKG = (nomorSubDO: string, nomorPO: string, namaProduk: string) => {
     let total = 0;
     suratList.forEach((surat) => {
       surat.items.forEach((item) => {
-        if (item.nomorSubDO === nomorSubDO && item.nomorPO === nomorPO) {
+        if (
+          item.nomorSubDO === nomorSubDO &&
+          item.nomorPO === nomorPO &&
+          item.jenisPupuk === namaProduk
+        ) {
           total += (item.pengambilanZAK || 0) * (item.bobotPerUnit || 50);
         }
       });
@@ -135,8 +158,23 @@ export default function InputDOPage() {
     return total;
   };
 
+  const getSuratForDO = (nomorSubDO: string, nomorPO: string, namaProduk: string) => {
+    const result: SuratDoc[] = [];
+    suratList.forEach((surat) => {
+      const hasMatch = surat.items.some((item) =>
+        item.nomorSubDO === nomorSubDO &&
+        item.nomorPO === nomorPO &&
+        item.jenisPupuk === namaProduk
+      );
+      if (hasMatch) {
+        result.push(surat);
+      }
+    });
+    return result;
+  };
+
   const getSisaParty = (doItem: DOItem) => {
-    const loaded = getLoadedKG(doItem.nomorSubDO, doItem.nomorPO);
+    const loaded = getLoadedKG(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk);
     return Math.max(0, (doItem.partyKG || 0) - loaded);
   };
 
@@ -391,45 +429,98 @@ export default function InputDOPage() {
                 </tr>
               ) : (
                 filteredDO.map((item, idx) => {
-                  const loaded = getLoadedKG(item.nomorSubDO, item.nomorPO);
+                  const loaded = getLoadedKG(item.nomorSubDO, item.nomorPO, item.namaProduk);
                   const sisa = getSisaParty(item);
                   const isExpired = new Date(item.tanggalKadaluarsa) < new Date();
+                  const suratRelated = getSuratForDO(item.nomorSubDO, item.nomorPO, item.namaProduk);
+                  const isExpanded = expandedDOId === item.id;
                   return (
-                    <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 text-sm text-gray-900">{idx + 1}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.nomorSubDO}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{item.nomorPO}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{item.namaProduk}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{item.namaPerusahaan}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{item.fot}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">{new Date(item.tanggalPembuatan).toLocaleDateString("id-ID")}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        <span className={isExpired ? "text-red-600 font-medium" : ""}>
-                          {new Date(item.tanggalKadaluarsa).toLocaleDateString("id-ID")}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-900 text-right font-medium">{item.partyKG.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-sm text-gray-700 text-right">{loaded.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-sm text-right font-medium">
-                        <span className={sisa <= 0 ? "text-red-600" : "text-green-600"}>
-                          {sisa.toLocaleString()}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                            </svg>
-                          </button>
-                          <button onClick={() => handleDelete(item.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <React.Fragment key={item.id}>
+                      <tr className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3 text-sm text-gray-900">{idx + 1}</td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">{item.nomorSubDO}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{item.nomorPO}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{item.namaProduk}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{item.namaPerusahaan}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{item.fot}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">{new Date(item.tanggalPembuatan).toLocaleDateString("id-ID")}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700">
+                          <span className={isExpired ? "text-red-600 font-medium" : ""}>
+                            {new Date(item.tanggalKadaluarsa).toLocaleDateString("id-ID")}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900 text-right font-medium">{item.partyKG.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm text-gray-700 text-right">{loaded.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm text-right font-medium">
+                          <span className={sisa <= 0 ? "text-red-600" : "text-green-600"}>
+                            {sisa.toLocaleString()}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            {suratRelated.length > 0 && (
+                              <button
+                                onClick={() => setExpandedDOId(isExpanded ? null : item.id)}
+                                className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                                title="Lihat SP"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isExpanded ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                                </svg>
+                              </button>
+                            )}
+                            <button onClick={() => handleEdit(item)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                              </svg>
+                            </button>
+                            <button onClick={() => handleDelete(item.id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan={12} className="px-4 py-3 bg-blue-50/50">
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                              {suratRelated.map((surat) => (
+                                <div key={surat.id} className="bg-white rounded-xl border border-blue-200 p-4 shadow-sm">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-sm font-bold text-blue-800">{surat.nomorSeri}</p>
+                                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
+                                      {surat.subJenisDO === "mandiri" ? "DO Mandiri" : "DO Dikuasakan"}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-gray-500 mb-1">Tanggal: {new Date(surat.tanggal).toLocaleDateString("id-ID")}</p>
+                                  {surat.driverUnit && (
+                                    <p className="text-xs text-gray-500 mb-1">Driver: {surat.driverUnit}</p>
+                                  )}
+                                  {surat.nomorPolisi && (
+                                    <p className="text-xs text-gray-500 mb-1">No Polisi: {surat.nomorPolisi}</p>
+                                  )}
+                                  <div className="mt-2 space-y-1">
+                                    {surat.items
+                                      .filter((it) => it.nomorSubDO === item.nomorSubDO && it.nomorPO === item.nomorPO && it.jenisPupuk === item.namaProduk)
+                                      .map((it, i) => (
+                                        <div key={i} className="flex justify-between text-xs">
+                                          <span className="text-gray-600">{it.jenisPupuk}</span>
+                                          <span className="font-medium text-gray-900">
+                                            {it.pengambilanZAK} ZAK = {(it.pengambilanZAK * it.bobotPerUnit).toLocaleString()} KG
+                                          </span>
+                                        </div>
+                                      ))}
+                                  </div>
+                                  <p className="text-xs text-gray-400 mt-2 pt-2 border-t border-gray-100">Dibuat oleh: {surat.createdBy}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
                   );
                 })
               )}
