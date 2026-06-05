@@ -113,7 +113,7 @@ export default function DataKaryawanPage() {
     setSuccessMessage("");
     try {
       if (editingId) {
-        const updateData: Record<string, unknown> = {
+        const updateData: Record<string, string | string[] | ReturnType<typeof serverTimestamp> | undefined> = {
           nama: formData.nama.trim(),
           email: formData.email.trim(),
           role: formData.role.trim(),
