@@ -1654,6 +1654,7 @@ export default function RekapProformaInvoicePage() {
             <div class="info-row">
               <span class="info-label">Nomor Seri : ${surat.nomorSeri}</span>
             </div>
+            ${!isGI ? `<div class="info-row"><span class="info-label">Nomor PI : ${piDisplay}</span></div>` : ""}
           </div>
           ${recipientBox}
           <div class="salutation">
