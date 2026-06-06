@@ -1564,8 +1564,9 @@ export default function RekapProformaInvoicePage() {
         (it, idx) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
-          ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (it.nomorPI || piDisplay || "-") : (it.nomorPO || "-")}</td>
+          ${isMandiri ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
+          ${isGI || isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPI || piDisplay || "-"}</td>` : ""}
+          ${isMandiri || isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPO || "-"}</td>` : ""}
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
@@ -1665,8 +1666,9 @@ export default function RekapProformaInvoicePage() {
               <thead>
                 <tr>
                   <th style="width: 30px;">NO</th>
-                  ${!isGI ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
-                  <th style="width: 100px;">NOMOR PI</th>
+                  ${isMandiri ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
+                  ${isGI || isDikuasakan ? `<th style="width: 100px;">NOMOR PI</th>` : ""}
+                  ${isMandiri || isDikuasakan ? `<th style="width: 100px;">NOMOR PO</th>` : ""}
                   <th>JENIS PUPUK</th>
                   <th style="width: 60px;">PARTY</th>
                   <th style="width: 100px;">PENGAMBILAN<br>ZAK</th>
@@ -2146,6 +2148,16 @@ export default function RekapProformaInvoicePage() {
       render: (row: ProformaInvoice) => (
         <span className={`px-2 py-1 rounded-md text-xs font-medium ${row.metodePembayaran === "Transfer" ? "bg-blue-100 text-blue-800" : "bg-green-100 text-green-800"}`}>
           {row.metodePembayaran}
+        </span>
+      ),
+    },
+    {
+      key: "statusPajak",
+      header: "Status Pajak",
+      width: "120px",
+      render: (row: ProformaInvoice) => (
+        <span className={`px-2 py-1 rounded-md text-xs font-bold ${row.includePPN ? "bg-indigo-100 text-indigo-700" : "bg-gray-100 text-gray-600"}`}>
+          {row.includePPN ? "PPN 11%" : "Non PPN"}
         </span>
       ),
     },
