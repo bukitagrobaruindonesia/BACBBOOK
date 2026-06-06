@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  collection, getDocs, query, orderBy,
+  collection, getDocs, query, orderBy, doc, deleteDoc, addDoc, serverTimestamp, where,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -164,6 +164,37 @@ const numberToWords = (num: number): string => {
     i++;
   }
   return result.trim() + " RUPIAH";
+};
+
+const getRomanMonth = (month: number) => {
+  const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+  return romans[month - 1] || "I";
+};
+
+const getNextBastNumber = async (): Promise<string> => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const roman = getRomanMonth(now.getMonth() + 1);
+  const prefix = `BAGB/BAB/${roman}/${year}`;
+  const q = query(
+    collection(db, "beritaAcara"),
+    where("nomorSeri", ">=", prefix),
+    where("nomorSeri", "<=", prefix + "\uf8ff"),
+    orderBy("nomorSeri", "asc")
+  );
+  const snapshot = await getDocs(q);
+  const numbers: number[] = [];
+  snapshot.docs.forEach((d) => {
+    const parts = d.data().nomorSeri?.split("/") || [];
+    const last = parseInt(parts[parts.length - 1]);
+    if (!isNaN(last)) numbers.push(last);
+  });
+  numbers.sort((a, b) => a - b);
+  let nextNum = 1;
+  for (const num of numbers) {
+    if (num === nextNum) { nextNum++; } else if (num > nextNum) { break; }
+  }
+  return `${prefix}/${String(nextNum).padStart(4, "0")}`;
 };
 
 const bulanOptions = [
@@ -349,6 +380,82 @@ export default function BeritaAcaraPage() {
     setBaList([...baList]);
   };
 
+  const handleRegenerateBA = async (ba: BeritaAcaraData) => {
+    if (!confirm("Regenerate Berita Acara? Data BA lama akan dihapus dan digenerate ulang menyesuaikan Proforma Invoice dan Surat Pengangkutan terbaru.")) return;
+    setIsLoading(true);
+    try {
+      const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
+      const piQuery = query(collection(db, "proformaInvoice"), where("nomorPI", "==", piNomor));
+      const piSnap = await getDocs(piQuery);
+      let piData: ProformaInvoice | null = null;
+      if (!piSnap.empty) {
+        const d = piSnap.docs[0];
+        piData = { id: d.id, ...d.data() } as ProformaInvoice;
+      }
+      if (!piData) {
+        alert("Data Proforma Invoice tidak ditemukan!");
+        setIsLoading(false);
+        return;
+      }
+      const spQuery1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", piNomor));
+      const spSnap1 = await getDocs(spQuery1);
+      const spQuery2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", piNomor));
+      const spSnap2 = await getDocs(spQuery2);
+      const suratList: SuratMuatInfo[] = [];
+      const seen = new Set<string>();
+      [...spSnap1.docs, ...spSnap2.docs].forEach(d => {
+        if (!seen.has(d.id)) {
+          seen.add(d.id);
+          suratList.push({ id: d.id, ...d.data() } as SuratMuatInfo);
+        }
+      });
+      const bastItems: BeritaAcaraItem[] = [];
+      let no = 1;
+      suratList.forEach((surat) => {
+        const suratItems = (surat.items || []).filter((it) => {
+          const itemPI = it.nomorPI || "";
+          return !itemPI || itemPI === piNomor;
+        });
+        if (suratItems.length === 0) return;
+        const totalZAK = suratItems.reduce((sum, it) => sum + (it.pengambilanZAK || 0), 0);
+        const produkNames = suratItems.map((it) => it.jenisPupuk).filter(Boolean).join(", ");
+        const fotSet = new Set(suratItems.map((it) => it.fot || "").filter(Boolean));
+        const fot = Array.from(fotSet).join(", ");
+        bastItems.push({
+          no: no++,
+          tanggalMuat: surat.tanggal,
+          namaProduk: produkNames,
+          fot: fot,
+          qty: `${totalZAK} ZAK`,
+          noSJ: surat.nomorSeri,
+          driver: surat.driverUnit || "",
+          nopol: surat.nomorPolisi || "",
+        });
+      });
+      await deleteDoc(doc(db, "beritaAcara", ba.id));
+      const nomor = await getNextBastNumber();
+      await addDoc(collection(db, "beritaAcara"), {
+        nomorSeri: nomor,
+        nomorPI: ba.nomorPI,
+        namaCustomer: piData.namaCustomer,
+        tanggal: new Date().toISOString().split("T")[0],
+        pihakPertama: { nama: "", jabatan: "", perusahaan: "PT Bukit Agrochemical Baru" },
+        pihakKedua: { nama: piData.namaCustomer, alamat: piData.alamatCustomer },
+        items: bastItems,
+        createdAt: serverTimestamp(),
+      });
+      const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
+      delete mapping[ba.id];
+      localStorage.setItem("ba_ttd_mapping", JSON.stringify(mapping));
+      await fetchAllData();
+    } catch (error) {
+      console.error(error);
+      alert("Gagal regenerate Berita Acara.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handlePrintCombined = (ba: BeritaAcaraData) => {
     const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
     const pi = piMap[piNomor];
@@ -407,13 +514,15 @@ export default function BeritaAcaraPage() {
     let spHtml = "";
     suratList.forEach((surat, sIdx) => {
       const isGI = !surat.jenisSurat || surat.jenisSurat === "gudangInduk";
+      const isMandiri = surat.jenisSurat === "do" && surat.subJenisDO === "mandiri";
       const isDikuasakan = surat.jenisSurat === "do" && surat.subJenisDO === "dikuasakan";
       const piDisplay = Array.isArray(surat.nomorPI) ? surat.nomorPI.join(", ") : surat.nomorPI;
       const spItemsHtml = (surat.items || []).map((it, idx) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
-          ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (it.nomorPI || piDisplay || "-") : (it.nomorPO || "-")}</td>
+          ${isMandiri ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
+          ${isGI || isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPI || piDisplay || "-"}</td>` : ""}
+          ${isMandiri || isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPO || "-"}</td>` : ""}
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
@@ -456,6 +565,7 @@ export default function BeritaAcaraPage() {
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;">
               <span style="font-weight: 600;">Nomor Seri : ${surat.nomorSeri}</span>
             </div>
+            ${!isGI ? `<div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;"><span style="font-weight: 600;">Nomor PI : ${piDisplay}</span></div>` : ""}
           </div>
           ${recipientBox}
           <div style="margin-bottom: 8px; font-size: 10px;">
@@ -468,8 +578,9 @@ export default function BeritaAcaraPage() {
               <thead>
                 <tr>
                   <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 30px;">NO</th>
-                  ${!isGI ? `<th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">NOMOR SUB DO</th>` : ""}
-                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">NOMOR PI</th>
+                  ${isMandiri ? `<th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">NOMOR SUB DO</th>` : ""}
+                  ${isGI || isDikuasakan ? `<th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">NOMOR PI</th>` : ""}
+                  ${isMandiri || isDikuasakan ? `<th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">NOMOR PO</th>` : ""}
                   <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact;">JENIS PUPUK</th>
                   <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 60px;">PARTY</th>
                   <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">PENGAMBILAN<br>ZAK</th>
@@ -766,9 +877,9 @@ export default function BeritaAcaraPage() {
     {
       key: "aksi",
       header: "AKSI",
-      width: "140px",
+      width: "280px",
       render: (row: BeritaAcaraData) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={(e) => { e.stopPropagation(); handleSelectTTD(row); }}
             className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 transition-colors flex items-center gap-1"
@@ -782,6 +893,13 @@ export default function BeritaAcaraPage() {
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
             Print
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); handleRegenerateBA(row); }}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-700 text-white transition-colors flex items-center gap-1"
+          >
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+            Regenerate
           </button>
         </div>
       ),

@@ -59,6 +59,7 @@ interface FormDataState {
   ppnNominal: number;
   ongkosKirim: string;
   jumlahUangDibayar: string;
+  tanggalPembayaran: string;
   subtotal: number;
   jumlahTertagih: number;
   terbilang: string;
@@ -99,6 +100,7 @@ export default function InputProformaInvoicePage() {
     ppnNominal: 0,
     ongkosKirim: "",
     jumlahUangDibayar: "",
+    tanggalPembayaran: new Date().toISOString().split("T")[0],
     subtotal: 0,
     jumlahTertagih: 0,
     terbilang: "",
@@ -586,6 +588,7 @@ export default function InputProformaInvoicePage() {
         ppnNominal: formData.ppnNominal,
         ongkosKirim: parseFloat(formData.ongkosKirim) || 0,
         jumlahUangDibayar: parseFloat(formData.jumlahUangDibayar) || 0,
+        tanggalPembayaran: formData.tanggalPembayaran || "",
         subtotal: formData.subtotal,
         jumlahTertagih: formData.jumlahTertagih,
         terbilang: formData.terbilang,
@@ -612,6 +615,7 @@ export default function InputProformaInvoicePage() {
         ppnNominal: 0,
         ongkosKirim: "",
         jumlahUangDibayar: "",
+        tanggalPembayaran: new Date().toISOString().split("T")[0],
         subtotal: 0,
         jumlahTertagih: 0,
         terbilang: "",
@@ -848,9 +852,15 @@ export default function InputProformaInvoicePage() {
                   <span className="text-sm font-mono font-semibold text-purple-700">{formatRupiah(parseFloat(formData.ongkosKirim) || 0)}</span>
                 </div>
               )}
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Uang yang telah Dibayar (Opsional)</label>
-                <input type="text" inputMode="decimal" name="jumlahUangDibayar" value={formData.jumlahUangDibayar} onChange={handleChange} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Uang yang telah Dibayar (Opsional)</label>
+                  <input type="text" inputMode="decimal" name="jumlahUangDibayar" value={formData.jumlahUangDibayar} onChange={handleChange} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Tanggal Pembayaran</label>
+                  <input type="date" name="tanggalPembayaran" value={formData.tanggalPembayaran} onChange={handleChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
+                </div>
               </div>
               {parseFloat(formData.jumlahUangDibayar) > 0 && (
                 <div className="flex items-center justify-between p-3 bg-teal-50 rounded-lg border border-teal-100">
@@ -889,7 +899,8 @@ export default function InputProformaInvoicePage() {
               nomorPI: currentNomorPI,
               namaCustomer: "", alamatCustomer: "", npwp: "",
               metodePembayaran: "Transfer", uangMuka: "", ppnNominal: 0,
-              ongkosKirim: "", jumlahUangDibayar: "", subtotal: 0,
+              ongkosKirim: "", jumlahUangDibayar: "", tanggalPembayaran: new Date().toISOString().split("T")[0],
+              subtotal: 0,
               jumlahTertagih: 0, terbilang: "", tanggalJatuhTempo: "",
               keterangan: "", selectedTTD: "",
             });
