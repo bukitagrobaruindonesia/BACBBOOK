@@ -170,13 +170,13 @@ const parseNomorSeri = (nomorSeri: string) => {
 };
 
 const validateNomorSeriFormat = (value: string) => {
-  const giRegex = new RegExp("^BAGB-SP/\\d{4}/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)/\\d{4}$");
-  const doRegex = new RegExp("^BAGB-SP-DO.+-\\d{4}$");
+  const giRegex = new RegExp("^BAGB-SP/\d{4}/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)/\d{4}$");
+  const doRegex = new RegExp("^BAGB-SP-DO.+-\d{4}$");
   return giRegex.test(value.trim()) || doRegex.test(value.trim());
 };
 
 const parseInvoiceNumber = (nomor: string) => {
-  const match = nomor.match(new RegExp("^BAGB-INV(?:-S(\\d+))?-(\\d{4})$"));
+  const match = nomor.match(new RegExp("^BAGB-INV(?:-S(\d+))?-(\d{4})$"));
   if (!match) return null;
   return {
     isPartial: !!match[1],
@@ -651,7 +651,7 @@ export default function RekapProformaInvoicePage() {
       snap.docs.forEach((d) => {
         const ni = d.data().nomorInvoice;
         if (ni && ni.includes("-S") && ni.endsWith(`-${baseNumber}`)) {
-          const match = ni.match(new RegExp("-S(\\d+)-"));
+          const match = ni.match(new RegExp("-S(\d+)-"));
           if (match) usedPartials.add(parseInt(match[1]));
         }
       });
@@ -817,7 +817,7 @@ export default function RekapProformaInvoicePage() {
       const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
       const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
       const totalPembayaran = totalSubTotal + ppn + (pi.ongkosKirim || 0);
-      await addDoc(collection(db, "arsipInvoice"), {
+      const arsipData = {
         nomorInvoice: invoiceNomor,
         tanggalInvoice: invoiceDate || pi.tanggal,
         nomorPI: pi.nomorPI,
@@ -846,8 +846,15 @@ export default function RekapProformaInvoicePage() {
         ttdHormatNama: "Sri Setyo Wibowo",
         ttdHormatJabatan: "Manager Keuangan",
         ttdHormatImage: "/Picture4.png",
-        createdAt: serverTimestamp(),
-      });
+        updatedAt: serverTimestamp(),
+      };
+      const q = query(collection(db, "arsipInvoice"), where("nomorInvoice", "==", invoiceNomor));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        await updateDoc(doc(db, "arsipInvoice", snap.docs[0].id), arsipData);
+      } else {
+        await addDoc(collection(db, "arsipInvoice"), { ...arsipData, createdAt: serverTimestamp() });
+      }
       setIsInvoiceModalOpen(false);
       alert("Invoice berhasil diterbitkan!");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice."); } finally { setIsSubmitting(false); }
@@ -891,7 +898,7 @@ export default function RekapProformaInvoicePage() {
       const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
       const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
       const totalPembayaran = totalSubTotal + ppn + (pi.ongkosKirim || 0);
-      await addDoc(collection(db, "arsipInvoiceSementara"), {
+      const arsipData = {
         nomorInvoice: invoiceNomor,
         tanggalInvoice: invoiceDate || surat.tanggal,
         nomorPI: pi.nomorPI,
@@ -921,8 +928,15 @@ export default function RekapProformaInvoicePage() {
         ttdHormatNama: "Sri Setyo Wibowo",
         ttdHormatJabatan: "Manager Keuangan",
         ttdHormatImage: "/Picture4.png",
-        createdAt: serverTimestamp(),
-      });
+        updatedAt: serverTimestamp(),
+      };
+      const q = query(collection(db, "arsipInvoiceSementara"), where("nomorInvoice", "==", invoiceNomor));
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        await updateDoc(doc(db, "arsipInvoiceSementara", snap.docs[0].id), arsipData);
+      } else {
+        await addDoc(collection(db, "arsipInvoiceSementara"), { ...arsipData, createdAt: serverTimestamp() });
+      }
       setIsInvoiceModalOpen(false);
       alert("Invoice sementara berhasil diterbitkan!");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice sementara."); } finally { setIsSubmitting(false); }
