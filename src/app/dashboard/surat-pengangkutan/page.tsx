@@ -170,6 +170,7 @@ export default function SuratPengangkutanPage() {
 
   const [items, setItems] = useState<SuratPengangkutanItem[]>([]);
   const [piProductStatus, setPiProductStatus] = useState<Record<string, Record<string, { loaded: number; ordered: number; status: string }>>>({});
+  const [piFullyLoadedMap, setPiFullyLoadedMap] = useState<Record<string, boolean>>({});
   const [piSearchMap, setPiSearchMap] = useState<Record<number, string>>({});
   const [piShowMap, setPiShowMap] = useState<Record<number, boolean>>({});
   const itemSearchRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -184,6 +185,14 @@ export default function SuratPengangkutanPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (piList.length > 0 && jenisSurat) {
+      piList.forEach((pi) => {
+        loadProductStatusForPI(pi);
+      });
+    }
+  }, [piList, jenisSurat]);
 
   useEffect(() => {
     if (urlNomorPI && piList.length > 0 && !showJenisModal && !showSubJenisModal) {
@@ -538,8 +547,17 @@ export default function SuratPengangkutanPage() {
     });
   };
 
+  const isPIFullyLoaded = (pi: ProformaInvoice) => {
+    const statusMap = piProductStatus[pi.nomorPI];
+    if (!statusMap) return false;
+    const validProducts = getValidProductsForPI(pi);
+    if (validProducts.length === 0) return false;
+    return validProducts.every((prod) => statusMap[prod.namaProduk]?.status === "complete");
+  };
+
   const getPIAvailableForItem = (search: string) => {
     return piList.filter((pi) => {
+      if (isPIFullyLoaded(pi)) return false;
       if (!piHasValidProductForJenisSurat(pi)) return false;
       const searchLower = search.toLowerCase();
       const matchSearch = pi.nomorPI.toLowerCase().includes(searchLower) || pi.namaCustomer.toLowerCase().includes(searchLower);
@@ -580,6 +598,8 @@ export default function SuratPengangkutanPage() {
       })
     );
     setPiProductStatus((prev) => ({ ...prev, [pi.nomorPI]: statusMap }));
+    const fullyLoaded = validProducts.length > 0 && validProducts.every((prod) => statusMap[prod.namaProduk]?.status === "complete");
+    setPiFullyLoadedMap((prev) => ({ ...prev, [pi.nomorPI]: fullyLoaded }));
     return statusMap;
   };
 
@@ -587,8 +607,15 @@ export default function SuratPengangkutanPage() {
     setPiShowMap((prev) => ({ ...prev, [itemId]: false }));
     setPiSearchMap((prev) => ({ ...prev, [itemId]: pi.nomorPI }));
 
+    const statusMap = await loadProductStatusForPI(pi);
+    const fullyLoaded = piFullyLoadedMap[pi.nomorPI] !== undefined ? piFullyLoadedMap[pi.nomorPI] : (getValidProductsForPI(pi).every((prod) => statusMap[prod.namaProduk]?.status === "complete"));
+    if (fullyLoaded) {
+      setErrors((prev) => ({ ...prev, [`nomorPI_${itemId}`]: `PI ${pi.nomorPI} sudah dimuat semua, tidak dapat dipilih.` }));
+      return;
+    }
     const validProducts = getValidProductsForPI(pi);
-    const firstProd = validProducts[0];
+    const availableProducts = validProducts.filter((prod) => statusMap[prod.namaProduk]?.status !== "complete");
+    const firstProd = availableProducts[0];
     let bobot = 50;
     let fot = "";
     let jenisPupuk = "";
@@ -600,7 +627,7 @@ export default function SuratPengangkutanPage() {
       fot = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
       jenisPupuk = firstProd.namaProduk;
       piKuantitas = firstProd.kuantitas || 0;
-      piLoadedKG = await getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk);
+      piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || 0;
     }
 
     setItems((prev) =>
@@ -628,12 +655,28 @@ export default function SuratPengangkutanPage() {
         };
       })
     );
+    if (errors[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]) {
+      setErrors((prev) => {
+        const n = { ...prev };
+        delete n[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`];
+        return n;
+      });
+    }
   };
 
   const handleProdukSelectForItem = async (itemId: number, pi: ProformaInvoice, produkIndex: number) => {
+    const statusMap = piProductStatus[pi.nomorPI] || {};
     const validProducts = getValidProductsForPI(pi);
     const prod = validProducts[produkIndex];
     if (!prod) return;
+
+    if (statusMap[prod.namaProduk]?.status === "complete") {
+      setErrors((prev) => ({
+        ...prev,
+        [`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]: `Produk ${prod.namaProduk} pada PI ${pi.nomorPI} sudah dimuat semua`,
+      }));
+      return;
+    }
 
     const currentItem = items.find((it) => it.id === itemId);
     if (currentItem && currentItem.nomorSubDO.trim()) {
@@ -649,7 +692,7 @@ export default function SuratPengangkutanPage() {
 
     const bobot = getBobotPerUnit(prod.namaProduk);
     const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
-    const piLoadedKG = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
+    const piLoadedKG = statusMap[prod.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
     const piKuantitas = prod.kuantitas || 0;
 
     setItems((prev) =>
@@ -683,7 +726,6 @@ export default function SuratPengangkutanPage() {
         return n;
       });
     }
-    await loadProductStatusForPI(pi);
   };
 
   const addItem = () => {
@@ -1096,6 +1138,7 @@ export default function SuratPengangkutanPage() {
     setItems([]);
     setPiSearchMap({});
     setPiProductStatus({});
+    setPiFullyLoadedMap({});
     setPiShowMap({});
     setErrors({});
     if (urlNomorPI) {
