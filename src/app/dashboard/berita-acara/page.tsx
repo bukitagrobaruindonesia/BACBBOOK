@@ -85,6 +85,7 @@ interface ProformaInvoice {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  cc?: string;
 }
 
 interface BeritaAcaraItem {
@@ -272,6 +273,7 @@ export default function BeritaAcaraPage() {
       piSnap.docs.forEach(d => {
         const data = d.data() as ProformaInvoice;
         data.id = d.id;
+        data.cc = d.data().cc || "";
         piData[data.nomorPI] = data;
       });
       setPiMap(piData);
@@ -795,6 +797,7 @@ export default function BeritaAcaraPage() {
                   <p style="margin-top: 3px;"><strong style="color: #000; font-size: 9px;">BANK BRI</strong> - Cabang Lamandau</p>
                   <p>a/n PT Bukit Agrochemical Baru</p>
                   <p>No. Rek : 2232-01000-879-567</p>
+                  <p style="margin-top: 6px; font-size: 9px;">CC : ${pi.cc || "-"}</p>
                 </div>
               </div>
               <div style="width: 180px; padding: 8px 10px; text-align: center;">
