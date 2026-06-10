@@ -929,7 +929,6 @@ export default function RekapProformaInvoicePage() {
   };
 
   const filteredData = data.filter((item) => {
-    if (item.statusPemesanan === "Batal") return false;
     const matchSearch =
       item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -2087,9 +2086,10 @@ export default function RekapProformaInvoicePage() {
         const status = getStatusPengangkutan(row);
         const isComplete = status === "complete";
         const isPaid = getPaymentStatus(row) === "Lunas";
-        const canInvoice = isComplete && isPaid;
+        const canInvoice = isComplete && isPaid && row.statusPemesanan !== "Batal";
         let title = "";
-        if (!isComplete) title = "Belum selesai dimuat";
+        if (row.statusPemesanan === "Batal") title = "Pemesanan Dibatalkan";
+        else if (!isComplete) title = "Belum selesai dimuat";
         else if (!isPaid) title = "Menunggu pelunasan";
         else title = "Print Invoice Full";
         return (
@@ -2103,7 +2103,7 @@ export default function RekapProformaInvoicePage() {
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
               Invoice
             </button>
-            {row.invoiceBaseNumber && (
+            {row.invoiceBaseNumber && row.statusPemesanan !== "Batal" && (
               <button onClick={(e) => { e.stopPropagation(); handleOpenFullInvoice(row); }} className="px-2 py-1 rounded-md text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors" title="Terbitkan Ulang">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               </button>
@@ -2145,7 +2145,7 @@ export default function RekapProformaInvoicePage() {
                 </div>
               ))}
             </div>
-            {!isComplete && (
+            {!isComplete && row.statusPemesanan !== "Batal" && (
               <button onClick={(e) => { e.stopPropagation(); router.push("/dashboard/surat-pengangkutan?nomorPI=" + encodeURIComponent(row.nomorPI)); }} className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                 Buat Surat Muat
@@ -2187,12 +2187,14 @@ export default function RekapProformaInvoicePage() {
           <button onClick={(e) => { e.stopPropagation(); handleEdit(row); }} className="p-2 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
           </button>
-          <button onClick={(e) => { e.stopPropagation(); handlePrintPDF(row); }} disabled={(row.jumlahUangDibayar || 0) === 0} className={`p-2 rounded-lg transition-colors ${(row.jumlahUangDibayar || 0) === 0 ? "text-gray-300 cursor-not-allowed" : "text-purple-600 hover:bg-purple-50"}`} title={(row.jumlahUangDibayar || 0) === 0 ? "Belum dibayar - tidak dapat print" : "Print PDF"}>
+          <button onClick={(e) => { e.stopPropagation(); handlePrintPDF(row); }} disabled={(row.jumlahUangDibayar || 0) === 0 || row.statusPemesanan === "Batal"} className={`p-2 rounded-lg transition-colors ${(row.jumlahUangDibayar || 0) === 0 || row.statusPemesanan === "Batal" ? "text-gray-300 cursor-not-allowed" : "text-purple-600 hover:bg-purple-50"}`} title={(row.jumlahUangDibayar || 0) === 0 ? "Belum dibayar - tidak dapat print" : row.statusPemesanan === "Batal" ? "Pemesanan dibatalkan" : "Print PDF"}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
           </button>
-          <button onClick={(e) => { e.stopPropagation(); handleCancelOrder(row); }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Batalkan Pemesanan">
+          {row.statusPemesanan !== "Batal" && (
+            <button onClick={(e) => { e.stopPropagation(); handleCancelOrder(row); }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Batalkan Pemesanan">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           </button>
+          )}
           <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
@@ -2234,7 +2236,7 @@ export default function RekapProformaInvoicePage() {
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="Detail Proforma Invoice" size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
-          <Button variant="primary" onClick={() => selectedItem && handlePrintPDF(selectedItem)}>
+          <Button variant="primary" onClick={() => selectedItem && handlePrintPDF(selectedItem)} disabled={selectedItem?.statusPemesanan === "Batal"}>
             <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
             Print PDF
           </Button>
@@ -2246,6 +2248,9 @@ export default function RekapProformaInvoicePage() {
               <div className="p-4 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500 uppercase tracking-wide">Nomor PI</p><p className="text-lg font-bold text-green-700">{selectedItem.nomorPI}</p></div>
               <div className="p-4 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500 uppercase tracking-wide">Tanggal</p><p className="text-lg font-bold text-gray-800">{selectedItem.tanggal}</p></div>
             </div>
+            {selectedItem.statusPemesanan === "Batal" && (
+              <div className="p-4 bg-red-50 rounded-xl border border-red-200"><p className="text-xs text-red-600 uppercase tracking-wide font-semibold mb-2">Status Pemesanan</p><span className="px-3 py-1.5 rounded-lg text-sm font-bold bg-red-100 text-red-700">Batal</span></div>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Customer</p>
@@ -2281,7 +2286,7 @@ export default function RekapProformaInvoicePage() {
             </div>
             {(() => {
               const status = getStatusPengangkutan(selectedItem);
-              return status === "complete" ? (
+              return status === "complete" && selectedItem.statusPemesanan !== "Batal" ? (
                 <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-200">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs text-indigo-600 uppercase tracking-wide font-semibold">Berita Acara Serah Terima</p>
@@ -2336,7 +2341,9 @@ export default function RekapProformaInvoicePage() {
                 <div className="flex justify-between items-center text-sm"><span className="font-medium text-gray-700">Sisa Pembayaran</span><span className="font-mono text-gray-900">{formatRupiah(Math.max(0, (selectedItem.jumlahTertagih || 0) - (selectedItem.jumlahUangDibayar || 0)))}</span></div>
                 {selectedItem.tanggalPembayaran && <div className="flex justify-between items-center text-sm"><span className="font-medium text-gray-700">Pembayaran Terakhir</span><span className="font-mono text-gray-900">{selectedItem.tanggalPembayaran}</span></div>}
               </div>
-              <button onClick={() => handleOpenPaymentEdit(selectedItem)} className="mt-3 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-xs font-semibold transition-colors">Tambah Pembayaran</button>
+              {selectedItem.statusPemesanan !== "Batal" && (
+                <button onClick={() => handleOpenPaymentEdit(selectedItem)} className="mt-3 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-xs font-semibold transition-colors">Tambah Pembayaran</button>
+              )}
             </div>
             {getSuratMuatForPI(selectedItem.nomorPI).length > 0 && (
               <div className="overflow-x-auto">
