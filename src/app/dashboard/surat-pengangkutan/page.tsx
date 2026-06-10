@@ -169,6 +169,7 @@ export default function SuratPengangkutanPage() {
   });
 
   const [items, setItems] = useState<SuratPengangkutanItem[]>([]);
+  const [piProductStatus, setPiProductStatus] = useState<Record<string, Record<string, { loaded: number; ordered: number; status: string }>>>({});
   const [piSearchMap, setPiSearchMap] = useState<Record<number, string>>({});
   const [piShowMap, setPiShowMap] = useState<Record<number, boolean>>({});
   const itemSearchRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -565,6 +566,22 @@ export default function SuratPengangkutanPage() {
     );
   };
 
+  const loadProductStatusForPI = async (pi: ProformaInvoice) => {
+    const validProducts = getValidProductsForPI(pi);
+    const statusMap: Record<string, { loaded: number; ordered: number; status: string }> = {};
+    await Promise.all(
+      validProducts.map(async (prod) => {
+        const loaded = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
+        const ordered = prod.kuantitas || 0;
+        let status = "pending";
+        if (loaded >= ordered) status = "complete";
+        else if (loaded > 0) status = "partial";
+        statusMap[prod.namaProduk] = { loaded, ordered, status };
+      })
+    );
+    setPiProductStatus((prev) => ({ ...prev, [pi.nomorPI]: statusMap }));
+  };
+
   const handlePISelectForItem = async (itemId: number, pi: ProformaInvoice) => {
     setPiShowMap((prev) => ({ ...prev, [itemId]: false }));
     setPiSearchMap((prev) => ({ ...prev, [itemId]: pi.nomorPI }));
@@ -665,6 +682,7 @@ export default function SuratPengangkutanPage() {
         return n;
       });
     }
+    await loadProductStatusForPI(pi);
   };
 
   const addItem = () => {
@@ -692,7 +710,7 @@ export default function SuratPengangkutanPage() {
     ]);
   };
 
-  const addItemWithPI = (pi: ProformaInvoice) => {
+  const addItemWithPI = async (pi: ProformaInvoice) => {
     const validProducts = getValidProductsForPI(pi);
     const firstProd = validProducts[0];
     const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
@@ -750,6 +768,7 @@ export default function SuratPengangkutanPage() {
         piLoadedKG: piLoadedKG,
       },
     ]);
+    await loadProductStatusForPI(pi);
   };
 
   const removeItem = (id: number) => {
@@ -840,6 +859,10 @@ export default function SuratPengangkutanPage() {
     items.forEach((item, idx) => {
       if (!item.nomorPI.trim()) newErrors[`nomorPI_${idx}`] = "Nomor PI wajib dipilih";
       if (!item.jenisPupuk.trim()) newErrors[`jenisPupuk_${idx}`] = "Jenis pupuk wajib diisi";
+      const prodStatus = piProductStatus[item.nomorPI]?.[item.jenisPupuk];
+      if (item.jenisPupuk && prodStatus?.status === "complete") {
+        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} pada PI ${item.nomorPI} sudah dimuat semua`;
+      }
       if (isMandiri) {
         if (!item.nomorSubDO.trim()) newErrors[`nomorSubDO_${idx}`] = "Nomor Sub DO wajib dipilih";
         if (!item.nomorPO.trim()) newErrors[`nomorPO_${idx}`] = "Nomor PO wajib diisi";
@@ -1068,6 +1091,7 @@ export default function SuratPengangkutanPage() {
     });
     setItems([]);
     setPiSearchMap({});
+    setPiProductStatus({});
     setPiShowMap({});
     setErrors({});
     if (urlNomorPI) {
@@ -1551,7 +1575,7 @@ export default function SuratPengangkutanPage() {
                       <div className="md:col-span-3">
                         <label className="block text-sm font-medium text-gray-700 mb-1.5">Pilih Produk dari PI</label>
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                          {validProducts.map((prod, pidx) => {
+                          {validProducts.filter((prod) => piProductStatus[selectedPI.nomorPI]?.[prod.namaProduk]?.status !== "complete").map((prod, pidx) => {
                             const isSelected = item.jenisPupuk === prod.namaProduk;
                             const alreadySelectedItem = isProductAlreadySelected(item.id, selectedPI.nomorPI, prod.namaProduk);
                             const isDisabled = !!alreadySelectedItem;
