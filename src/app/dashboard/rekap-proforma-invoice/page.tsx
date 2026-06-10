@@ -95,6 +95,7 @@ interface ProformaInvoice {
   statusPelunasan?: string;
   riwayatPembayaran?: RiwayatPembayaran[];
   cc?: string;
+  statusPemesanan?: string;
 }
 
 interface StockItem {
@@ -256,7 +257,7 @@ export default function RekapProformaInvoicePage() {
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [invoiceSurat, setInvoiceSurat] = useState<SuratMuatInfo | null>(null);
   const [selectedOrderTTD, setSelectedOrderTTD] = useState("");
-    const [invoiceNomor, setInvoiceNomor] = useState("");
+  const [invoiceNomor, setInvoiceNomor] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -349,6 +350,7 @@ export default function RekapProformaInvoicePage() {
           statusPelunasan: d.statusPelunasan || "Belum Lunas",
           riwayatPembayaran: d.riwayatPembayaran || [],
           cc: d.cc || "",
+          statusPemesanan: d.statusPemesanan || "Aktif",
         } as ProformaInvoice;
       });
       setData(items);
@@ -569,6 +571,11 @@ export default function RekapProformaInvoicePage() {
     return { class: "bg-red-100 text-red-700 border-red-200", label: "Belum Lunas" };
   };
 
+  const getPemesananBadge = (status?: string) => {
+    if (status === "Batal") return { class: "bg-red-100 text-red-700 border-red-200", label: "Batal" };
+    return { class: "bg-green-100 text-green-700 border-green-200", label: "Aktif" };
+  };
+
   const getProdukLoadStatus = (item: ProformaInvoice) => {
     const suratList = getSuratMuatForPI(item.nomorPI);
     return item.produkItems.map((prod) => {
@@ -692,6 +699,17 @@ export default function RekapProformaInvoicePage() {
       const nomor = await generateInvoiceNumber(surat);
       setInvoiceNomor(nomor);
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
+  };
+
+  const handleCancelOrder = async (item: ProformaInvoice) => {
+    if (!confirm("Apakah Anda yakin ingin membatalkan pemesanan ini? Data akan tetap tersimpan dengan status Batal.")) return;
+    try {
+      await updateDoc(doc(db, "proformaInvoice", item.id), {
+        statusPemesanan: "Batal",
+        updatedAt: serverTimestamp(),
+      });
+      fetchData();
+    } catch (error) { console.error(error); alert("Gagal membatalkan pemesanan."); }
   };
 
   const handleResetBast = async (nomorPI: string) => {
@@ -911,6 +929,7 @@ export default function RekapProformaInvoicePage() {
   };
 
   const filteredData = data.filter((item) => {
+    if (item.statusPemesanan === "Batal") return false;
     const matchSearch =
       item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1335,143 +1354,6 @@ export default function RekapProformaInvoicePage() {
     } catch (error) { console.error(error); }
   };
 
-  const handlePrintBastSimple = async (item: ProformaInvoice) => {
-    let baData: any = null;
-    const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
-    const snap1 = await getDocs(q1);
-    if (!snap1.empty) baData = snap1.docs[0].data();
-    if (!baData) {
-      const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
-      const snap2 = await getDocs(q2);
-      if (!snap2.empty) baData = snap2.docs[0].data();
-    }
-    if (!baData) {
-      alert("Berita Acara belum dibuat. Silakan generate terlebih dahulu.");
-      return;
-    }
-    const bastItems: BeritaAcaraItem[] = baData.items || [];
-    const now = new Date();
-    const hari = now.toLocaleDateString("id-ID", { weekday: "long" });
-    const tanggalLengkap = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-    const rowsHtml = bastItems.map((it) => `
-      <tr>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.tanggalMuat}</td>
-        <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.namaProduk}</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.fot || "-"}</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.qty}</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.noSJ}</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.driver}</td>
-        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nopol}</td>
-      </tr>
-    `).join("");
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Berita Acara ${baData.nomorSeri}</title>
-        <style>
-          @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
-          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
-          .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .title-bar { text-align: center; margin: 8px 0 12px 0; }
-          .title-bar h1 { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline; }
-          .title-bar p { font-size: 11px; font-weight: 600; }
-          .content { padding: 0 4px; flex: 1; }
-          .opening { margin-bottom: 12px; font-size: 10px; }
-          .party-section { margin-bottom: 10px; }
-          .party-title { font-weight: 700; margin-bottom: 4px; font-size: 10px; }
-          .party-table { width: 100%; margin-bottom: 8px; font-size: 10px; }
-          .party-table td { padding: 2px 0; vertical-align: top; }
-          .party-label { width: 100px; font-weight: 600; }
-          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; }
-          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
-          .closing { margin-bottom: 16px; font-size: 10px; text-align: justify; }
-          .signature-row { display: flex; justify-content: space-between; margin-top: 30px; }
-          .signature-box { width: 45%; text-align: center; }
-          .signature-title { font-size: 9px; margin-bottom: 50px; }
-          .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
-          .signature-role { font-size: 9px; color: #333; margin-top: 2px; }
-          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="print-bar no-print">
-          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-        </div>
-        <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
-          <div class="title-bar">
-            <h1>BERITA ACARA SERAH TERIMA BARANG</h1>
-            <p>${baData.nomorSeri}</p>
-          </div>
-          <div class="content">
-            <p class="opening">Kami yang bertanda tangan di bawah ini, pada hari ${hari}, ${tanggalLengkap}</p>
-            <div class="party-section">
-              <p class="party-title">Selanjutnya disebut Pihak Pertama.</p>
-              <table class="party-table">
-                <tr><td class="party-label">Nama</td><td>: ........................</td></tr>
-                <tr><td class="party-label">Perusahaan</td><td>: PT Bukit Agrochemical Baru</td></tr>
-                <tr><td class="party-label">Jabatan</td><td>: ........................</td></tr>
-              </table>
-            </div>
-            <div class="party-section">
-              <p class="party-title">Selanjutnya yang disebut Pihak Kedua.</p>
-              <table class="party-table">
-                <tr><td class="party-label">Nama</td><td>: ${item.namaCustomer}</td></tr>
-                <tr><td class="party-label">Alamat</td><td>: ${(item.alamatCustomer || "").replace(/\n/g, " ")}</td></tr>
-              </table>
-            </div>
-            <p class="opening">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width: 30px;">No</th>
-                  <th style="width: 80px;">Tanggal Muat</th>
-                  <th>Nama Produk</th>
-                  <th style="width: 80px;">FOT / No DO</th>
-                  <th style="width: 70px;">QTY</th>
-                  <th style="width: 120px;">No SJ</th>
-                  <th style="width: 90px;">Driver</th>
-                  <th style="width: 80px;">Nopol</th>
-                </tr>
-              </thead>
-              <tbody>${rowsHtml}</tbody>
-            </table>
-            <p class="closing">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
-            <div style="display: flex; justify-content: space-between; margin-top: 40px; align-items: flex-end;">
-              <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
-                <p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK KEDUA</p>
-                <div style="width: 100%; min-height: 80px; margin-bottom: 8px;"></div>
-                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">${item.namaCustomer || "_________________"}</p>
-              </div>
-              <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
-                <p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK PERTAMA</p>
-                <div style="position: relative; width: 100%; min-height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;">
-                  <img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.25; object-fit: contain; z-index: 1;" onerror="this.style.display=\'none\'" />
-                  <div style="position: relative; z-index: 2; min-height: 70px;"></div>
-                </div>
-                <p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">_________________</p>
-                <p style="font-size: 9px; color: #333; margin-top: 3px;">PT Bukit Agrochemical Baru</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
-    printWindow.document.write(html);
-    printWindow.document.close();
-  };
-
   const handleOpenPaymentEdit = (item: ProformaInvoice) => {
     setSelectedItem(item);
     setPaymentForm({
@@ -1549,6 +1431,7 @@ export default function RekapProformaInvoicePage() {
         "Keterangan": item.keterangan,
         "Status Pengangkutan": getStatusPengangkutan(item),
         "Status Pelunasan": item.statusPelunasan || getPaymentStatus(item),
+        "Status Pemesanan": item.statusPemesanan || "Aktif",
         "Jumlah Dibayar": item.jumlahUangDibayar || 0,
         "Tanggal Pembayaran": item.tanggalPembayaran || "",
         "Sisa (KG)": item.sisaPengambilanKG || 0,
@@ -1592,112 +1475,81 @@ export default function RekapProformaInvoicePage() {
       ? item.createdAt.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
       : "-";
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Proforma Invoice ${item.nomorPI}</title>
-        <style>
-          @page { size: A4; margin: 12mm 14mm 12mm 14mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: white; color: #000; font-size: 10px; line-height: 1.3; }
-          .page { width: 182mm; margin: 0 auto; background: white; position: relative; min-height: 257mm; }
-          .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.08; pointer-events: none; z-index: 0; }
-          .content-layer { position: relative; z-index: 1; }
-          .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .invoice-title { text-align: center; margin: 8px 0 10px 0; padding: 5px 0; background: #dcfce7; border-top: 2px solid #16a34a; border-bottom: 2px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .invoice-title h1 { color: #111; font-size: 15px; margin: 0; font-weight: bold; letter-spacing: 3px; }
-          .info-section { margin-bottom: 10px; }
-          .kepada-label { font-size: 9px; color: #333; margin-bottom: 2px; }
-          .info-row { display: flex; justify-content: space-between; gap: 0; }
-          .customer-box { flex: 1; border: 1px solid #000; padding: 8px 10px; min-height: 75px; }
-          .customer-name { font-size: 11px; font-weight: 700; color: #000; margin: 0 0 3px 0; }
-          .customer-address { font-size: 9px; color: #333; line-height: 1.5; }
-          .invoice-meta { width: 250px; padding: 0 0 0 10px; }
-          .meta-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd; }
-          .meta-row:last-child { border-bottom: none; }
-          .meta-label { color: #333; min-width: 90px; }
-          .meta-colon { margin: 0 3px; }
-          .meta-value { color: #000; font-weight: 600; text-align: right; flex: 1; }
-          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-          .data-table th { background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
-          .summary-row { display: flex; border: 1px solid #000; border-top: none; }
-          .terbilang-area { flex: 1; padding: 8px 10px; border-right: 1px solid #000; }
-          .terbilang-title { font-size: 9px; color: #333; margin-bottom: 3px; font-weight: 600; }
-          .terbilang-text { font-size: 10px; color: #000; font-weight: 700; text-transform: uppercase; line-height: 1.4; }
-          .calc-area { width: 250px; padding: 0; }
-          .calc-line { display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px; }
-          .calc-line:last-child { border-bottom: none; background: #f0fdf4; border-top: 1px solid #16a34a; padding: 5px 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .calc-name { color: #333; }
-          .calc-name-bold { font-weight: 700; color: #000; }
-          .calc-amount { font-weight: 600; font-family: monospace; font-size: 9px; }
-          .calc-amount-bold { font-size: 10px; color: #000; font-weight: 700; font-family: monospace; }
-          .due-date { padding: 5px 10px; text-align: right; border-top: 1px solid #ddd; font-size: 11px; }
-          .due-label { color: #666; font-size: 11px; }
-          .due-value { color: #dc2626; font-weight: 700; font-size: 11px; }
-          .created-info { padding: 4px 10px; text-align: right; border-top: 1px solid #eee; font-size: 10px; color: #666; }
-          .footer-row { display: flex; border: 1px solid #000; border-top: none; }
-          .footer-bank-area { flex: 1; padding: 8px 10px; border-right: 1px solid #000; }
-          .footer-bank-title { font-size: 9px; font-weight: 700; color: #000; margin-bottom: 5px; }
-          .footer-bank-text { font-size: 8px; line-height: 1.6; color: #333; }
-          .footer-bank-text strong { color: #000; font-size: 9px; }
-          .footer-ttd-area { width: 180px; padding: 8px 10px; text-align: center; }
-          .ttd-title { font-size: 9px; color: #333; margin-bottom: 6px; }
-          .ttd-img { height: 40px; object-fit: contain; margin: 0 auto 4px auto; display: block; }
-          .ttd-name { font-size: 10px; font-weight: 700; color: #000; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
-          .ttd-role { font-size: 8px; color: #555; }
-          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-          .print-btn:hover { background: #15803d; }
-          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="print-bar no-print">
-          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-        </div>
+      <!DOCTYPE html><html><head><title>Proforma Invoice ${item.nomorPI}</title>
+      <style>
+        @page { size: A4; margin: 12mm 14mm 12mm 14mm; }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: white; color: #000; font-size: 10px; line-height: 1.3; }
+        .page { width: 182mm; margin: 0 auto; background: white; position: relative; min-height: 257mm; }
+        .watermark { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.08; pointer-events: none; z-index: 0; }
+        .content-layer { position: relative; z-index: 1; }
+        .header-img { width: 100%; display: block; margin-bottom: 0; }
+        .invoice-title { text-align: center; margin: 8px 0 10px 0; padding: 5px 0; background: #dcfce7; border-top: 2px solid #16a34a; border-bottom: 2px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .invoice-title h1 { color: #111; font-size: 15px; margin: 0; font-weight: bold; letter-spacing: 3px; }
+        .info-section { margin-bottom: 10px; }
+        .kepada-label { font-size: 9px; color: #333; margin-bottom: 2px; }
+        .info-row { display: flex; justify-content: space-between; gap: 0; }
+        .customer-box { flex: 1; border: 1px solid #000; padding: 8px 10px; min-height: 75px; }
+        .customer-name { font-size: 11px; font-weight: 700; color: #000; margin: 0 0 3px 0; }
+        .customer-address { font-size: 9px; color: #333; line-height: 1.5; }
+        .invoice-meta { width: 250px; padding: 0 0 0 10px; }
+        .meta-row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; border-bottom: 1px solid #ddd; }
+        .meta-row:last-child { border-bottom: none; }
+        .meta-label { color: #333; min-width: 90px; }
+        .meta-colon { margin: 0 3px; }
+        .meta-value { color: #000; font-weight: 600; text-align: right; flex: 1; }
+        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+        .data-table th { background: #ffedd5; color: #000; font-size: 9px; padding: 5px 3px; font-weight: 700; border: 1px solid #000; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
+        .summary-row { display: flex; border: 1px solid #000; border-top: none; }
+        .terbilang-area { flex: 1; padding: 8px 10px; border-right: 1px solid #000; }
+        .terbilang-title { font-size: 9px; color: #333; margin-bottom: 3px; font-weight: 600; }
+        .terbilang-text { font-size: 10px; color: #000; font-weight: 700; text-transform: uppercase; line-height: 1.4; }
+        .calc-area { width: 250px; padding: 0; }
+        .calc-line { display: flex; justify-content: space-between; padding: 3px 10px; border-bottom: 1px solid #ddd; font-size: 9px; }
+        .calc-line:last-child { border-bottom: none; background: #f0fdf4; border-top: 1px solid #16a34a; padding: 5px 10px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .calc-name { color: #333; }
+        .calc-name-bold { font-weight: 700; color: #000; }
+        .calc-amount { font-weight: 600; font-family: monospace; font-size: 9px; }
+        .calc-amount-bold { font-size: 10px; color: #000; font-weight: 700; font-family: monospace; }
+        .due-date { padding: 5px 10px; text-align: right; border-top: 1px solid #ddd; font-size: 11px; }
+        .due-label { color: #666; font-size: 11px; }
+        .due-value { color: #dc2626; font-weight: 700; font-size: 11px; }
+        .created-info { padding: 4px 10px; text-align: right; border-top: 1px solid #eee; font-size: 10px; color: #666; }
+        .footer-row { display: flex; border: 1px solid #000; border-top: none; }
+        .footer-bank-area { flex: 1; padding: 8px 10px; border-right: 1px solid #000; }
+        .footer-bank-title { font-size: 9px; font-weight: 700; color: #000; margin-bottom: 5px; }
+        .footer-bank-text { font-size: 8px; line-height: 1.6; color: #333; }
+        .footer-bank-text strong { color: #000; font-size: 9px; }
+        .footer-ttd-area { width: 180px; padding: 8px 10px; text-align: center; }
+        .ttd-title { font-size: 9px; color: #333; margin-bottom: 6px; }
+        .ttd-img { height: 40px; object-fit: contain; margin: 0 auto 4px auto; display: block; }
+        .ttd-name { font-size: 10px; font-weight: 700; color: #000; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
+        .ttd-role { font-size: 8px; color: #555; }
+        .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+        .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+        @media print { .print-bar { display: none !important; } }
+      </style></head><body>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
         <div class="page">
-          <img src="/LogoAGRO.png" alt="Watermark" class="watermark" onerror="this.style.display=\'none\'" />
+          <img src="/LogoAGRO.png" alt="Watermark" class="watermark" onerror="this.style.display='none'" />
           <div class="content-layer">
-            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'; this.parentElement.insertAdjacentHTML(\'afterbegin\', \'<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>\');" />
-            <div class="invoice-title">
-              <h1>PROFORMA INVOICE</h1>
-            </div>
+            <img src="/logo.png" alt="Header" class="header-img" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>');" />
+            <div class="invoice-title"><h1>PROFORMA INVOICE</h1></div>
             <div class="info-section">
               <p class="kepada-label">Kepada Yth,</p>
               <div class="info-row">
-                <div class="customer-box">
-                  <p class="customer-name">${item.namaCustomer || ""}</p>
-                  <p class="customer-address">${(item.alamatCustomer || "").replace(/\n/g, "<br>")}</p>
-                </div>
+                <div class="customer-box"><p class="customer-name">${item.namaCustomer || ""}</p><p class="customer-address">${(item.alamatCustomer || "").replace(/\n/g, "<br>")}</p></div>
                 <div class="invoice-meta">
                   <div class="meta-row"><span class="meta-label">Tanggal</span><span class="meta-colon">:</span><span class="meta-value">${item.tanggal || ""}</span></div>
                   <div class="meta-row"><span class="meta-label">No Invoice</span><span class="meta-colon">:</span><span class="meta-value">${item.nomorPI || ""}</span></div>
                   <div class="meta-row"><span class="meta-label">Metode Pembayaran</span><span class="meta-colon">:</span><span class="meta-value">${item.metodePembayaran || ""}</span></div>
                   ${item.npwp ? `<div class="meta-row"><span class="meta-label">NPWP</span><span class="meta-colon">:</span><span class="meta-value">${item.npwp}</span></div>` : ""}
-                </div>
-              </div>
-            </div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width: 28px;">NO</th>
-                  <th style="text-align: left; padding-left: 8px;">Nama Produk</th>
-                  <th style="width: 45px;">Fot</th>
-                  <th style="width: 90px;">Produsen</th>
-                  <th style="width: 60px;">Kuantitas<br>(kg)</th>
-                  <th style="width: 95px;">Harga Satuan</th>
-                  <th style="width: 105px;">Total Harga</th>
-                </tr>
-              </thead>
-              <tbody>${produkRows}${emptyRows}</tbody>
-            </table>
+                </div></div></div>
+            <table class="data-table"><thead><tr><th style="width: 28px;">NO</th><th style="text-align: left; padding-left: 8px;">Nama Produk</th><th style="width: 45px;">Fot</th><th style="width: 90px;">Produsen</th><th style="width: 60px;">Kuantitas<br>(kg)</th><th style="width: 95px;">Harga Satuan</th><th style="width: 105px;">Total Harga</th></tr></thead><tbody>${produkRows}${emptyRows}</tbody></table>
             <div class="summary-row">
-              <div class="terbilang-area">
-                <div class="terbilang-title">Terbilang :</div>
-                <div class="terbilang-text">${item.terbilang || "-"}</div>
-              </div>
+              <div class="terbilang-area"><div class="terbilang-title">Terbilang :</div><div class="terbilang-text">${item.terbilang || "-"}</div></div>
               <div class="calc-area">
                 <div class="calc-line"><span class="calc-name">Subtotal</span><span class="calc-amount">${formatRupiah(item.subtotal)}</span></div>
                 ${(item.uangMuka || 0) > 0 ? `<div class="calc-line"><span class="calc-name">Uang Muka</span><span class="calc-amount">${formatRupiah(item.uangMuka)}</span></div>` : ""}
@@ -1706,33 +1558,23 @@ export default function RekapProformaInvoicePage() {
                 <div class="calc-line"><span class="calc-name-bold">Jumlah Tertagih</span><span class="calc-amount-bold">${formatRupiah(item.jumlahTertagih)}</span></div>
                 <div class="due-date"><span class="due-label">Tanggal Jatuh Tempo : </span><span class="due-value">${item.tanggalJatuhTempo || ""}</span></div>
                 <div class="created-info">Dibuat: ${createdAtStr}</div>
-              </div>
-            </div>
+              </div></div>
             <div class="footer-row">
               <div class="footer-bank-area">
                 <p class="footer-bank-title">Pembayaran mohon ditransfer via rekening:</p>
                 <div class="footer-bank-text">
-                  <p><strong>BANK MANDIRI</strong> - Cabang Lamandau</p>
-                  <p>a/n PT Bukit Agrochemical Baru</p>
-                  <p>No. Rek : 159-00-1205477-0</p>
-                  <p style="margin-top: 3px;"><strong>BANK BRI</strong> - Cabang Lamandau</p>
-                  <p>a/n PT Bukit Agrochemical Baru</p>
-                  <p>No. Rek : 2232-01000-879-567</p>
+                  <p><strong>BANK MANDIRI</strong> - Cabang Lamandau</p><p>a/n PT Bukit Agrochemical Baru</p><p>No. Rek : 159-00-1205477-0</p>
+                  <p style="margin-top: 3px;"><strong>BANK BRI</strong> - Cabang Lamandau</p><p>a/n PT Bukit Agrochemical Baru</p><p>No. Rek : 2232-01000-879-567</p>
                   <p style="margin-top: 6px; font-size: 9px;">CC : ${item.cc || "-"}</p>
-                </div>
-              </div>
+                </div></div>
               <div class="footer-ttd-area">
                 <p class="ttd-title">Dengan Hormat</p>
                 ${item.ttdImage ? `<img src="${item.ttdImage}" class="ttd-img" alt="TTD" />` : `<div style="height: 40px;"></div>`}
                 <p class="ttd-name">${item.ttdNama || ""}</p>
                 <p class="ttd-role">${item.ttdJabatan ? `(${item.ttdJabatan})` : ""}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </body>
-      </html>
-    `;
+              </div></div>
+          </div></div>
+      </body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
   };
@@ -1745,8 +1587,7 @@ export default function RekapProformaInvoicePage() {
     const isDikuasakan = surat.jenisSurat === "do" && surat.subJenisDO === "dikuasakan";
     const piDisplay = Array.isArray(surat.nomorPI) ? surat.nomorPI.join(", ") : surat.nomorPI;
     const itemsHtml = (surat.items || [])
-      .map(
-        (it, idx) => `
+      .map((it, idx) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           ${isMandiri ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
@@ -1757,155 +1598,70 @@ export default function RekapProformaInvoicePage() {
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
         </tr>
-      `
-      )
-      .join("");
+      `).join("");
     let recipientBox = "";
     if (isGI) {
-      recipientBox = `<div class="recipient-box">
-        <p class="recipient-title">Kepada Yth :</p>
-        <p class="recipient-name">Bapak Kepala Gudang Induk</p>
-        <p class="recipient-name">PT Bukit Agrochemical Baru</p>
-        <p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p>
-      </div>`;
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">Bapak Kepala Gudang Induk</p><p class="recipient-name">PT Bukit Agrochemical Baru</p><p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p></div>`;
     } else if (isDikuasakan) {
       const customerName = Array.isArray(surat.namaCustomer) ? surat.namaCustomer[0] : surat.namaCustomer;
-      recipientBox = `<div class="recipient-box">
-        <p class="recipient-title">Kepada Yth :</p>
-        <p class="recipient-name">${customerName || ""}</p>
-        <p class="recipient-name">${customerName || ""}</p>
-      </div>`;
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">${customerName || ""}</p><p class="recipient-name">${customerName || ""}</p></div>`;
     } else {
-      recipientBox = `<div class="recipient-box">
-        <p class="recipient-title">Kepada Yth :</p>
-        <p class="recipient-name">${surat.kepadaNama || ""}</p>
-        <p class="recipient-name">${surat.kepadaPerusahaan || ""}</p>
-        <p class="recipient-address">${(surat.kepadaAlamat || "").replace(/\n/g, "<br>")}</p>
-      </div>`;
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">${surat.kepadaNama || ""}</p><p class="recipient-name">${surat.kepadaPerusahaan || ""}</p><p class="recipient-address">${(surat.kepadaAlamat || "").replace(/\n/g, "<br>")}</p></div>`;
     }
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Surat Pengangkutan ${surat.nomorSeri}</title>
-        <style>
-          @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
-          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
-          .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .info-section { margin-bottom: 12px; }
-          .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
-          .info-label { font-weight: 600; }
-          .recipient-box { border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px; }
-          .recipient-title { font-size: 9px; color: #333; margin-bottom: 2px; }
-          .recipient-name { font-size: 11px; font-weight: 700; }
-          .recipient-address { font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px; }
-          .salutation { font-size: 10px; margin-bottom: 8px; }
-          .salutation p { margin-bottom: 2px; }
-          .table-section { margin-bottom: 10px; }
-          .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table { width: 100%; border-collapse: collapse; }
-          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
-          .notes-section { margin-top: 10px; font-size: 9px; }
-          .notes-section p { margin-bottom: 2px; }
-          .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; align-items: flex-end; }
-          .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-          .signature-title { font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4; }
-          .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
-          .signature-name { font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
-          .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
-          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="print-bar no-print">
-          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-        </div>
+      <!DOCTYPE html><html><head><title>Surat Pengangkutan ${surat.nomorSeri}</title>
+      <style>
+        @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
+        .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
+        .header-img { width: 100%; display: block; margin-bottom: 0; }
+        .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .info-section { margin-bottom: 12px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
+        .info-label { font-weight: 600; }
+        .recipient-box { border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px; }
+        .recipient-title { font-size: 9px; color: #333; margin-bottom: 2px; }
+        .recipient-name { font-size: 11px; font-weight: 700; }
+        .recipient-address { font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px; }
+        .salutation { font-size: 10px; margin-bottom: 8px; }
+        .salutation p { margin-bottom: 2px; }
+        .table-section { margin-bottom: 10px; }
+        .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
+        .notes-section { margin-top: 10px; font-size: 9px; }
+        .notes-section p { margin-bottom: 2px; }
+        .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; align-items: flex-end; }
+        .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .signature-title { font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4; }
+        .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
+        .signature-name { font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
+        .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
+        .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+        .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+        @media print { .print-bar { display: none !important; } }
+      </style></head><body>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
         <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
           <div class="title-bar">SURAT PENGANGKUTAN</div>
           <div class="info-section">
-            <div class="info-row">
-              <span>Lamandau, ${new Date(surat.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Nomor Seri : ${surat.nomorSeri}</span>
-            </div>
+            <div class="info-row"><span>Lamandau, ${new Date(surat.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
+            <div class="info-row"><span class="info-label">Nomor Seri : ${surat.nomorSeri}</span></div>
             ${!isGI ? `<div class="info-row"><span class="info-label">Nomor PI : ${piDisplay}</span></div>` : ""}
-          </div>
-          ${recipientBox}
-          <div class="salutation">
-            <p>Dengan Hormat,</p>
-            <p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p>
-          </div>
-          <div class="table-section">
-            <div class="table-title">DASAR PENGANGKUTAN</div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width: 30px;">NO</th>
-                  ${isMandiri ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
-                  ${isGI || isDikuasakan ? `<th style="width: 100px;">NOMOR PI</th>` : ""}
-                  ${isMandiri || isDikuasakan ? `<th style="width: 100px;">NOMOR PO</th>` : ""}
-                  <th>JENIS PUPUK</th>
-                  <th style="width: 60px;">PARTY</th>
-                  <th style="width: 100px;">PENGAMBILAN<br>ZAK</th>
-                  <th style="width: 60px;">SISA</th>
-                </tr>
-              </thead>
-              <tbody>${itemsHtml}</tbody>
-            </table>
-          </div>
-          <div class="table-section">
-            <div class="table-title">DATA UNIT ANGKUTAN</div>
-            <table class="data-table">
-              <tbody>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorPolisi || "-"}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.driverUnit || "-"}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorSIM || "-"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="notes-section">
-            <p style="font-weight: 700;">Notes :</p>
-            <p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
-            <p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
-            <p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
-          </div>
-          <div class="signature-row">
-            <div class="signature-box">
-              <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-              <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
-                <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display=\'none\'" />
-              </div>
-              <p class="signature-name">HENDRA PRAMASYANTO</p>
-            </div>
-            <div class="signature-box">
-              <p class="signature-title">Diangkut oleh,<br>Driver</p>
-              <div style="min-height: 60px; margin-bottom: 4px;"></div>
-              <p class="signature-name">${surat.driverUnit || ""}</p>
-            </div>
-          </div>
-          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
-        </div>
-      </body>
-      </html>
-    `;
+          </div>${recipientBox}
+          <div class="salutation"><p>Dengan Hormat,</p><p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p></div>
+          <div class="table-section"><div class="table-title">DASAR PENGANGKUTAN</div>
+            <table class="data-table"><thead><tr><th style="width: 30px;">NO</th>${isMandiri ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}${isGI || isDikuasakan ? `<th style="width: 100px;">NOMOR PI</th>` : ""}${isMandiri || isDikuasakan ? `<th style="width: 100px;">NOMOR PO</th>` : ""}<th>JENIS PUPUK</th><th style="width: 60px;">PARTY</th><th style="width: 100px;">PENGAMBILAN<br>ZAK</th><th style="width: 60px;">SISA</th></tr></thead><tbody>${itemsHtml}</tbody></table></div>
+          <div class="table-section"><div class="table-title">DATA UNIT ANGKUTAN</div>
+            <table class="data-table"><tbody><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorPolisi || "-"}</td></tr><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.driverUnit || "-"}</td></tr><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorSIM || "-"}</td></tr></tbody></table></div>
+          <div class="notes-section"><p style="font-weight: 700;">Notes :</p><p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p><p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p><p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p></div>
+          <div class="signature-row"><div class="signature-box"><p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p><div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;"><img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" /></div><p class="signature-name">HENDRA PRAMASYANTO</p></div><div class="signature-box"><p class="signature-title">Diangkut oleh,<br>Driver</p><div style="min-height: 60px; margin-bottom: 4px;"></div><p class="signature-name">${surat.driverUnit || ""}</p></div></div>
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+        </div></body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
   };
@@ -1923,9 +1679,7 @@ export default function RekapProformaInvoicePage() {
           (invoiceSurat.items || []).forEach((it: SuratMuatItem) => {
             const itemPI = it.nomorPI || "";
             if (itemPI && itemPI !== pi.nomorPI) return;
-            const match =
-              it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) ||
-              produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
+            const match = it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) || produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
             if (match) {
               const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
               loadedQty += (it.pengambilanZAK || 0) * bobot;
@@ -1936,9 +1690,7 @@ export default function RekapProformaInvoicePage() {
             (surat.items || []).forEach((it: SuratMuatItem) => {
               const itemPI = it.nomorPI || "";
               if (itemPI && itemPI !== pi.nomorPI) return;
-              const match =
-                it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) ||
-                produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
+              const match = it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) || produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
               if (match) {
                 const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
                 loadedQty += (it.pengambilanZAK || 0) * bobot;
@@ -1999,61 +1751,54 @@ export default function RekapProformaInvoicePage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Invoice ${invoiceNomor}</title>
-        <style>
-          @page { size: A4; margin: 8mm 10mm 8mm 10mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; font-size: 9px; line-height: 1.3; color: #000; }
-          .page { width: 190mm; margin: 0 auto; position: relative; min-height: 277mm; display: flex; flex-direction: column; }
-          .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .title-bar { text-align: center; background: #15803d; color: white; padding: 4px 0; margin: 4px 0 8px 0; font-weight: bold; font-size: 12px; letter-spacing: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .info-section { display: flex; justify-content: space-between; margin-bottom: 8px; }
-          .customer-box { width: 55%; font-size: 9px; }
-          .customer-box p { margin-bottom: 1px; }
-          .customer-title { font-size: 9px; margin-bottom: 2px; }
-          .customer-name { font-weight: 700; font-size: 10px; }
-          .meta-box { width: 40%; text-align: right; font-size: 9px; }
-          .meta-box p { margin-bottom: 2px; }
-          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 9px; }
-          .data-table th { background: #e8f5e9; font-size: 8px; padding: 4px 2px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table td { border: 1px solid #000; padding: 4px 2px; vertical-align: top; font-size: 9px; }
-          .summary-section { display: flex; justify-content: flex-end; margin-top: 0; }
-          .summary-table { width: 55%; border-collapse: collapse; font-size: 9px; }
-          .summary-table td { border: 1px solid #000; padding: 3px 6px; }
-          .summary-label { text-align: left; font-weight: 600; }
-          .summary-value { text-align: right; font-family: monospace; }
-          .total-row { font-weight: 700; font-size: 10px; }
-          .terbilang-box { border: 1px dashed #000; padding: 4px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
-          .terbilang-label { font-size: 8px; font-weight: 600; margin-bottom: 1px; }
-          .bottom-section { display: flex; justify-content: space-between; margin-top: 8px; }
-          .left-boxes { width: 48%; }
-          .pay-box { border: 1px solid #000; padding: 6px 8px; margin-bottom: 6px; font-size: 9px; }
-          .pay-box p { margin-bottom: 1px; }
-          .pay-title { font-weight: 700; margin-bottom: 3px; }
-          .order-box { border: 1px solid #000; padding: 6px 8px; margin-bottom: 6px; font-size: 9px; }
-          .order-box p { margin-bottom: 1px; }
-          .ttd-box { border: 1px solid #000; padding: 6px 8px; font-size: 9px; }
-          .ttd-box p { margin-bottom: 1px; }
-          .right-signature { width: 48%; text-align: center; font-size: 9px; }
-          .right-signature p { margin-bottom: 2px; }
-          .sig-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
-          .sig-name { font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
-          .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 8px; }
-          .print-btn { background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin: 8px; }
-          .print-bar { text-align: center; padding: 8px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="print-bar no-print">
-          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-        </div>
+      <!DOCTYPE html><html><head><title>Invoice ${invoiceNomor}</title>
+      <style>
+        @page { size: A4; margin: 8mm 10mm 8mm 10mm; }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 9px; line-height: 1.3; color: #000; }
+        .page { width: 190mm; margin: 0 auto; position: relative; min-height: 277mm; display: flex; flex-direction: column; }
+        .header-img { width: 100%; display: block; margin-bottom: 0; }
+        .title-bar { text-align: center; background: #15803d; color: white; padding: 4px 0; margin: 4px 0 8px 0; font-weight: bold; font-size: 12px; letter-spacing: 6px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .info-section { display: flex; justify-content: space-between; margin-bottom: 8px; }
+        .customer-box { width: 55%; font-size: 9px; }
+        .customer-box p { margin-bottom: 1px; }
+        .customer-title { font-size: 9px; margin-bottom: 2px; }
+        .customer-name { font-weight: 700; font-size: 10px; }
+        .meta-box { width: 40%; text-align: right; font-size: 9px; }
+        .meta-box p { margin-bottom: 2px; }
+        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 0; font-size: 9px; }
+        .data-table th { background: #e8f5e9; font-size: 8px; padding: 4px 2px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table td { border: 1px solid #000; padding: 4px 2px; vertical-align: top; font-size: 9px; }
+        .summary-section { display: flex; justify-content: flex-end; margin-top: 0; }
+        .summary-table { width: 55%; border-collapse: collapse; font-size: 9px; }
+        .summary-table td { border: 1px solid #000; padding: 3px 6px; }
+        .summary-label { text-align: left; font-weight: 600; }
+        .summary-value { text-align: right; font-family: monospace; }
+        .total-row { font-weight: 700; font-size: 10px; }
+        .terbilang-box { border: 1px dashed #000; padding: 4px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; }
+        .terbilang-label { font-size: 8px; font-weight: 600; margin-bottom: 1px; }
+        .bottom-section { display: flex; justify-content: space-between; margin-top: 8px; }
+        .left-boxes { width: 48%; }
+        .pay-box { border: 1px solid #000; padding: 6px 8px; margin-bottom: 6px; font-size: 9px; }
+        .pay-box p { margin-bottom: 1px; }
+        .pay-title { font-weight: 700; margin-bottom: 3px; }
+        .order-box { border: 1px solid #000; padding: 6px 8px; margin-bottom: 6px; font-size: 9px; }
+        .order-box p { margin-bottom: 1px; }
+        .ttd-box { border: 1px solid #000; padding: 6px 8px; font-size: 9px; }
+        .ttd-box p { margin-bottom: 1px; }
+        .right-signature { width: 48%; text-align: center; font-size: 9px; }
+        .right-signature p { margin-bottom: 2px; }
+        .sig-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
+        .sig-name { font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
+        .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 8px; }
+        .print-btn { background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin: 8px; }
+        .print-bar { text-align: center; padding: 8px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+        @media print { .print-bar { display: none !important; } }
+      </style></head><body>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
         <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
           <div class="title-bar">I N V O I C E</div>
           <div class="info-section">
             <div class="customer-box">
@@ -2066,24 +1811,8 @@ export default function RekapProformaInvoicePage() {
               <p><span style="font-weight: 600;">INVOICE NO. :</span> ${invoiceNomor}</p>
               <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(tanggalInvoice).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
               <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${pi.nomorPI || ""}</p>
-            </div>
-          </div>
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th style="width: 24px;">NO</th>
-                <th style="text-align: left; padding-left: 4px;">NAMA PRODUK</th>
-                <th style="text-align: left; padding-left: 4px;">PRODUSEN</th>
-                <th style="width: 50px;">KEMASAN</th>
-                <th style="width: 40px;">FOT</th>
-                <th style="width: 60px;">KUANTITAS</th>
-                <th style="width: 80px;">HARGA SATUAN<br>PER KG</th>
-                <th style="width: 80px;">PER ZAK</th>
-                <th style="width: 90px;">SUB TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>${itemsHtml}${emptyRows}</tbody>
-          </table>
+            </div></div>
+          <table class="data-table"><thead><tr><th style="width: 24px;">NO</th><th style="text-align: left; padding-left: 4px;">NAMA PRODUK</th><th style="text-align: left; padding-left: 4px;">PRODUSEN</th><th style="width: 50px;">KEMASAN</th><th style="width: 40px;">FOT</th><th style="width: 60px;">KUANTITAS</th><th style="width: 80px;">HARGA SATUAN<br>PER KG</th><th style="width: 80px;">PER ZAK</th><th style="width: 90px;">SUB TOTAL</th></tr></thead><tbody>${itemsHtml}${emptyRows}</tbody></table>
           <div class="summary-section">
             <table class="summary-table">
               <tr><td class="summary-label" style="border: none;"></td><td class="summary-label">TOTAL</td><td class="summary-value">${formatRupiah(totalSubTotal)}</td></tr>
@@ -2092,49 +1821,103 @@ export default function RekapProformaInvoicePage() {
               <tr><td style="border: none;"></td><td class="summary-label">PPN</td><td class="summary-value">${ppn > 0 ? formatRupiah(ppn) : "Rp -"}</td></tr>
               <tr><td style="border: none;"></td><td class="summary-label">SUB TOTAL</td><td class="summary-value">${formatRupiah(totalSubTotal + ppn)}</td></tr>
               <tr><td style="border: none;"></td><td class="summary-label total-row">TOTAL PEMBAYARAN :</td><td class="summary-value total-row">${formatRupiah(totalPembayaran)}</td></tr>
-            </table>
-          </div>
-          <div class="terbilang-box">
-            <div class="terbilang-label">TERBILANG :</div>
-            <div>${numberToWords(Math.round(totalPembayaran))}</div>
-          </div>
+            </table></div>
+          <div class="terbilang-box"><div class="terbilang-label">TERBILANG :</div><div>${numberToWords(Math.round(totalPembayaran))}</div></div>
           <div class="bottom-section">
             <div class="left-boxes">
-              <div class="pay-box">
-                <p class="pay-title">Pembayaran PT. Bukit Agrochemical Baru</p>
-                <p>Bank BRI Cabang Lamandau- Kalimantan Tengah</p>
-                <p>No. Rek : 2232-01000-879-567</p>
-              </div>
-              <div class="order-box">
-                <p style="font-weight: 600;">Dipesan oleh:</p>
-                <p style="font-weight: 700;">${pi.namaCustomer || ""}</p>
-              </div>
-              <div class="ttd-box" style="text-align: center;">
-                <p style="font-weight: 600; text-align: left;">Diorder Oleh:</p>
-                <p style="text-align: left;">PT. Bukit Agrochemical Baru</p>
-                <div style="height: 10px;"></div>
-                ${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 0 auto 2px auto;" />` : `<div style="height: 35px;"></div>`}
-                <div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 2px;">
-                  ${orderTTD ? `<p style="font-weight: 700; margin: 0;">${orderTTD.nama}</p>` : `<p style="font-weight: 700; margin: 0;">_________________</p>`}
-                  ${orderTTD ? `<p style="margin: 0; font-size: 8px;">${orderTTD.jabatan}</p>` : ""}
-                </div>
-              </div>
+              <div class="pay-box"><p class="pay-title">Pembayaran PT. Bukit Agrochemical Baru</p><p>Bank BRI Cabang Lamandau- Kalimantan Tengah</p><p>No. Rek : 2232-01000-879-567</p></div>
+              <div class="order-box"><p style="font-weight: 600;">Dipesan oleh:</p><p style="font-weight: 700;">${pi.namaCustomer || ""}</p></div>
+              <div class="ttd-box" style="text-align: center;"><p style="font-weight: 600; text-align: left;">Diorder Oleh:</p><p style="text-align: left;">PT. Bukit Agrochemical Baru</p><div style="height: 10px;"></div>${orderTTD ? `<img src="${orderTTD.ttdImage}" style="height: 35px; object-fit: contain; display: block; margin: 0 auto 2px auto;" />` : `<div style="height: 35px;"></div>`}<div style="border-top: 1px solid #000; padding-top: 2px; margin-top: 2px;">${orderTTD ? `<p style="font-weight: 700; margin: 0;">${orderTTD.nama}</p>` : `<p style="font-weight: 700; margin: 0;">_________________</p>`}${orderTTD ? `<p style="margin: 0; font-size: 8px;">${orderTTD.jabatan}</p>` : ""}</div></div>
             </div>
             <div class="right-signature">
               <p style="margin-bottom: 30px;">Hormat kami,<br>PT. Bukit Agrochemical Baru</p>
               <img src="/Picture4.png" alt="TTD" style="height: 50px; object-fit: contain; margin: 0 auto; display: block;" onerror="this.style.display='none'" />
               <p style="font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block;">Sri Setyo Wibowo</p>
               <p>Manager Keuangan</p>
-            </div>
-          </div>
-          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
-        </div>
-      </body>
-      </html>
-    `;
+            </div></div>
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+        </div></body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
     setIsInvoiceModalOpen(false);
+  };
+
+  const handlePrintBastSimple = async (item: ProformaInvoice) => {
+    let baData: any = null;
+    const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
+    const snap1 = await getDocs(q1);
+    if (!snap1.empty) baData = snap1.docs[0].data();
+    if (!baData) {
+      const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
+      const snap2 = await getDocs(q2);
+      if (!snap2.empty) baData = snap2.docs[0].data();
+    }
+    if (!baData) {
+      alert("Berita Acara belum dibuat. Silakan generate terlebih dahulu.");
+      return;
+    }
+    const bastItems: BeritaAcaraItem[] = baData.items || [];
+    const now = new Date();
+    const hari = now.toLocaleDateString("id-ID", { weekday: "long" });
+    const tanggalLengkap = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+    const rowsHtml = bastItems.map((it) => `
+      <tr>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.no}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.tanggalMuat}</td>
+        <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.namaProduk}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.fot || "-"}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.qty}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.noSJ}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.driver}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nopol}</td>
+      </tr>
+    `).join("");
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const html = `
+      <!DOCTYPE html><html><head><title>Berita Acara ${baData.nomorSeri}</title>
+      <style>
+        @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
+        .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
+        .header-img { width: 100%; display: block; margin-bottom: 0; }
+        .title-bar { text-align: center; margin: 8px 0 12px 0; }
+        .title-bar h1 { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline; }
+        .title-bar p { font-size: 11px; font-weight: 600; }
+        .content { padding: 0 4px; flex: 1; }
+        .opening { margin-bottom: 12px; font-size: 10px; }
+        .party-section { margin-bottom: 10px; }
+        .party-title { font-weight: 700; margin-bottom: 4px; font-size: 10px; }
+        .party-table { width: 100%; margin-bottom: 8px; font-size: 10px; }
+        .party-table td { padding: 2px 0; vertical-align: top; }
+        .party-label { width: 100px; font-weight: 600; }
+        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px; }
+        .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
+        .closing { margin-bottom: 16px; font-size: 10px; text-align: justify; }
+        .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+        .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+        @media print { .print-bar { display: none !important; } }
+      </style></head><body>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
+        <div class="page">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <div class="title-bar"><h1>BERITA ACARA SERAH TERIMA BARANG</h1><p>${baData.nomorSeri}</p></div>
+          <div class="content">
+            <p class="opening">Kami yang bertanda tangan di bawah ini, pada hari ${hari}, ${tanggalLengkap}</p>
+            <div class="party-section"><p class="party-title">Selanjutnya disebut Pihak Pertama.</p><table class="party-table"><tr><td class="party-label">Nama</td><td>: ........................</td></tr><tr><td class="party-label">Perusahaan</td><td>: PT Bukit Agrochemical Baru</td></tr><tr><td class="party-label">Jabatan</td><td>: ........................</td></tr></table></div>
+            <div class="party-section"><p class="party-title">Selanjutnya yang disebut Pihak Kedua.</p><table class="party-table"><tr><td class="party-label">Nama</td><td>: ${item.namaCustomer}</td></tr><tr><td class="party-label">Alamat</td><td>: ${(item.alamatCustomer || "").replace(/\n/g, " ")}</td></tr></table></div>
+            <p class="opening">Pihak pertama menyerahkan barang kepada pihak kedua, dan pihak kedua menyatakan telah menerima barang dari pihak pertama, berupa daftar terlampir :</p>
+            <table class="data-table"><thead><tr><th style="width: 30px;">No</th><th style="width: 80px;">Tanggal Muat</th><th>Nama Produk</th><th style="width: 80px;">FOT / No DO</th><th style="width: 70px;">QTY</th><th style="width: 120px;">No SJ</th><th style="width: 90px;">Driver</th><th style="width: 80px;">Nopol</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+            <p class="closing">Demikian berita acara serah terima barang ini diperbuat oleh kedua belah pihak, adapun barang-barang tersebut dalam keadaan baik dan cukup, sejak penandatanganan berita acara ini, maka barang-barang tersebut menjadi tanggung jawab pihak kedua.</p>
+            <div style="display: flex; justify-content: space-between; margin-top: 40px; align-items: flex-end;">
+              <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"><p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK KEDUA</p><div style="width: 100%; min-height: 80px; margin-bottom: 8px;"></div><p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">${item.namaCustomer || "_________________"}</p></div>
+              <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"><p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK PERTAMA</p><div style="position: relative; width: 100%; min-height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;"><img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.25; object-fit: contain; z-index: 1;" onerror="this.style.display='none'" /><div style="position: relative; z-index: 2; min-height: 70px;"></div></div><p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">_________________</p><p style="font-size: 9px; color: #333; margin-top: 3px;">PT Bukit Agrochemical Baru</p></div>
+            </div></div></div></body></html>`;
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   const handleSuratItemChange = (idx: number, field: string, value: string) => {
@@ -2268,6 +2051,15 @@ export default function RekapProformaInvoicePage() {
       render: (row: ProformaInvoice) => row.namaCustomer,
     },
     {
+      key: "statusPemesanan",
+      header: "Status",
+      width: "100px",
+      render: (row: ProformaInvoice) => {
+        const badge = getPemesananBadge(row.statusPemesanan);
+        return <span className={`px-2 py-1 rounded-md text-xs font-bold border ${badge.class}`}>{badge.label}</span>;
+      },
+    },
+    {
       key: "statusPelunasan",
       header: "Status Pelunasan",
       width: "160px",
@@ -2305,9 +2097,7 @@ export default function RekapProformaInvoicePage() {
             <button
               onClick={(e) => { e.stopPropagation(); handleOpenFullInvoice(row); }}
               disabled={!canInvoice}
-              className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${
-                canInvoice ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer" : "bg-gray-200 text-gray-400 cursor-not-allowed"
-              }`}
+              className={`px-2 py-1 rounded-md text-xs font-semibold transition-colors flex items-center gap-1 ${canInvoice ? "bg-blue-600 hover:bg-blue-700 text-white cursor-pointer" : "bg-gray-200 text-gray-400 cursor-not-allowed"}`}
               title={title}
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
@@ -2347,7 +2137,7 @@ export default function RekapProformaInvoicePage() {
             <div className="space-y-1">
               {produkStatus.map((p, i) => (
                 <div key={i} className="text-xs text-gray-600">
-                  <span className="font-semibold">{p.namaProduk}:</span>{' '}
+                  <span className="font-semibold">{p.namaProduk}:</span>{" "}
                   <span className="font-mono">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
                   {p.status === "partial" && <span className="text-yellow-600 ml-1">(Sebagian)</span>}
                   {p.status === "complete" && <span className="text-green-600 ml-1">(Selesai)</span>}
@@ -2388,7 +2178,7 @@ export default function RekapProformaInvoicePage() {
     {
       key: "aksi",
       header: "Aksi",
-      width: "200px",
+      width: "240px",
       render: (row: ProformaInvoice) => (
         <div className="flex items-center gap-2">
           <button onClick={(e) => { e.stopPropagation(); handleDetail(row); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Detail">
@@ -2399,6 +2189,9 @@ export default function RekapProformaInvoicePage() {
           </button>
           <button onClick={(e) => { e.stopPropagation(); handlePrintPDF(row); }} disabled={(row.jumlahUangDibayar || 0) === 0} className={`p-2 rounded-lg transition-colors ${(row.jumlahUangDibayar || 0) === 0 ? "text-gray-300 cursor-not-allowed" : "text-purple-600 hover:bg-purple-50"}`} title={(row.jumlahUangDibayar || 0) === 0 ? "Belum dibayar - tidak dapat print" : "Print PDF"}>
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); handleCancelOrder(row); }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Batalkan Pemesanan">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           </button>
           <button onClick={(e) => { e.stopPropagation(); handleDelete(row.id); }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -2437,6 +2230,7 @@ export default function RekapProformaInvoicePage() {
         </div>
         <Table columns={columns} data={filteredData} isLoading={isLoading} emptyMessage="Belum ada data proforma invoice" keyExtractor={(row) => row.id} onRowClick={handleDetail} />
       </Card>
+
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title="Detail Proforma Invoice" size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
@@ -2502,16 +2296,14 @@ export default function RekapProformaInvoicePage() {
                       </button>
                     )}
                     {bastExists && (
-                      <>
-                        <button onClick={() => handlePrintBastSimple(selectedItem)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                          Print BA
-                        </button>
-                        <button onClick={() => handleResetBast(selectedItem.nomorPI)} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
-                          Reset BA
-                        </button>
-                      </>
+                      <><button onClick={() => handlePrintBastSimple(selectedItem)} className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                        Print BA
+                      </button>
+                      <button onClick={() => handleResetBast(selectedItem.nomorPI)} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                        Reset BA
+                      </button></>
                     )}
                   </div>
                 </div>
@@ -2574,26 +2366,10 @@ export default function RekapProformaInvoicePage() {
                         <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right font-mono border">{surat.totalKG.toLocaleString()}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.nomorPolisi}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.driverUnit}</td>
-                        <td className="px-2 py-3 text-sm text-gray-600 border">
-                          <button onClick={() => handlePrintSuratPDF(surat)} className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print Surat">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-                          </button>
-                        </td>
-                        <td className="px-2 py-3 text-sm text-gray-600 border">
-                          <button onClick={() => handleEditSurat(surat)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit Surat">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                          </button>
-                        </td>
-                        <td className="px-2 py-3 text-sm text-gray-600 border">
-                          <button onClick={() => handleDeleteSurat(surat)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus Surat">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          </button>
-                        </td>
-                        <td className="px-2 py-3 text-sm text-gray-600 border">
-                          <button onClick={() => handleOpenInvoice(surat)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Invoice">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                          </button>
-                        </td>
+                        <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handlePrintSuratPDF(surat)} className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print Surat"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg></button></td>
+                        <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handleEditSurat(surat)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit Surat"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button></td>
+                        <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handleDeleteSurat(surat)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus Surat"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></td>
+                        <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handleOpenInvoice(surat)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Invoice"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -2655,6 +2431,7 @@ export default function RekapProformaInvoicePage() {
           </div>
         )}
       </Modal>
+
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="Edit Proforma Invoice" size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Batal</Button>
@@ -2699,42 +2476,22 @@ export default function RekapProformaInvoicePage() {
                     <tr key={index}>
                       <td className="px-3 py-2 text-sm text-gray-900">{index + 1}</td>
                       <td className="px-3 py-2 relative overflow-visible">
-                        <select
-                          value={stockList.some((s) => s.namaBarang === item.namaProduk) ? item.namaProduk : "__manual__"}
-                          onChange={(e) => handleEditProdukChange(index, "selectProduk", e.target.value === "__manual__" ? "" : e.target.value)}
-                          className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md"
-                        >
+                        <select value={stockList.some((s) => s.namaBarang === item.namaProduk) ? item.namaProduk : "__manual__"} onChange={(e) => handleEditProdukChange(index, "selectProduk", e.target.value === "__manual__" ? "" : e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md">
                           <option value="">Pilih Produk...</option>
-                          {stockList.map((stock) => (
-                            <option key={stock.id} value={stock.namaBarang}>{stock.namaBarang} ({stock.kodeBarang})</option>
-                          ))}
+                          {stockList.map((stock) => (<option key={stock.id} value={stock.namaBarang}>{stock.namaBarang} ({stock.kodeBarang})</option>))}
                           <option value="__manual__">Manual Input</option>
                         </select>
-                        {(!stockList.some((s) => s.namaBarang === item.namaProduk) && item.namaProduk) || (item.namaProduk && !stockList.some((s) => s.namaBarang === item.namaProduk)) ? (
-                          <input type="text" value={item.namaProduk} onChange={(e) => handleEditProdukChange(index, "namaProduk", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm mt-1 transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" />
-                        ) : null}
+                        {(!stockList.some((s) => s.namaBarang === item.namaProduk) && item.namaProduk) || (item.namaProduk && !stockList.some((s) => s.namaBarang === item.namaProduk)) ? (<input type="text" value={item.namaProduk} onChange={(e) => handleEditProdukChange(index, "namaProduk", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm mt-1 transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" />) : null}
                         <input type="hidden" value={item.bobotPerUnit || 50} />
                       </td>
                       <td className="px-3 py-2 relative overflow-visible"><input type="text" value={item.fot || ""} onChange={(e) => handleEditProdukChange(index, "fot", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></td>
                       <td className="px-3 py-2 relative overflow-visible"><input type="text" value={item.produsen || ""} onChange={(e) => handleEditProdukChange(index, "produsen", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></td>
                       <td className="px-3 py-2 relative overflow-visible"><input type="text" inputMode="decimal" value={String(item.kuantitas)} onChange={(e) => handleEditProdukChange(index, "kuantitas", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[160px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></td>
-                      <td className="px-3 py-2 relative overflow-visible">
-                        <select value={item.satuan} onChange={(e) => handleEditProdukChange(index, "satuan", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[160px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md">
-                          <option value="KG">KG</option>
-                          <option value="ZAK">ZAK</option>
-                          <option value="DUS">DUS</option>
-                          <option value="LITER">LITER</option>
-                          <option value="BOTOL">BOTOL</option>
-                        </select>
-                      </td>
+                      <td className="px-3 py-2 relative overflow-visible"><select value={item.satuan} onChange={(e) => handleEditProdukChange(index, "satuan", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[160px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md"><option value="KG">KG</option><option value="ZAK">ZAK</option><option value="DUS">DUS</option><option value="LITER">LITER</option><option value="BOTOL">BOTOL</option></select></td>
                       <td className="px-3 py-2 relative overflow-visible"><input type="text" inputMode="decimal" value={String(item.hargaSatuan)} onChange={(e) => handleEditProdukChange(index, "hargaSatuan", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[180px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></td>
                       <td className="px-3 py-2 text-sm font-mono text-gray-700">{formatRupiah(item.hargaPerZakDus || 0)}</td>
                       <td className="px-3 py-2 text-center overflow-visible"><input type="checkbox" checked={item.includePPN || false} onChange={(e) => handleEditProdukChange(index, "includePPN", e.target.checked ? "true" : "")} className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500" /></td>
-                      <td className="px-3 py-2 text-center overflow-visible">
-                        <button type="button" onClick={() => removeEditProdukItem(index)} className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors" disabled={editForm.produkItems.length === 1}>
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
-                      </td>
+                      <td className="px-3 py-2 text-center overflow-visible"><button type="button" onClick={() => removeEditProdukItem(index)} className="p-1 text-red-500 hover:bg-red-50 rounded transition-colors" disabled={editForm.produkItems.length === 1}><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -2754,22 +2511,10 @@ export default function RekapProformaInvoicePage() {
               const badgeClass = status === "Lunas" ? "bg-green-100 text-green-700" : status === "Cicilan" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700";
               return (
                 <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 mb-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Preview Status Pelunasan</span>
-                    <span className={`px-2 py-1 rounded-md text-xs font-bold ${badgeClass}`}>{status}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Jumlah Tertagih (Baru):</span>
-                    <span className="font-mono font-semibold">{formatRupiah(jumlahTertagih)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Total Dibayar:</span>
-                    <span className="font-mono font-semibold">{formatRupiah(totalPaid)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Sisa:</span>
-                    <span className="font-mono font-semibold">{formatRupiah(Math.max(0, jumlahTertagih - totalPaid))}</span>
-                  </div>
+                  <div className="flex items-center justify-between mb-2"><span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Preview Status Pelunasan</span><span className={`px-2 py-1 rounded-md text-xs font-bold ${badgeClass}`}>{status}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-600">Jumlah Tertagih (Baru):</span><span className="font-mono font-semibold">{formatRupiah(jumlahTertagih)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-600">Total Dibayar:</span><span className="font-mono font-semibold">{formatRupiah(totalPaid)}</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-gray-600">Sisa:</span><span className="font-mono font-semibold">{formatRupiah(Math.max(0, jumlahTertagih - totalPaid))}</span></div>
                 </div>
               );
             })()}
@@ -2780,6 +2525,7 @@ export default function RekapProformaInvoicePage() {
           </div>
         </form>
       </Modal>
+
       <Modal isOpen={isEditSuratModalOpen} onClose={() => setIsEditSuratModalOpen(false)} title={`Edit Surat Muat - ${selectedSurat?.nomorSeri}`} size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditSuratModalOpen(false)}>Batal</Button>
@@ -2789,37 +2535,9 @@ export default function RekapProformaInvoicePage() {
         <form onSubmit={handleUpdateSurat} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <Input label="Tanggal" type="date" value={editSuratForm.tanggal} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, tanggal: e.target.value }))} required />
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label>
-              <div className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 font-mono text-sm text-gray-800">
-                {editSuratForm.nomorSeri}
-              </div>
-            </div>
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jenis Surat</label>
-              <select
-                value={editSuratForm.jenisSurat}
-                onChange={(e) => setEditSuratForm((prev) => ({ ...prev, jenisSurat: e.target.value }))}
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200"
-              >
-                <option value="gudangInduk">Gudang Induk</option>
-                <option value="do">DO (Delivery Order)</option>
-              </select>
-            </div>
-            {editSuratForm.jenisSurat === "do" && (
-              <div className="md:col-span-2">
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Sub Jenis DO</label>
-                <select
-                  value={editSuratForm.subJenisDO}
-                  onChange={(e) => setEditSuratForm((prev) => ({ ...prev, subJenisDO: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200"
-                >
-                  <option value="">Pilih Sub Jenis</option>
-                  <option value="mandiri">DO Mandiri</option>
-                  <option value="dikuasakan">DO Dikuasakan</option>
-                </select>
-              </div>
-            )}
+            <div className="md:col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Nomor Seri</label><div className="w-full px-4 py-3 border border-gray-300 rounded-xl bg-gray-100 font-mono text-sm text-gray-800">{editSuratForm.nomorSeri}</div></div>
+            <div className="md:col-span-2"><label className="block text-sm font-semibold text-gray-700 mb-1.5">Jenis Surat</label><select value={editSuratForm.jenisSurat} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, jenisSurat: e.target.value }))} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200"><option value="gudangInduk">Gudang Induk</option><option value="do">DO (Delivery Order)</option></select></div>
+            {editSuratForm.jenisSurat === "do" && (<div className="md:col-span-2"><label className="block text-sm font-semibold text-gray-700 mb-1.5">Sub Jenis DO</label><select value={editSuratForm.subJenisDO} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, subJenisDO: e.target.value }))} className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200"><option value="">Pilih Sub Jenis</option><option value="mandiri">DO Mandiri</option><option value="dikuasakan">DO Dikuasakan</option></select></div>)}
             <Input label="Nomor Polisi" type="text" value={editSuratForm.nomorPolisi} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, nomorPolisi: e.target.value }))} required />
             <Input label="Driver Unit" type="text" value={editSuratForm.driverUnit} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, driverUnit: e.target.value }))} required />
             <Input label="Nomor SIM" type="text" value={editSuratForm.nomorSIM} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, nomorSIM: e.target.value }))} className="md:col-span-2" />
@@ -2830,17 +2548,7 @@ export default function RekapProformaInvoicePage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Input label="Kepada Yth (Nama)" type="text" value={editSuratForm.kepadaNama} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaNama: e.target.value }))} placeholder="Contoh: Bapak Kepala Gudang" required />
                 <Input label="Nama Perusahaan" type="text" value={editSuratForm.kepadaPerusahaan} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaPerusahaan: e.target.value }))} placeholder="Contoh: PT Bukit Agrochemical Baru" required />
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Alamat</label>
-                  <textarea
-                    value={editSuratForm.kepadaAlamat}
-                    onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaAlamat: e.target.value }))}
-                    rows={3}
-                    placeholder="Contoh: Desa Sungai Rangit, Pangkalan Lada"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200"
-                    required
-                  />
-                </div>
+                <div className="md:col-span-2"><label className="block text-sm font-semibold text-gray-700 mb-1.5">Alamat</label><textarea value={editSuratForm.kepadaAlamat} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, kepadaAlamat: e.target.value }))} rows={3} placeholder="Contoh: Desa Sungai Rangit, Pangkalan Lada" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none text-sm transition-all duration-200 focus:scale-[1.02] focus:shadow-lg focus:z-20 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200" required /></div>
               </div>
             </div>
           )}
@@ -2848,14 +2556,7 @@ export default function RekapProformaInvoicePage() {
             <h4 className="text-sm font-semibold text-gray-700">Item Pengangkutan</h4>
             {editSuratForm.items.map((item, idx) => (
               <div key={idx} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-                <div className="flex items-center justify-between mb-3">
-                  <h5 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h5>
-                  {editSuratForm.items.length > 1 && (
-                    <button type="button" onClick={() => removeSuratItem(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
-                  )}
-                </div>
+                <div className="flex items-center justify-between mb-3"><h5 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h5>{editSuratForm.items.length > 1 && (<button type="button" onClick={() => removeSuratItem(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>)}</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Nomor SUB DO</label><input type="text" value={item.nomorSubDO} onChange={(e) => handleSuratItemChange(idx, "nomorSubDO", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[260px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Nomor PO</label><input type="text" value={item.nomorPO} onChange={(e) => handleSuratItemChange(idx, "nomorPO", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[260px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
@@ -2874,39 +2575,20 @@ export default function RekapProformaInvoicePage() {
           </div>
         </form>
       </Modal>
+
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title={invoiceSurat ? "Print Invoice Sementara" : "Print Invoice"} size="md" footer={
         <div className="flex justify-end gap-3 flex-wrap">
-          {invoiceSurat ? (
-            <Button variant="secondary" onClick={handleRegenerateInvoiceSementara} disabled={isGeneratingInvoice}>Regenerate</Button>
-          ) : (
-            <Button variant="secondary" onClick={handleRegenerateInvoice} disabled={isGeneratingInvoice}>Regenerate</Button>
-          )}
-          {invoiceExists && (
-            <Button variant="danger" onClick={() => { if (selectedItem) handleResetInvoice(selectedItem.nomorPI); setIsInvoiceModalOpen(false); }}>Reset Invoice</Button>
-          )}
+          {invoiceSurat ? (<Button variant="secondary" onClick={handleRegenerateInvoiceSementara} disabled={isGeneratingInvoice}>Regenerate</Button>) : (<Button variant="secondary" onClick={handleRegenerateInvoice} disabled={isGeneratingInvoice}>Regenerate</Button>)}
+          {invoiceExists && (<Button variant="danger" onClick={() => { if (selectedItem) handleResetInvoice(selectedItem.nomorPI); setIsInvoiceModalOpen(false); }}>Reset Invoice</Button>)}
           <Button variant="outline" onClick={() => setIsInvoiceModalOpen(false)}>Batal</Button>
-          {invoiceSurat ? (
-            <Button variant="primary" onClick={handleTerbitkanInvoiceSementara} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>
-          ) : (
-            <Button variant="primary" onClick={handleTerbitkanInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>
-          )}
+          {invoiceSurat ? (<Button variant="primary" onClick={handleTerbitkanInvoiceSementara} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>) : (<Button variant="primary" onClick={handleTerbitkanInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>)}
           <Button variant="primary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice}>Print</Button>
         </div>
       }>
         <div className="space-y-4">
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Invoice</p>
-            <p className="text-lg font-mono font-bold text-green-700">{invoiceNomor || "Memuat..."}</p>
-            {isGeneratingInvoice && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor invoice...</p>}
-          </div>
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Tanggal Invoice</p>
-            <p className="text-sm font-semibold text-gray-800">{invoiceDate ? new Date(invoiceDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "-"}</p>
-            <p className="text-xs text-gray-500 mt-1">{invoiceSurat ? "Menyesuaikan tanggal Surat Pengangkutan" : invoiceDate !== selectedItem?.tanggal ? "Menyesuaikan tanggal Surat Pengangkutan terakhir" : "Menyesuaikan tanggal Proforma Invoice"}</p>
-          </div>
-          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-            <p className="text-sm text-blue-700"><span className="font-semibold">Dipesan Oleh:</span> {selectedItem?.namaCustomer || "-"}</p>
-          </div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200"><p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Invoice</p><p className="text-lg font-mono font-bold text-green-700">{invoiceNomor || "Memuat..."}</p>{isGeneratingInvoice && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor invoice...</p>}</div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200"><p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Tanggal Invoice</p><p className="text-sm font-semibold text-gray-800">{invoiceDate ? new Date(invoiceDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "-"}</p><p className="text-xs text-gray-500 mt-1">{invoiceSurat ? "Menyesuaikan tanggal Surat Pengangkutan" : invoiceDate !== selectedItem?.tanggal ? "Menyesuaikan tanggal Surat Pengangkutan terakhir" : "Menyesuaikan tanggal Proforma Invoice"}</p></div>
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100"><p className="text-sm text-blue-700"><span className="font-semibold">Dipesan Oleh:</span> {selectedItem?.namaCustomer || "-"}</p></div>
           <p className="text-sm text-gray-600">Pilih TTD untuk bagian <strong>Diorder Oleh</strong>:</p>
           <Select label="Pilih TTD Diorder Oleh" value={selectedOrderTTD} onChange={(e) => setSelectedOrderTTD(e.target.value)} options={[{ value: "", label: "Pilih tanda tangan..." }, ...ttdList.map((ttd) => ({ value: ttd.id, label: `${ttd.nama} - ${ttd.jabatan}` }))]} />
           {selectedOrderTTD && (
@@ -2915,20 +2597,14 @@ export default function RekapProformaInvoicePage() {
                 const ttd = ttdList.find((t) => t.id === selectedOrderTTD);
                 if (!ttd) return null;
                 return (
-                  <>
-                    <img src={ttd.ttdImage} alt="TTD" className="h-16 object-contain bg-white rounded-lg border border-gray-200" />
-                    <div>
-                      <p className="text-sm font-semibold text-gray-900">{ttd.nama}</p>
-                      <p className="text-xs text-gray-500">{ttd.jabatan}</p>
-                    </div>
-                  </>
+                  <><img src={ttd.ttdImage} alt="TTD" className="h-16 object-contain bg-white rounded-lg border border-gray-200" /><div><p className="text-sm font-semibold text-gray-900">{ttd.nama}</p><p className="text-xs text-gray-500">{ttd.jabatan}</p></div></>
                 );
               })()}
             </div>
           )}
-
         </div>
       </Modal>
+
       <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Tambah Pembayaran" size="md" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>Batal</Button>
@@ -2936,57 +2612,23 @@ export default function RekapProformaInvoicePage() {
         </div>
       }>
         <form onSubmit={handleUpdatePayment} className="space-y-4">
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor PI</p>
-            <p className="text-lg font-bold text-green-700">{selectedItem?.nomorPI}</p>
-          </div>
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
-            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Customer</p>
-            <p className="text-sm font-semibold text-gray-800">{selectedItem?.namaCustomer}</p>
-          </div>
-          <div className="p-4 bg-green-50 rounded-xl border border-green-200">
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-medium text-green-700">Jumlah Tertagih</span>
-              <span className="text-lg font-mono font-bold text-green-700">{selectedItem ? formatRupiah(selectedItem.jumlahTertagih) : "-"}</span>
-            </div>
-          </div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200"><p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor PI</p><p className="text-lg font-bold text-green-700">{selectedItem?.nomorPI}</p></div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200"><p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Customer</p><p className="text-sm font-semibold text-gray-800">{selectedItem?.namaCustomer}</p></div>
+          <div className="p-4 bg-green-50 rounded-xl border border-green-200"><div className="flex justify-between items-center"><span className="text-sm font-medium text-green-700">Jumlah Tertagih</span><span className="text-lg font-mono font-bold text-green-700">{selectedItem ? formatRupiah(selectedItem.jumlahTertagih) : "-"}</span></div></div>
           {(selectedItem?.riwayatPembayaran || []).length > 0 && (
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Riwayat Pembayaran</p>
-              <table className="w-full text-sm">
-                <thead><tr className="border-b border-gray-200"><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-gray-600">Jumlah</th></tr></thead>
-                <tbody>
-                  {selectedItem?.riwayatPembayaran?.map((r, i) => (
-                    <tr key={i} className="border-b border-gray-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td></tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t border-gray-300"><td colSpan={2} className="py-1 px-2 text-xs font-bold text-gray-700">Total Dibayar</td><td className="py-1 px-2 text-right font-mono font-bold text-gray-900">{formatRupiah(selectedItem?.jumlahUangDibayar || 0)}</td></tr>
-                </tfoot>
-              </table>
+              <table className="w-full text-sm"><thead><tr className="border-b border-gray-200"><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-gray-600">Jumlah</th></tr></thead><tbody>{selectedItem?.riwayatPembayaran?.map((r, i) => (<tr key={i} className="border-b border-gray-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td></tr>))}</tbody><tfoot><tr className="border-t border-gray-300"><td colSpan={2} className="py-1 px-2 text-xs font-bold text-gray-700">Total Dibayar</td><td className="py-1 px-2 text-right font-mono font-bold text-gray-900">{formatRupiah(selectedItem?.jumlahUangDibayar || 0)}</td></tr></tfoot></table>
             </div>
           )}
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
             <p className="text-sm font-semibold text-blue-700 mb-3">Pembayaran Baru</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Pembayaran</label>
-                <input type="text" inputMode="decimal" value={paymentForm.jumlahUangDibayar} onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-3 focus:px-4 focus:text-base focus:shadow-2xl focus:z-50 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200" />
-              </div>
+              <div><label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Pembayaran</label><input type="text" inputMode="decimal" value={paymentForm.jumlahUangDibayar} onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-3 focus:px-4 focus:text-base focus:shadow-2xl focus:z-50 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200" /></div>
               <Input label="Tanggal Pembayaran" type="date" value={paymentForm.tanggalPembayaran} onChange={(e) => setPaymentForm((prev) => ({ ...prev, tanggalPembayaran: e.target.value }))} />
             </div>
           </div>
-          <div className="p-3 bg-amber-50 rounded-lg border border-amber-100">
-            <p className="text-sm text-amber-700"><span className="font-semibold">Status Otomatis: </span>{selectedItem && (() => {
-              const currentPaid = selectedItem.jumlahUangDibayar || 0;
-              const newPaid = parseFloat(paymentForm.jumlahUangDibayar) || 0;
-              const totalPaid = currentPaid + newPaid;
-              const total = selectedItem.jumlahTertagih || 0;
-              if (totalPaid >= total && total > 0) return "Lunas";
-              if (totalPaid > 0) return "Cicilan";
-              return "Belum Lunas";
-            })()}</p>
-          </div>
+          <div className="p-3 bg-amber-50 rounded-lg border border-amber-100"><p className="text-sm text-amber-700"><span className="font-semibold">Status Otomatis: </span>{selectedItem && (() => { const currentPaid = selectedItem.jumlahUangDibayar || 0; const newPaid = parseFloat(paymentForm.jumlahUangDibayar) || 0; const totalPaid = currentPaid + newPaid; const total = selectedItem.jumlahTertagih || 0; if (totalPaid >= total && total > 0) return "Lunas"; if (totalPaid > 0) return "Cicilan"; return "Belum Lunas"; })()}</p></div>
           {selectedItem && parseFloat(paymentForm.jumlahUangDibayar || "0") > 0 && (
             <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
               <div className="flex justify-between items-center text-sm"><span className="font-medium text-blue-700">Total Setelah Pembayaran</span><span className="font-mono font-semibold text-blue-700">{formatRupiah((selectedItem.jumlahUangDibayar || 0) + (parseFloat(paymentForm.jumlahUangDibayar) || 0))}</span></div>
