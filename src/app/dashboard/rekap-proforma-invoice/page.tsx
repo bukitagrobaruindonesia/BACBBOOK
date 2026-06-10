@@ -100,6 +100,9 @@ interface ProformaInvoice {
 interface StockItem {
   id: string;
   namaBarang: string;
+  kodeBarang: string;
+  fot: string;
+  namaProdusen: string;
   bobotPerUnit: number;
   stokAkhirUnit: number;
   stokAkhirKG: number;
@@ -980,22 +983,26 @@ export default function RekapProformaInvoicePage() {
     try {
       let subtotal = 0;
       const updatedProdukItems = editForm.produkItems.map((p) => {
-        const qty = p.kuantitas || 0;
-        const price = p.hargaSatuan || 0;
+        const qty = parseFloat(String(p.kuantitas)) || 0;
+        const price = parseFloat(String(p.hargaSatuan)) || 0;
         const total = qty * price;
         subtotal += total;
-        return { ...p, totalHarga: total };
+        return { ...p, totalHarga: total, hargaPerZakDus: price * (p.bobotPerUnit || 50) };
       });
       const uangMuka = parseFloat(editForm.uangMuka) || 0;
       const ongkosKirim = parseFloat(editForm.ongkosKirim) || 0;
       let ppn = 0;
       if (editForm.produkItems.some((p) => p.includePPN)) {
         ppn = editForm.produkItems.reduce((sum, p) => {
-          if (p.includePPN) return sum + ((p.kuantitas || 0) * (p.hargaSatuan || 0) * 0.11);
+          if (p.includePPN) return sum + ((parseFloat(String(p.kuantitas)) || 0) * (parseFloat(String(p.hargaSatuan)) || 0) * 0.11);
           return sum;
         }, 0);
       }
       const jumlahTertagih = subtotal - uangMuka + ppn + ongkosKirim;
+      const totalPaid = (selectedItem.riwayatPembayaran || []).reduce((sum, r) => sum + (r.jumlah || 0), 0) || selectedItem.jumlahUangDibayar || 0;
+      let statusPelunasan = "Belum Lunas";
+      if (totalPaid >= jumlahTertagih && jumlahTertagih > 0) statusPelunasan = "Lunas";
+      else if (totalPaid > 0) statusPelunasan = "Cicilan";
       await updateDoc(doc(db, "proformaInvoice", selectedItem.id), {
         tanggal: editForm.tanggal,
         nomorPI: editForm.nomorPI.trim(),
@@ -1010,6 +1017,7 @@ export default function RekapProformaInvoicePage() {
         ongkosKirim: ongkosKirim,
         subtotal: subtotal,
         jumlahTertagih: jumlahTertagih,
+        statusPelunasan: statusPelunasan,
         keterangan: editForm.keterangan.trim(),
         updatedAt: serverTimestamp(),
       });
@@ -2160,7 +2168,46 @@ export default function RekapProformaInvoicePage() {
   const handleEditProdukChange = (index: number, field: string, value: string) => {
     setEditForm((prev) => {
       const newItems = [...prev.produkItems];
-      newItems[index] = { ...newItems[index], [field]: value };
+      const item = { ...newItems[index] };
+      if (field === "selectProduk") {
+        if (!value) {
+          item.namaProduk = "";
+          item.fot = "";
+          item.produsen = "";
+          item.bobotPerUnit = 50;
+        } else {
+          const stock = stockList.find((s) => s.namaBarang === value);
+          if (stock) {
+            item.namaProduk = stock.namaBarang;
+            item.fot = stock.fot || "";
+            item.produsen = stock.namaProdusen || "";
+            item.bobotPerUnit = stock.bobotPerUnit || 50;
+            item.satuan = "KG";
+          }
+        }
+      } else if (field === "includePPN") {
+        item.includePPN = value === "true";
+      } else if (field === "namaProduk") {
+        item.namaProduk = value;
+      } else if (field === "fot") {
+        item.fot = value;
+      } else if (field === "produsen") {
+        item.produsen = value;
+      } else if (field === "kuantitas") {
+        item.kuantitas = parseFloat(value) || 0;
+      } else if (field === "satuan") {
+        item.satuan = value;
+      } else if (field === "hargaSatuan") {
+        item.hargaSatuan = parseFloat(value) || 0;
+      } else if (field === "bobotPerUnit") {
+        item.bobotPerUnit = parseFloat(value) || 50;
+      }
+      const qty = parseFloat(String(item.kuantitas)) || 0;
+      const price = parseFloat(String(item.hargaSatuan)) || 0;
+      const bobot = parseFloat(String(item.bobotPerUnit)) || 50;
+      item.totalHarga = qty * price;
+      item.hargaPerZakDus = price * bobot;
+      newItems[index] = item;
       return { ...prev, produkItems: newItems };
     });
   };
@@ -2651,7 +2698,23 @@ export default function RekapProformaInvoicePage() {
                   {editForm.produkItems.map((item, index) => (
                     <tr key={index}>
                       <td className="px-3 py-2 text-sm text-gray-900">{index + 1}</td>
-                      <td className="px-3 py-2 relative overflow-visible"><input type="text" value={item.namaProduk} onChange={(e) => handleEditProdukChange(index, "namaProduk", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></td>
+                      <td className="px-3 py-2 relative overflow-visible">
+                        <select
+                          value={stockList.some((s) => s.namaBarang === item.namaProduk) ? item.namaProduk : "__manual__"}
+                          onChange={(e) => handleEditProdukChange(index, "selectProduk", e.target.value === "__manual__" ? "" : e.target.value)}
+                          className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md"
+                        >
+                          <option value="">Pilih Produk...</option>
+                          {stockList.map((stock) => (
+                            <option key={stock.id} value={stock.namaBarang}>{stock.namaBarang} ({stock.kodeBarang})</option>
+                          ))}
+                          <option value="__manual__">Manual Input</option>
+                        </select>
+                        {(!stockList.some((s) => s.namaBarang === item.namaProduk) && item.namaProduk) || (item.namaProduk && !stockList.some((s) => s.namaBarang === item.namaProduk)) ? (
+                          <input type="text" value={item.namaProduk} onChange={(e) => handleEditProdukChange(index, "namaProduk", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm mt-1 transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" />
+                        ) : null}
+                        <input type="hidden" value={item.bobotPerUnit || 50} />
+                      </td>
                       <td className="px-3 py-2 relative overflow-visible"><input type="text" value={item.fot || ""} onChange={(e) => handleEditProdukChange(index, "fot", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></td>
                       <td className="px-3 py-2 relative overflow-visible"><input type="text" value={item.produsen || ""} onChange={(e) => handleEditProdukChange(index, "produsen", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></td>
                       <td className="px-3 py-2 relative overflow-visible"><input type="text" inputMode="decimal" value={String(item.kuantitas)} onChange={(e) => handleEditProdukChange(index, "kuantitas", e.target.value)} className="w-full min-w-[60px] px-2 py-1 border border-gray-300 rounded text-sm transition-all duration-200 focus:w-auto focus:min-w-[160px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></td>
@@ -2677,6 +2740,39 @@ export default function RekapProformaInvoicePage() {
                 </tbody>
               </table>
             </div>
+            {(() => {
+              const subtotal = editForm.produkItems.reduce((sum, p) => sum + ((parseFloat(String(p.kuantitas)) || 0) * (parseFloat(String(p.hargaSatuan)) || 0)), 0);
+              const uangMuka = parseFloat(editForm.uangMuka) || 0;
+              const ongkosKirim = parseFloat(editForm.ongkosKirim) || 0;
+              let ppn = 0;
+              editForm.produkItems.forEach((p) => { if (p.includePPN) ppn += ((parseFloat(String(p.kuantitas)) || 0) * (parseFloat(String(p.hargaSatuan)) || 0) * 0.11); });
+              const jumlahTertagih = subtotal - uangMuka + ppn + ongkosKirim;
+              const totalPaid = selectedItem ? ((selectedItem.riwayatPembayaran || []).reduce((sum, r) => sum + (r.jumlah || 0), 0) || selectedItem.jumlahUangDibayar || 0) : 0;
+              let status = "Belum Lunas";
+              if (totalPaid >= jumlahTertagih && jumlahTertagih > 0) status = "Lunas";
+              else if (totalPaid > 0) status = "Cicilan";
+              const badgeClass = status === "Lunas" ? "bg-green-100 text-green-700" : status === "Cicilan" ? "bg-yellow-100 text-yellow-700" : "bg-red-100 text-red-700";
+              return (
+                <div className="p-4 bg-gray-50 rounded-xl border border-gray-200 mb-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Preview Status Pelunasan</span>
+                    <span className={`px-2 py-1 rounded-md text-xs font-bold ${badgeClass}`}>{status}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Jumlah Tertagih (Baru):</span>
+                    <span className="font-mono font-semibold">{formatRupiah(jumlahTertagih)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Total Dibayar:</span>
+                    <span className="font-mono font-semibold">{formatRupiah(totalPaid)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Sisa:</span>
+                    <span className="font-mono font-semibold">{formatRupiah(Math.max(0, jumlahTertagih - totalPaid))}</span>
+                  </div>
+                </div>
+              );
+            })()}
             <Button type="button" variant="outline" size="sm" onClick={addEditProdukItem}>
               <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
               Tambah Produk
