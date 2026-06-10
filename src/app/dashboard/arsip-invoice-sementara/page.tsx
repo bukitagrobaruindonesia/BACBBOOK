@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  collection, getDocs, query, orderBy,
+  collection, getDocs, query, orderBy, doc, deleteDoc,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
@@ -114,6 +114,9 @@ export default function ArsipInvoiceSementaraPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedItem, setSelectedItem] = useState<ArsipInvoiceSementara | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [deleteItem, setDeleteItem] = useState<ArsipInvoiceSementara | null>(null);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     fetchData();
@@ -165,6 +168,27 @@ export default function ArsipInvoiceSementaraPage() {
   const handleDetail = (item: ArsipInvoiceSementara) => {
     setSelectedItem(item);
     setIsDetailModalOpen(true);
+  };
+
+  const handleDeleteClick = (item: ArsipInvoiceSementara) => {
+    setDeleteItem(item);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteItem) return;
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, "arsipInvoiceSementara", deleteItem.id));
+      setData((prev) => prev.filter((i) => i.id !== deleteItem.id));
+      setIsDeleteModalOpen(false);
+      setDeleteItem(null);
+    } catch (error) {
+      console.error(error);
+      alert("Gagal menghapus data. Silakan coba lagi.");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handlePrintInvoice = (item: ArsipInvoiceSementara) => {
@@ -409,7 +433,7 @@ export default function ArsipInvoiceSementaraPage() {
     {
       key: "aksi",
       header: "Aksi",
-      width: "160px",
+      width: "200px",
       render: (row: ArsipInvoiceSementara) => (
         <div className="flex items-center gap-2">
           <button onClick={(e) => { e.stopPropagation(); handleDetail(row); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Detail">
@@ -417,6 +441,9 @@ export default function ArsipInvoiceSementaraPage() {
           </button>
           <button onClick={(e) => { e.stopPropagation(); handlePrintInvoice(row); }} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print Invoice">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
           </button>
         </div>
       ),
@@ -557,6 +584,18 @@ export default function ArsipInvoiceSementaraPage() {
             </div>
           </div>
         )}
+      </Modal>
+      <Modal isOpen={isDeleteModalOpen} onClose={() => setIsDeleteModalOpen(false)} title="Konfirmasi Hapus" size="sm">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700">Apakah Anda yakin ingin menghapus invoice <span className="font-bold text-red-600">{deleteItem?.nomorInvoice}</span>?</p>
+          <p className="text-xs text-gray-500">Tindakan ini tidak dapat dibatalkan.</p>
+        </div>
+        <div className="flex justify-end gap-3 mt-6">
+          <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>Batal</Button>
+          <Button variant="danger" onClick={handleConfirmDelete} disabled={isDeleting}>
+            {isDeleting ? "Menghapus..." : "Hapus"}
+          </Button>
+        </div>
       </Modal>
     </div>
   );
