@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, query, orderBy, doc, deleteDoc } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
 import Table from "@/app/components/ui/Table";
@@ -53,6 +53,9 @@ interface ArsipInvoice {
   ttdHormatNama: string;
   ttdHormatJabatan: string;
   ttdHormatImage: string;
+  isPrinted: boolean;
+  printedAt: Date | null;
+  printedBy: string;
   createdAt: Date;
 }
 
@@ -105,38 +108,20 @@ const numberToWords = (num: number): string => {
   return result.trim() + " RUPIAH";
 };
 
-const sendWhatsAppNotification = async (phone: string, apiKey: string, message: string) => {
-  const url = `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(message)}&apikey=${encodeURIComponent(apiKey)}`;
-  try {
-    const res = await fetch(url, { method: "GET" });
-    const text = await res.text();
-    return res.ok && text.toLowerCase().includes("success");
-  } catch {
-    return false;
-  }
-};
-
 export default function ArsipInvoicePage() {
   const [data, setData] = useState<ArsipInvoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState<"all" | "unprinted" | "printed">("all");
   const [selectedItem, setSelectedItem] = useState<ArsipInvoice | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<ArsipInvoice | null>(null);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [waPhone, setWaPhone] = useState("");
-  const [waApiKey, setWaApiKey] = useState("");
-  const [isWaModalOpen, setIsWaModalOpen] = useState(false);
-  const [waItem, setWaItem] = useState<ArsipInvoice | null>(null);
-  const [isSendingWa, setIsSendingWa] = useState(false);
-  const [waStatus, setWaStatus] = useState("");
+  const [isMarking, setIsMarking] = useState(false);
+  const [unprintedCount, setUnprintedCount] = useState(0);
 
   useEffect(() => {
-    const savedPhone = localStorage.getItem("wa_phone") || "";
-    const savedKey = localStorage.getItem("wa_apikey") || "";
-    setWaPhone(savedPhone);
-    setWaApiKey(savedKey);
     fetchData();
   }, []);
 
@@ -168,18 +153,26 @@ export default function ArsipInvoicePage() {
           ttdHormatNama: d.ttdHormatNama || "",
           ttdHormatJabatan: d.ttdHormatJabatan || "",
           ttdHormatImage: d.ttdHormatImage || "",
+          isPrinted: d.isPrinted || false,
+          printedAt: d.printedAt?.toDate() || null,
+          printedBy: d.printedBy || "",
           createdAt: d.createdAt?.toDate(),
         } as ArsipInvoice;
       });
       setData(items);
+      setUnprintedCount(items.filter((i) => !i.isPrinted).length);
     } catch (error) { console.error(error); } finally { setIsLoading(false); }
   };
 
-  const filteredData = data.filter((item) =>
-    item.nomorInvoice?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredData = data.filter((item) => {
+    const matchSearch =
+      item.nomorInvoice?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase());
+    if (filterStatus === "unprinted") return matchSearch && !item.isPrinted;
+    if (filterStatus === "printed") return matchSearch && item.isPrinted;
+    return matchSearch;
+  });
 
   const handleDetail = (item: ArsipInvoice) => {
     setSelectedItem(item);
@@ -207,25 +200,58 @@ export default function ArsipInvoicePage() {
     }
   };
 
-  const handleWaClick = (item: ArsipInvoice) => {
-    setWaItem(item);
-    setWaStatus("");
-    setIsWaModalOpen(true);
+  const handleMarkPrinted = async (item: ArsipInvoice) => {
+    setIsMarking(true);
+    try {
+      await updateDoc(doc(db, "arsipInvoice", item.id), {
+        isPrinted: true,
+        printedAt: Timestamp.now(),
+        printedBy: "User",
+      });
+      setData((prev) =>
+        prev.map((i) =>
+          i.id === item.id
+            ? { ...i, isPrinted: true, printedAt: new Date(), printedBy: "User" }
+            : i
+        )
+      );
+      setUnprintedCount((prev) => Math.max(0, prev - 1));
+      if (selectedItem && selectedItem.id === item.id) {
+        setSelectedItem({ ...selectedItem, isPrinted: true, printedAt: new Date(), printedBy: "User" });
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Gagal menandai status print.");
+    } finally {
+      setIsMarking(false);
+    }
   };
 
-  const handleSendWa = async () => {
-    if (!waItem || !waPhone || !waApiKey) {
-      setWaStatus("Lengkapi nomor tujuan dan API Key");
-      return;
+  const handleUnmarkPrinted = async (item: ArsipInvoice) => {
+    setIsMarking(true);
+    try {
+      await updateDoc(doc(db, "arsipInvoice", item.id), {
+        isPrinted: false,
+        printedAt: null,
+        printedBy: "",
+      });
+      setData((prev) =>
+        prev.map((i) =>
+          i.id === item.id
+            ? { ...i, isPrinted: false, printedAt: null, printedBy: "" }
+            : i
+        )
+      );
+      setUnprintedCount((prev) => prev + 1);
+      if (selectedItem && selectedItem.id === item.id) {
+        setSelectedItem({ ...selectedItem, isPrinted: false, printedAt: null, printedBy: "" });
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Gagal mengubah status print.");
+    } finally {
+      setIsMarking(false);
     }
-    setIsSendingWa(true);
-    setWaStatus("Mengirim...");
-    localStorage.setItem("wa_phone", waPhone);
-    localStorage.setItem("wa_apikey", waApiKey);
-    const message = `${waItem.nomorPI} Invoice telah terbit\nNomor Invoice: ${waItem.nomorInvoice}\nCustomer: ${waItem.namaCustomer}\nJumlah: ${formatRupiah(waItem.jumlahTertagih)}`;
-    const ok = await sendWhatsAppNotification(waPhone, waApiKey, message);
-    setWaStatus(ok ? "Berhasil terkirim!" : "Gagal mengirim. Periksa API Key.");
-    setIsSendingWa(false);
   };
 
   const handlePrintInvoice = (item: ArsipInvoice) => {
@@ -430,6 +456,16 @@ export default function ArsipInvoicePage() {
 
   const columns = [
     {
+      key: "status",
+      header: "Status",
+      width: "110px",
+      render: (row: ArsipInvoice) => (
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${row.isPrinted ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+          {row.isPrinted ? "SUDAH PRINT" : "BELUM PRINT"}
+        </span>
+      ),
+    },
+    {
       key: "tanggalInvoice",
       header: "Tanggal",
       width: "120px",
@@ -461,17 +497,21 @@ export default function ArsipInvoicePage() {
     {
       key: "aksi",
       header: "Aksi",
-      width: "240px",
+      width: "220px",
       render: (row: ArsipInvoice) => (
         <div className="flex items-center gap-2">
-          <button onClick={(e) => { e.stopPropagation(); handleWaClick(row); }} className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors" title="Kirim WA">
-            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/></svg>
-          </button>
           <button onClick={(e) => { e.stopPropagation(); handleDetail(row); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Detail">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
           </button>
           <button onClick={(e) => { e.stopPropagation(); handlePrintInvoice(row); }} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print Invoice">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+          </button>
+          <button onClick={(e) => { e.stopPropagation(); row.isPrinted ? handleUnmarkPrinted(row) : handleMarkPrinted(row); }} className={`p-2 rounded-lg transition-colors ${row.isPrinted ? "text-orange-600 hover:bg-orange-50" : "text-green-600 hover:bg-green-50"}`} title={row.isPrinted ? "Batalkan Print" : "Tandai Sudah Print"}>
+            {row.isPrinted ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            )}
           </button>
           <button onClick={(e) => { e.stopPropagation(); handleDeleteClick(row); }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -483,12 +523,27 @@ export default function ArsipInvoicePage() {
 
   return (
     <div className="space-y-6">
-      <Header title="Arsip Invoice" subtitle="Daftar invoice BAGB-INV yang sudah diterbitkan" />
+      <div className="flex items-center gap-4">
+        <Header title="Arsip Invoice" subtitle="Daftar invoice BAGB-INV yang sudah diterbitkan" />
+        {unprintedCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-700 rounded-full text-sm font-bold">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+            {unprintedCount} Belum Print
+          </div>
+        )}
+      </div>
       <Card>
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
           <div className="relative w-full sm:w-96">
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input type="text" placeholder="Cari nomor invoice, PI, customer..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
+          </div>
+          <div className="flex items-center gap-2">
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+              <option value="all">Semua</option>
+              <option value="unprinted">Belum Print</option>
+              <option value="printed">Sudah Print</option>
+            </select>
           </div>
         </div>
         <div className="text-sm text-gray-500 mb-4">
@@ -500,15 +555,28 @@ export default function ArsipInvoicePage() {
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsDetailModalOpen(false)}>Tutup</Button>
           {selectedItem && (
-            <Button variant="primary" onClick={() => handlePrintInvoice(selectedItem)}>
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
-              Print Invoice
-            </Button>
+            <>
+              <Button variant="primary" onClick={() => handlePrintInvoice(selectedItem)}>
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                Print Invoice
+              </Button>
+              <Button variant={selectedItem.isPrinted ? "outline" : "primary"} onClick={() => selectedItem.isPrinted ? handleUnmarkPrinted(selectedItem) : handleMarkPrinted(selectedItem)} disabled={isMarking}>
+                {selectedItem.isPrinted ? "Batalkan Print" : "Tandai Sudah Print"}
+              </Button>
+            </>
           )}
         </div>
       }>
         {selectedItem && (
           <div className="space-y-6">
+            <div className="flex items-center gap-3">
+              <span className={`px-3 py-1 rounded-full text-xs font-bold ${selectedItem.isPrinted ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                {selectedItem.isPrinted ? "SUDAH PRINT" : "BELUM PRINT"}
+              </span>
+              {selectedItem.isPrinted && selectedItem.printedAt && (
+                <span className="text-xs text-gray-500">Print pada: {selectedItem.printedAt.toLocaleString("id-ID")}</span>
+              )}
+            </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500 uppercase tracking-wide">Nomor Invoice</p><p className="text-lg font-mono font-bold text-green-700">{selectedItem.nomorInvoice}</p></div>
               <div className="p-4 bg-gray-50 rounded-xl"><p className="text-xs text-gray-500 uppercase tracking-wide">Tanggal Invoice</p><p className="text-lg font-bold text-gray-800">{selectedItem.tanggalInvoice}</p></div>
@@ -619,34 +687,6 @@ export default function ArsipInvoicePage() {
           <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>Batal</Button>
           <Button variant="danger" onClick={handleConfirmDelete} disabled={isDeleting}>
             {isDeleting ? "Menghapus..." : "Hapus"}
-          </Button>
-        </div>
-      </Modal>
-      <Modal isOpen={isWaModalOpen} onClose={() => setIsWaModalOpen(false)} title="Kirim Notifikasi WhatsApp" size="sm">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Nomor Tujuan (628xx)</label>
-            <input type="text" value={waPhone} onChange={(e) => setWaPhone(e.target.value)} placeholder="6281234567890" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">CallMeBot API Key</label>
-            <input type="text" value={waApiKey} onChange={(e) => setWaApiKey(e.target.value)} placeholder="API Key dari CallMeBot" className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500" />
-            <p className="text-xs text-gray-500 mt-1">Save nomor +34 644 52 53 53, kirim "I allow callmebot to send me messages" untuk mendapat API Key.</p>
-          </div>
-          {waItem && (
-            <div className="p-3 bg-gray-50 rounded-lg text-xs text-gray-700">
-              <p className="font-semibold">Preview Pesan:</p>
-              <p className="mt-1">{waItem.nomorPI} Invoice telah terbit</p>
-            </div>
-          )}
-          {waStatus && (
-            <p className={`text-sm font-medium ${waStatus.includes("Berhasil") ? "text-green-600" : "text-red-600"}`}>{waStatus}</p>
-          )}
-        </div>
-        <div className="flex justify-end gap-3 mt-6">
-          <Button variant="outline" onClick={() => setIsWaModalOpen(false)}>Batal</Button>
-          <Button variant="primary" onClick={handleSendWa} disabled={isSendingWa}>
-            {isSendingWa ? "Mengirim..." : "Kirim WA"}
           </Button>
         </div>
       </Modal>

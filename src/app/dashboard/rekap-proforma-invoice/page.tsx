@@ -170,13 +170,13 @@ const parseNomorSeri = (nomorSeri: string) => {
 };
 
 const validateNomorSeriFormat = (value: string) => {
-  const giRegex = new RegExp("^BAGB-SP/\d{4}/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)/\d{4}$");
-  const doRegex = new RegExp("^BAGB-SP-DO.+-\d{4}$");
+  const giRegex = new RegExp("^BAGB-SP/\\d{4}/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)/\\d{4}$");
+  const doRegex = new RegExp("^BAGB-SP-DO.+-\\d{4}$");
   return giRegex.test(value.trim()) || doRegex.test(value.trim());
 };
 
 const parseInvoiceNumber = (nomor: string) => {
-  const match = nomor.match(new RegExp("^BAGB-INV(?:-S(\d+))?-(\d{4})$"));
+  const match = nomor.match(new RegExp("^BAGB-INV(?:-S(\\d+))?-(\\d{4})$"));
   if (!match) return null;
   return {
     isPartial: !!match[1],
@@ -651,7 +651,7 @@ export default function RekapProformaInvoicePage() {
       snap.docs.forEach((d) => {
         const ni = d.data().nomorInvoice;
         if (ni && ni.includes("-S") && ni.endsWith(`-${baseNumber}`)) {
-          const match = ni.match(new RegExp("-S(\d+)-"));
+          const match = ni.match(new RegExp("-S(\\d+)-"));
           if (match) usedPartials.add(parseInt(match[1]));
         }
       });
