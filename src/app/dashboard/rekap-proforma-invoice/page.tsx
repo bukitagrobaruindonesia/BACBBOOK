@@ -94,6 +94,7 @@ interface ProformaInvoice {
   tanggalPembayaran?: string;
   statusPelunasan?: string;
   riwayatPembayaran?: RiwayatPembayaran[];
+  cc?: string;
 }
 
 interface StockItem {
@@ -344,6 +345,7 @@ export default function RekapProformaInvoicePage() {
           tanggalPembayaran: d.tanggalPembayaran || "",
           statusPelunasan: d.statusPelunasan || "Belum Lunas",
           riwayatPembayaran: d.riwayatPembayaran || [],
+          cc: d.cc || "",
         } as ProformaInvoice;
       });
       setData(items);
@@ -1534,6 +1536,7 @@ export default function RekapProformaInvoicePage() {
                   <p style="margin-top: 3px;"><strong>BANK BRI</strong> - Cabang Lamandau</p>
                   <p>a/n PT Bukit Agrochemical Baru</p>
                   <p>No. Rek : 2232-01000-879-567</p>
+                  <p style="margin-top: 6px; font-size: 9px;">CC : ${item.cc || "-"}</p>
                 </div>
               </div>
               <div class="footer-ttd-area">
@@ -2235,6 +2238,7 @@ export default function RekapProformaInvoicePage() {
                 <p className="font-semibold text-gray-800">{selectedItem.namaCustomer}</p>
                 <p className="text-sm text-gray-600 mt-1">{selectedItem.alamatCustomer}</p>
                 {selectedItem.npwp && <p className="text-sm text-gray-600 mt-1">NPWP: {selectedItem.npwp}</p>}
+                {selectedItem.cc && <p className="text-sm text-gray-600 mt-1">CC: {selectedItem.cc}</p>}
               </div>
               <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Metode Pembayaran</p>

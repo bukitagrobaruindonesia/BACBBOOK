@@ -65,6 +65,7 @@ interface FormDataState {
   terbilang: string;
   tanggalJatuhTempo: string;
   keterangan: string;
+  cc: string;
   selectedTTD: string;
 }
 
@@ -106,6 +107,7 @@ export default function InputProformaInvoicePage() {
     terbilang: "",
     tanggalJatuhTempo: "",
     keterangan: "",
+    cc: "",
     selectedTTD: "",
   });
 
@@ -589,6 +591,14 @@ export default function InputProformaInvoicePage() {
         ongkosKirim: parseFloat(formData.ongkosKirim) || 0,
         jumlahUangDibayar: parseFloat(formData.jumlahUangDibayar) || 0,
         tanggalPembayaran: formData.tanggalPembayaran || "",
+        statusPelunasan: (() => {
+          const jd = parseFloat(formData.jumlahUangDibayar) || 0;
+          if (jd >= formData.jumlahTertagih && formData.jumlahTertagih > 0) return "Lunas";
+          if (jd > 0) return "Cicilan";
+          return "Belum Lunas";
+        })(),
+        riwayatPembayaran: (parseFloat(formData.jumlahUangDibayar) || 0) > 0 ? [{ tanggal: formData.tanggalPembayaran || formData.tanggal, jumlah: parseFloat(formData.jumlahUangDibayar) || 0 }] : [],
+        cc: formData.cc.trim(),
         subtotal: formData.subtotal,
         jumlahTertagih: formData.jumlahTertagih,
         terbilang: formData.terbilang,
@@ -621,6 +631,7 @@ export default function InputProformaInvoicePage() {
         terbilang: "",
         tanggalJatuhTempo: "",
         keterangan: "",
+        cc: "",
         selectedTTD: "",
       });
       setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
@@ -885,6 +896,10 @@ export default function InputProformaInvoicePage() {
                 <p className="text-sm font-semibold text-red-600">{formData.tanggalJatuhTempo || "-"}</p>
               </div>
               <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">CC (Opsional)</label>
+                <input type="text" name="cc" value={formData.cc} onChange={handleChange} placeholder="Nama penawar produk" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
+              </div>
+              <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1.5">Keterangan</label>
                 <textarea name="keterangan" value={formData.keterangan} onChange={handleChange} rows={4} placeholder="Masukkan keterangan tambahan jika ada" className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white resize-none" />
               </div>
@@ -902,7 +917,7 @@ export default function InputProformaInvoicePage() {
               ongkosKirim: "", jumlahUangDibayar: "", tanggalPembayaran: new Date().toISOString().split("T")[0],
               subtotal: 0,
               jumlahTertagih: 0, terbilang: "", tanggalJatuhTempo: "",
-              keterangan: "", selectedTTD: "",
+              keterangan: "", cc: "", selectedTTD: "",
             });
             setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
             generateTanggalJatuhTempo();
