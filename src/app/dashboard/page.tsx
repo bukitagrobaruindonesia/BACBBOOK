@@ -29,10 +29,34 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedFot, setSelectedFot] = useState<string>("");
   const [filterTanggal, setFilterTanggal] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [hiddenMenus, setHiddenMenus] = useState<string[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
 
   useEffect(() => {
     fetchDashboardData();
   }, [filterTanggal]);
+
+  useEffect(() => {
+    const fetchHiddenMenus = async () => {
+      if (!user?.email) {
+        setMenuLoading(false);
+        return;
+      }
+      try {
+        const q = query(collection(db, "karyawan"), where("email", "==", user.email));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const data = snap.docs[0].data();
+          setHiddenMenus(data.hiddenMenus || []);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setMenuLoading(false);
+      }
+    };
+    fetchHiddenMenus();
+  }, [user]);
 
   const getDateRange = (dateString: string) => {
     const startDate = new Date(dateString);
@@ -176,96 +200,213 @@ export default function DashboardPage() {
     return "Rp " + num.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
   };
 
-  const quickActions = [
+  const isSuperAdmin = user?.role?.trim().toUpperCase() === "SUPER ADMIN";
+
+  const allQuickActions = [
     {
       title: "Input Proforma Invoice",
       desc: "Buat proforma invoice baru",
+      href: "/dashboard/input-proforma-invoice",
+      color: "from-green-600 to-green-700",
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
         </svg>
       ),
-      href: "/dashboard/input-proforma-invoice",
-      color: "from-green-600 to-green-700",
+    },
+    {
+      title: "Rekap PI",
+      desc: "Lihat riwayat proforma invoice",
+      href: "/dashboard/rekap-proforma-invoice",
+      color: "from-emerald-600 to-emerald-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+    },
+    {
+      title: "Pembatalan Pemesanan",
+      desc: "Batalkan pemesanan yang aktif",
+      href: "/dashboard/pembatalan-pemesanan",
+      color: "from-red-600 to-red-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+    },
+    {
+      title: "Arsip Invoice",
+      desc: "Lihat arsip invoice final",
+      href: "/dashboard/arsip-invoice",
+      color: "from-blue-600 to-blue-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+    },
+    {
+      title: "Arsip Invoice Sementara",
+      desc: "Lihat arsip invoice sementara",
+      href: "/dashboard/arsip-invoice-sementara",
+      color: "from-cyan-600 to-cyan-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
     },
     {
       title: "Input Stock Gudang",
       desc: "Kelola data stock barang",
+      href: "/dashboard/laporan-stock-gudang-induk",
+      color: "from-amber-600 to-amber-700",
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
         </svg>
       ),
-      href: "/dashboard/input-stock-gudang",
-      color: "from-amber-600 to-amber-700",
-    },
-    {
-      title: "Rekap PI",
-      desc: "Lihat riwayat proforma invoice",
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      ),
-      href: "/dashboard/rekap-proforma-invoice",
-      color: "from-emerald-600 to-emerald-700",
-    },
-    {
-      title: "Laporan Stock",
-      desc: "Laporan keseluruhan stock",
-      icon: (
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-        </svg>
-      ),
-      href: "/dashboard/laporan-stock-gudang",
-      color: "from-teal-600 to-teal-700",
     },
     {
       title: "Transaksi Masuk",
       desc: "Input barang masuk ke gudang",
+      href: "/dashboard/transaksi-barang-masuk",
+      color: "from-blue-600 to-blue-700",
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16l-4-4m0 0l4-4m-4 4h18" />
         </svg>
       ),
-      href: "/dashboard/transaksi-barang-masuk",
-      color: "from-blue-600 to-blue-700",
     },
     {
       title: "Transaksi Keluar",
       desc: "Input barang keluar dari gudang",
+      href: "/dashboard/transaksi-barang-keluar",
+      color: "from-orange-600 to-orange-700",
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7" />
         </svg>
       ),
-      href: "/dashboard/transaksi-barang-keluar",
-      color: "from-orange-600 to-orange-700",
+    },
+    {
+      title: "Input DO",
+      desc: "Buat delivery order baru",
+      href: "/dashboard/input-do",
+      color: "from-indigo-600 to-indigo-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+    },
+    {
+      title: "Surat Pengangkutan",
+      desc: "Buat surat pengangkutan barang",
+      href: "/dashboard/surat-pengangkutan",
+      color: "from-teal-600 to-teal-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
     },
     {
       title: "Riwayat Transaksi",
       desc: "Lihat riwayat barang masuk dan keluar",
+      href: "/dashboard/riwayat-transaksi",
+      color: "from-purple-600 to-purple-700",
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
       ),
-      href: "/dashboard/riwayat-transaksi",
-      color: "from-purple-600 to-purple-700",
+    },
+    {
+      title: "Add Customer",
+      desc: "Tambah data customer baru",
+      href: "/dashboard/add-customer",
+      color: "from-pink-600 to-pink-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+        </svg>
+      ),
+    },
+    {
+      title: "Riwayat Customer",
+      desc: "Lihat data customer terdaftar",
+      href: "/dashboard/riwayat-customer",
+      color: "from-rose-600 to-rose-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+      ),
+    },
+    {
+      title: "Pengaturan FOT",
+      desc: "Atur lokasi gudang FOT",
+      href: "/dashboard/fot",
+      color: "from-sky-600 to-sky-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+      ),
+    },
+    {
+      title: "BAPISP Final",
+      desc: "Berita Acara Pemeriksaan dan Serah Terima",
+      href: "/dashboard/bapisp-final",
+      color: "from-lime-600 to-lime-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      ),
+    },
+    {
+      title: "Berita Acara",
+      desc: "Kelola berita acara",
+      href: "/dashboard/berita-acara",
+      color: "from-violet-600 to-violet-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+      ),
+    },
+    {
+      title: "TTD",
+      desc: "Pengaturan tanda tangan digital",
+      href: "/dashboard/ttd",
+      color: "from-fuchsia-600 to-fuchsia-700",
+      icon: (
+        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+        </svg>
+      ),
     },
     {
       title: "Data Karyawan",
       desc: "Kelola data karyawan dan hak akses",
+      href: "/dashboard/data-karyawan",
+      color: "from-indigo-600 to-indigo-700",
       icon: (
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
         </svg>
       ),
-      href: "/dashboard/data-karyawan",
-      color: "from-indigo-600 to-indigo-700",
     },
   ];
+
+  const visibleQuickActions = allQuickActions.filter((item) => {
+    if (isSuperAdmin) return true;
+    return !hiddenMenus.includes(item.href);
+  });
 
   return (
     <div className="space-y-8">
@@ -373,25 +514,31 @@ export default function DashboardPage() {
           </svg>
           Aksi Cepat
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {quickActions.map((action) => (
-            <div
-              key={action.title}
-              onClick={() => router.push(action.href)}
-              className="group cursor-pointer"
-            >
-              <Card className="h-full hover:shadow-2xl transition-all duration-300 group-hover:-translate-y-1">
-                <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${action.color} text-white shadow-lg mb-4 group-hover:scale-110 transition-transform`}>
-                  {action.icon}
-                </div>
-                <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-green-700 transition-colors">
-                  {action.title}
-                </h3>
-                <p className="text-sm text-gray-500">{action.desc}</p>
-              </Card>
-            </div>
-          ))}
-        </div>
+        {menuLoading ? (
+          <div className="flex justify-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-700"></div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {visibleQuickActions.map((action) => (
+              <div
+                key={action.title}
+                onClick={() => router.push(action.href)}
+                className="group cursor-pointer"
+              >
+                <Card className="h-full hover:shadow-2xl transition-all duration-300 group-hover:-translate-y-1">
+                  <div className={`inline-flex p-3 rounded-xl bg-gradient-to-br ${action.color} text-white shadow-lg mb-4 group-hover:scale-110 transition-transform`}>
+                    {action.icon}
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-800 mb-1 group-hover:text-green-700 transition-colors">
+                    {action.title}
+                  </h3>
+                  <p className="text-sm text-gray-500">{action.desc}</p>
+                </Card>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
