@@ -303,6 +303,14 @@ export default function SuratPengangkutanPage() {
     });
   };
 
+  const clearError = (key: string) => {
+    setErrors((prev) => {
+      const n = { ...prev };
+      delete n[key];
+      return n;
+    });
+  };
+
   const handleSubDOSelect = (itemId: number, nomorSubDO: string) => {
     const doItem = doList.find((d) => d.nomorSubDO === nomorSubDO);
     if (!doItem) return;
@@ -333,11 +341,8 @@ export default function SuratPengangkutanPage() {
       }
     }
 
-    setErrors((prev) => {
-      const n = { ...prev };
-      delete n[`nomorSubDO_${itemId}`];
-      return n;
-    });
+    clearError(`nomorSubDO_${itemId}`);
+    clearError(`nomorSubDO_${items.findIndex((it) => it.id === itemId)}`);
 
     const stock = getStockForProduct(doItem.namaProduk);
     const bobot = stock ? stock.bobotPerUnit : 50;
@@ -656,11 +661,8 @@ export default function SuratPengangkutanPage() {
       }
     }
 
-    setErrors((prev) => {
-      const n = { ...prev };
-      delete n[`nomorPI_${itemId}`];
-      return n;
-    });
+    clearError(`nomorPI_${itemId}`);
+    clearError(`nomorPI_${items.findIndex((it) => it.id === itemId)}`);
 
     const statusMap = await loadProductStatusForPI(pi);
     const fullyLoaded = piFullyLoadedMap[pi.nomorPI] !== undefined ? piFullyLoadedMap[pi.nomorPI] : (getValidProductsForPI(pi).every((prod) => statusMap[prod.namaProduk]?.status === "complete"));
@@ -711,11 +713,7 @@ export default function SuratPengangkutanPage() {
       })
     );
     if (errors[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]) {
-      setErrors((prev) => {
-        const n = { ...prev };
-        delete n[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`];
-        return n;
-      });
+      clearError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`);
     }
   };
 
@@ -745,6 +743,8 @@ export default function SuratPengangkutanPage() {
       }
     }
 
+    clearError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`);
+
     const bobot = getBobotPerUnit(prod.namaProduk);
     const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
     const piLoadedKG = statusMap[prod.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
@@ -773,14 +773,6 @@ export default function SuratPengangkutanPage() {
         };
       })
     );
-
-    if (errors[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]) {
-      setErrors((prev) => {
-        const n = { ...prev };
-        delete n[`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`];
-        return n;
-      });
-    }
   };
 
   const addItem = () => {
