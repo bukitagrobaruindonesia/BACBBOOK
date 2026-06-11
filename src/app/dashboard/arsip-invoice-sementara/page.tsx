@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, doc, deleteDoc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
 import Table from "@/app/components/ui/Table";
@@ -128,7 +128,7 @@ export default function ArsipInvoiceSementaraPage() {
 
   const fetchData = async () => {
     try {
-      const q = query(collection(db, "arsipInvoiceSementara"), orderBy("createdAt", "desc"));
+      const q = query(collection(db, "arsipInvoiceSementara"));
       const snapshot = await getDocs(q);
       const items = snapshot.docs.map((docSnap) => {
         const d = docSnap.data();
@@ -158,11 +158,16 @@ export default function ArsipInvoiceSementaraPage() {
           isPrinted: d.isPrinted || false,
           printedAt: d.printedAt?.toDate() || null,
           printedBy: d.printedBy || "",
-          createdAt: d.createdAt?.toDate(),
+          createdAt: d.createdAt?.toDate() || new Date(),
         } as ArsipInvoiceSementara;
       });
-      setData(items);
-      setUnprintedCount(items.filter((i) => !i.isPrinted).length);
+      const sortedItems = items.sort((a, b) => {
+        if (a.isPrinted !== b.isPrinted) return a.isPrinted ? 1 : -1;
+        if (!a.isPrinted && !b.isPrinted) return a.createdAt.getTime() - b.createdAt.getTime();
+        return b.createdAt.getTime() - a.createdAt.getTime();
+      });
+      setData(sortedItems);
+      setUnprintedCount(sortedItems.filter((i) => !i.isPrinted).length);
     } catch (error) { console.error(error); } finally { setIsLoading(false); }
   };
 
@@ -211,16 +216,19 @@ export default function ArsipInvoiceSementaraPage() {
         printedAt: Timestamp.now(),
         printedBy: "User",
       });
-      setData((prev) =>
-        prev.map((i) =>
-          i.id === item.id
-            ? { ...i, isPrinted: true, printedAt: new Date(), printedBy: "User" }
-            : i
-        )
-      );
+      const updated = { ...item, isPrinted: true, printedAt: new Date(), printedBy: "User" };
+      setData((prev) => {
+        const filtered = prev.filter((i) => i.id !== item.id);
+        const newArr = [...filtered, updated].sort((a, b) => {
+          if (a.isPrinted !== b.isPrinted) return a.isPrinted ? 1 : -1;
+          if (!a.isPrinted && !b.isPrinted) return a.createdAt.getTime() - b.createdAt.getTime();
+          return b.createdAt.getTime() - a.createdAt.getTime();
+        });
+        return newArr;
+      });
       setUnprintedCount((prev) => Math.max(0, prev - 1));
       if (selectedItem && selectedItem.id === item.id) {
-        setSelectedItem({ ...selectedItem, isPrinted: true, printedAt: new Date(), printedBy: "User" });
+        setSelectedItem(updated);
       }
     } catch (error) {
       console.error(error);
@@ -238,16 +246,19 @@ export default function ArsipInvoiceSementaraPage() {
         printedAt: null,
         printedBy: "",
       });
-      setData((prev) =>
-        prev.map((i) =>
-          i.id === item.id
-            ? { ...i, isPrinted: false, printedAt: null, printedBy: "" }
-            : i
-        )
-      );
+      const updated = { ...item, isPrinted: false, printedAt: null, printedBy: "" };
+      setData((prev) => {
+        const filtered = prev.filter((i) => i.id !== item.id);
+        const newArr = [...filtered, updated].sort((a, b) => {
+          if (a.isPrinted !== b.isPrinted) return a.isPrinted ? 1 : -1;
+          if (!a.isPrinted && !b.isPrinted) return a.createdAt.getTime() - b.createdAt.getTime();
+          return b.createdAt.getTime() - a.createdAt.getTime();
+        });
+        return newArr;
+      });
       setUnprintedCount((prev) => prev + 1);
       if (selectedItem && selectedItem.id === item.id) {
-        setSelectedItem({ ...selectedItem, isPrinted: false, printedAt: null, printedBy: "" });
+        setSelectedItem(updated);
       }
     } catch (error) {
       console.error(error);
