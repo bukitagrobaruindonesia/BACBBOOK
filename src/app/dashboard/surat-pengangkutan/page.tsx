@@ -306,6 +306,39 @@ export default function SuratPengangkutanPage() {
   const handleSubDOSelect = (itemId: number, nomorSubDO: string) => {
     const doItem = doList.find((d) => d.nomorSubDO === nomorSubDO);
     if (!doItem) return;
+
+    const currentItem = items.find((it) => it.id === itemId);
+    if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
+      if (doItem.namaProduk !== currentItem.jenisPupuk) {
+        setErrors((prev) => ({
+          ...prev,
+          [`nomorSubDO_${itemId}`]: `Produk DO (${doItem.namaProduk}) tidak sesuai dengan produk PI (${currentItem.jenisPupuk})`,
+        }));
+        return;
+      }
+    }
+
+    if (currentItem && currentItem.nomorPI.trim()) {
+      const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
+      if (pi) {
+        const validProducts = getValidProductsForPI(pi);
+        const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
+        if (!matchProd) {
+          setErrors((prev) => ({
+            ...prev,
+            [`nomorSubDO_${itemId}`]: `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${pi.nomorPI}`,
+          }));
+          return;
+        }
+      }
+    }
+
+    setErrors((prev) => {
+      const n = { ...prev };
+      delete n[`nomorSubDO_${itemId}`];
+      return n;
+    });
+
     const stock = getStockForProduct(doItem.namaProduk);
     const bobot = stock ? stock.bobotPerUnit : 50;
     const loadedDO = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk);
@@ -607,6 +640,28 @@ export default function SuratPengangkutanPage() {
     setPiShowMap((prev) => ({ ...prev, [itemId]: false }));
     setPiSearchMap((prev) => ({ ...prev, [itemId]: pi.nomorPI }));
 
+    const currentItem = items.find((it) => it.id === itemId);
+    if (currentItem && currentItem.nomorSubDO.trim()) {
+      const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
+      if (doItem) {
+        const validProducts = getValidProductsForPI(pi);
+        const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
+        if (!matchProd) {
+          setErrors((prev) => ({
+            ...prev,
+            [`nomorPI_${itemId}`]: `Proforma Invoice ${pi.nomorPI} tidak memiliki produk ${doItem.namaProduk} yang sesuai dengan DO yang dipilih`,
+          }));
+          return;
+        }
+      }
+    }
+
+    setErrors((prev) => {
+      const n = { ...prev };
+      delete n[`nomorPI_${itemId}`];
+      return n;
+    });
+
     const statusMap = await loadProductStatusForPI(pi);
     const fullyLoaded = piFullyLoadedMap[pi.nomorPI] !== undefined ? piFullyLoadedMap[pi.nomorPI] : (getValidProductsForPI(pi).every((prod) => statusMap[prod.namaProduk]?.status === "complete"));
     if (fullyLoaded) {
@@ -830,6 +885,13 @@ export default function SuratPengangkutanPage() {
       delete next[id];
       return next;
     });
+    setErrors((prev) => {
+      const next = { ...prev };
+      Object.keys(next).forEach((key) => {
+        if (key.includes(String(id))) delete next[key];
+      });
+      return next;
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -913,6 +975,21 @@ export default function SuratPengangkutanPage() {
         if (!item.nomorSubDO.trim()) newErrors[`nomorSubDO_${idx}`] = "Nomor Sub DO wajib dipilih";
         if (!item.nomorPO.trim()) newErrors[`nomorPO_${idx}`] = "Nomor PO wajib diisi";
         if (!item.party.trim()) newErrors[`party_${idx}`] = "Party wajib diisi";
+
+        if (item.nomorSubDO.trim() && item.nomorPI.trim()) {
+          const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+          const pi = piList.find((p) => p.nomorPI === item.nomorPI);
+          if (doItem && pi) {
+            if (doItem.namaProduk !== item.jenisPupuk) {
+              newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak sesuai dengan produk yang dipesan (${item.jenisPupuk})`;
+            }
+            const validProducts = getValidProductsForPI(pi);
+            const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
+            if (!matchProd) {
+              newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${pi.nomorPI}`;
+            }
+          }
+        }
       }
       if (!item.pengambilanZAK.trim()) {
         newErrors[`pengambilan_${idx}`] = "Pengambilan wajib diisi";
@@ -1556,7 +1633,7 @@ export default function SuratPengangkutanPage() {
                           <select
                             value={item.nomorSubDO}
                             onChange={(e) => handleSubDOSelect(item.id, e.target.value)}
-                            className={`w-full px-4 py-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`nomorSubDO_${idx}`] ? "border-red-500" : "border-gray-300"}`}
+                            className={`w-full px-4 py-3 border rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`nomorSubDO_${item.id}`] || errors[`nomorSubDO_${idx}`] ? "border-red-500" : "border-gray-300"}`}
                           >
                             <option value="">Pilih DO...</option>
                             {getAvailableDO(item.id).map((doItem) => (
@@ -1565,6 +1642,7 @@ export default function SuratPengangkutanPage() {
                               </option>
                             ))}
                           </select>
+                          {errors[`nomorSubDO_${item.id}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorSubDO_${item.id}`]}</p>}
                           {errors[`nomorSubDO_${idx}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorSubDO_${idx}`]}</p>}
                         </div>
                         <Input label="Nomor PO" type="text" value={item.nomorPO} readOnly />
@@ -1611,6 +1689,7 @@ export default function SuratPengangkutanPage() {
                           </div>
                         )}
                       </div>
+                      {errors[`nomorPI_${item.id}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorPI_${item.id}`]}</p>}
                       {errors[`nomorPI_${idx}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorPI_${idx}`]}</p>}
                       {selectedPI && (
                         <div className="mt-2 p-2 bg-green-50 rounded-lg border border-green-200 text-xs text-green-700">
