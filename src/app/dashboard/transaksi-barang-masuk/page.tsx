@@ -14,6 +14,7 @@ interface StockItem {
   id: string;
   kodeBarang: string;
   namaBarang: string;
+  namaProdusen: string;
   unit: "ZAK" | "DUS" | "KG" | "BOTOL";
   fot: string;
   bobotPerUnit: number;
@@ -41,6 +42,7 @@ export default function TransaksiBarangMasukPage() {
     tanggal: new Date().toISOString().split("T")[0],
     kodeBarang: "",
     namaBarang: "",
+    namaProdusen: "",
     unit: "ZAK" as "ZAK" | "DUS" | "KG" | "BOTOL",
     jumlahZAK: "",
     botolPerDus: "",
@@ -79,6 +81,7 @@ export default function TransaksiBarangMasukPage() {
         id: doc.id,
         kodeBarang: doc.data().kodeBarang || "",
         namaBarang: doc.data().namaBarang || "",
+        namaProdusen: doc.data().namaProdusen || "",
         unit: doc.data().unit || "ZAK",
         fot: doc.data().fot || "",
         bobotPerUnit: doc.data().bobotPerUnit || 50,
@@ -93,40 +96,46 @@ export default function TransaksiBarangMasukPage() {
     }
   };
 
-  const findMatchingStock = (kode: string, nama: string) => {
-    if (!kode.trim() || !nama.trim()) {
+  const handleNamaBarangChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedNama = e.target.value;
+    if (!selectedNama) {
+      setFormData((prev) => ({
+        ...prev,
+        namaBarang: "",
+        kodeBarang: "",
+        namaProdusen: "",
+        unit: "ZAK",
+        fot: "",
+        botolPerDus: "",
+      }));
       setMatchedStock(null);
       return;
     }
-    const kodeNormalized = kode.trim().toUpperCase();
-    const namaNormalized = nama.trim().toUpperCase();
-    const match = stockList.find(
-      (s) =>
-        s.kodeBarang.toUpperCase() === kodeNormalized &&
-        s.namaBarang.toUpperCase() === namaNormalized
-    );
+    const match = stockList.find((s) => s.namaBarang === selectedNama);
     if (match) {
       setMatchedStock(match);
       setFormData((prev) => ({
         ...prev,
+        namaBarang: match.namaBarang,
+        kodeBarang: match.kodeBarang,
+        namaProdusen: match.namaProdusen,
         unit: match.unit,
         fot: match.fot,
         botolPerDus: match.botolPerDus ? match.botolPerDus.toString() : "",
       }));
-    } else {
-      setMatchedStock(null);
+    }
+    if (errors.namaBarang) {
+      setErrors((prev) => {
+        const newErrors = { ...prev };
+        delete newErrors.namaBarang;
+        return newErrors;
+      });
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => {
-      const updated = { ...prev, [name]: value };
-      if (name === "kodeBarang" || name === "namaBarang") {
-        setTimeout(() => findMatchingStock(updated.kodeBarang, updated.namaBarang), 0);
-      }
-      return updated;
-    });
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
       setErrors((prev) => {
         const newErrors = { ...prev };
@@ -155,8 +164,7 @@ export default function TransaksiBarangMasukPage() {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
-    if (!formData.kodeBarang.trim()) newErrors.kodeBarang = "Kode barang wajib diisi";
-    if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib diisi";
+    if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib dipilih";
     if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah harus lebih dari 0";
     if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
 
@@ -245,6 +253,7 @@ export default function TransaksiBarangMasukPage() {
         id: docRef.id,
         kodeBarang: formData.kodeBarang.trim().toUpperCase(),
         namaBarang: formData.namaBarang.trim(),
+        namaProdusen: "",
         unit: formData.unit,
         fot: formData.fot.trim().toUpperCase(),
         bobotPerUnit: bobotPerUnit,
@@ -375,6 +384,7 @@ export default function TransaksiBarangMasukPage() {
         tanggal: new Date().toISOString().split("T")[0],
         kodeBarang: "",
         namaBarang: "",
+        namaProdusen: "",
         unit: "ZAK",
         jumlahZAK: "",
         botolPerDus: "",
@@ -402,6 +412,11 @@ export default function TransaksiBarangMasukPage() {
 
   const isBotol = formData.unit === "BOTOL";
   const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
+
+  const namaBarangOptions = [
+    { value: "", label: "Pilih nama barang..." },
+    ...stockList.map((s) => ({ value: s.namaBarang, label: `${s.namaBarang} (${s.kodeBarang})` })),
+  ];
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
@@ -441,26 +456,38 @@ export default function TransaksiBarangMasukPage() {
               required
             />
 
+            <Select
+              label="Nama Barang"
+              name="namaBarang"
+              value={formData.namaBarang}
+              onChange={handleNamaBarangChange}
+              options={namaBarangOptions}
+              error={errors.namaBarang}
+              required
+            />
+
             <Input
               label="Kode Barang"
               type="text"
               name="kodeBarang"
               value={formData.kodeBarang}
               onChange={handleChange}
-              placeholder="Masukkan kode barang"
+              placeholder="Otomatis dari nama barang"
               error={errors.kodeBarang}
-              required
+              readOnly
+              className="bg-gray-100"
             />
 
             <Input
-              label="Nama Barang"
+              label="Nama Produsen"
               type="text"
-              name="namaBarang"
-              value={formData.namaBarang}
+              name="namaProdusen"
+              value={formData.namaProdusen}
               onChange={handleChange}
-              placeholder="Masukkan nama barang"
-              error={errors.namaBarang}
-              required
+              placeholder="Otomatis dari nama barang"
+              error={errors.namaProdusen}
+              readOnly
+              className="bg-gray-100"
             />
 
             <Select
@@ -478,9 +505,10 @@ export default function TransaksiBarangMasukPage() {
               name="fot"
               value={formData.fot}
               onChange={handleChange}
-              placeholder="Masukkan nama FOT / lokasi gudang"
+              placeholder="Otomatis dari nama barang"
               error={errors.fot}
-              required
+              readOnly
+              className="bg-gray-100"
             />
           </div>
 
@@ -490,15 +518,15 @@ export default function TransaksiBarangMasukPage() {
                 Barang ditemukan di database: Stok tersedia {matchedStock.stokAkhirUnit?.toLocaleString()} {matchedStock.unit} ({matchedStock.stokAkhirKG.toLocaleString()} KG)
               </p>
               <p className="text-xs text-blue-600 mt-1">
-                Unit, FOT, dan bobot otomatis disesuaikan dari data gudang
+                Kode, produsen, unit, FOT, dan bobot otomatis disesuaikan dari data gudang
               </p>
             </div>
           )}
 
-          {!matchedStock && formData.kodeBarang.trim() && formData.namaBarang.trim() && (
+          {!matchedStock && formData.namaBarang.trim() && (
             <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-xl">
               <p className="text-sm text-amber-700 font-medium">
-                Barang baru terdeteksi: Kode <span className="font-mono font-bold">{formData.kodeBarang}</span> belum terdaftar di stock gudang
+                Barang baru terdeteksi: <span className="font-mono font-bold">{formData.namaBarang}</span> belum terdaftar di stock gudang
               </p>
               <p className="text-xs text-amber-600 mt-1">
                 Data akan otomatis ditambahkan ke laporan stock gudang saat transaksi disimpan
@@ -603,6 +631,7 @@ export default function TransaksiBarangMasukPage() {
                 tanggal: new Date().toISOString().split("T")[0],
                 kodeBarang: "",
                 namaBarang: "",
+                namaProdusen: "",
                 unit: "ZAK",
                 jumlahZAK: "",
                 botolPerDus: "",
