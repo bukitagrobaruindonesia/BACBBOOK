@@ -261,14 +261,35 @@ export default function BeritaAcaraPage() {
     fetchAllData();
   }, [isAuthenticated]);
 
+  const getTTDForBA = (baId: string) => {
+    const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
+    return mapping[baId] || null;
+  };
+
+  const isBaTTD = (baId: string) => {
+    return !!getTTDForBA(baId);
+  };
+
+  const sortBaList = (items: BeritaAcaraData[]) => {
+    return [...items].sort((a, b) => {
+      const aTTD = isBaTTD(a.id);
+      const bTTD = isBaTTD(b.id);
+      if (aTTD !== bTTD) return aTTD ? 1 : -1;
+      const aDate = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const bDate = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+      if (!aTTD && !bTTD) return aDate.getTime() - bDate.getTime();
+      return bDate.getTime() - aDate.getTime();
+    });
+  };
+
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
-      const baSnap = await getDocs(query(collection(db, "beritaAcara"), orderBy("createdAt", "desc")));
+      const baSnap = await getDocs(query(collection(db, "beritaAcara")));
       const baData: BeritaAcaraData[] = baSnap.docs.map(d => ({ id: d.id, ...d.data() } as BeritaAcaraData));
-      setBaList(baData);
+      setBaList(sortBaList(baData));
 
-      const piSnap = await getDocs(query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc")));
+      const piSnap = await getDocs(query(collection(db, "proformaInvoice")));
       const piData: Record<string, ProformaInvoice> = {};
       piSnap.docs.forEach(d => {
         const data = d.data() as ProformaInvoice;
@@ -278,7 +299,7 @@ export default function BeritaAcaraPage() {
       });
       setPiMap(piData);
 
-      const suratSnap = await getDocs(query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc")));
+      const suratSnap = await getDocs(query(collection(db, "suratPengangkutan")));
       const suratData: Record<string, SuratMuatInfo[]> = {};
       suratSnap.docs.forEach(d => {
         const data = d.data() as SuratMuatInfo;
@@ -326,11 +347,6 @@ export default function BeritaAcaraPage() {
     alert("PIN berhasil diubah!");
   };
 
-  const getTTDForBA = (baId: string) => {
-    const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
-    return mapping[baId] || null;
-  };
-
   const getJumlahSP = (nomorPI: string | string[]) => {
     const piList = Array.isArray(nomorPI) ? nomorPI : [nomorPI];
     let count = 0;
@@ -369,7 +385,7 @@ export default function BeritaAcaraPage() {
       setIsTTDModalOpen(false);
       setSelectedBA(null);
       setSelectedTTDId("");
-      setBaList([...baList]);
+      setBaList(prev => sortBaList(prev));
       return;
     }
     const ttd = ttdList.find(t => t.id === selectedTTDId);
@@ -379,7 +395,7 @@ export default function BeritaAcaraPage() {
     setIsTTDModalOpen(false);
     setSelectedBA(null);
     setSelectedTTDId("");
-    setBaList([...baList]);
+    setBaList(prev => sortBaList(prev));
   };
 
   const handleRegenerateBA = async (ba: BeritaAcaraData) => {
@@ -436,7 +452,7 @@ export default function BeritaAcaraPage() {
       });
       await deleteDoc(doc(db, "beritaAcara", ba.id));
       const nomor = await getNextBastNumber();
-      await addDoc(collection(db, "beritaAcara"), {
+      const newDoc = await addDoc(collection(db, "beritaAcara"), {
         nomorSeri: nomor,
         nomorPI: ba.nomorPI,
         namaCustomer: piData.namaCustomer,

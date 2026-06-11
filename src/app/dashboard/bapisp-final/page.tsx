@@ -115,6 +115,11 @@ interface TTDData {
   ttdImage: string;
 }
 
+interface PrintStatus {
+  isPrinted: boolean;
+  printedAt: string;
+}
+
 const formatRupiah = (num: number) => {
   if (!num && num !== 0) return "Rp -";
   return "Rp " + num.toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -207,14 +212,41 @@ export default function BapispFinalPage() {
     fetchAllData();
   }, []);
 
+  const getTTDForBA = (baId: string) => {
+    const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
+    return mapping[baId] || null;
+  };
+
+  const getPrintStatusForBA = (baId: string): PrintStatus | null => {
+    const mapping = JSON.parse(localStorage.getItem("ba_print_mapping") || "{}");
+    return mapping[baId] || null;
+  };
+
+  const isBaPrinted = (baId: string): boolean => {
+    const status = getPrintStatusForBA(baId);
+    return status?.isPrinted || false;
+  };
+
+  const sortBaList = (items: BeritaAcaraData[]) => {
+    return [...items].sort((a, b) => {
+      const aPrinted = isBaPrinted(a.id);
+      const bPrinted = isBaPrinted(b.id);
+      if (aPrinted !== bPrinted) return aPrinted ? 1 : -1;
+      const aDate = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(a.createdAt || 0);
+      const bDate = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(b.createdAt || 0);
+      if (!aPrinted && !bPrinted) return aDate.getTime() - bDate.getTime();
+      return bDate.getTime() - aDate.getTime();
+    });
+  };
+
   const fetchAllData = async () => {
     setIsLoading(true);
     try {
-      const baSnap = await getDocs(query(collection(db, "beritaAcara"), orderBy("createdAt", "desc")));
+      const baSnap = await getDocs(query(collection(db, "beritaAcara")));
       const baData: BeritaAcaraData[] = baSnap.docs.map(d => ({ id: d.id, ...d.data() } as BeritaAcaraData));
-      setBaList(baData);
+      setBaList(sortBaList(baData));
 
-      const piSnap = await getDocs(query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc")));
+      const piSnap = await getDocs(query(collection(db, "proformaInvoice")));
       const piData: Record<string, ProformaInvoice> = {};
       piSnap.docs.forEach(d => {
         const data = d.data() as ProformaInvoice;
@@ -224,7 +256,7 @@ export default function BapispFinalPage() {
       });
       setPiMap(piData);
 
-      const suratSnap = await getDocs(query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc")));
+      const suratSnap = await getDocs(query(collection(db, "suratPengangkutan")));
       const suratData: Record<string, SuratMuatInfo[]> = {};
       suratSnap.docs.forEach(d => {
         const data = d.data() as SuratMuatInfo;
@@ -249,9 +281,18 @@ export default function BapispFinalPage() {
     }
   };
 
-  const getTTDForBA = (baId: string) => {
-    const mapping = JSON.parse(localStorage.getItem("ba_ttd_mapping") || "{}");
-    return mapping[baId] || null;
+  const handleMarkPrinted = (ba: BeritaAcaraData) => {
+    const mapping = JSON.parse(localStorage.getItem("ba_print_mapping") || "{}");
+    mapping[ba.id] = { isPrinted: true, printedAt: new Date().toISOString() };
+    localStorage.setItem("ba_print_mapping", JSON.stringify(mapping));
+    setBaList(prev => sortBaList(prev));
+  };
+
+  const handleUnmarkPrinted = (ba: BeritaAcaraData) => {
+    const mapping = JSON.parse(localStorage.getItem("ba_print_mapping") || "{}");
+    delete mapping[ba.id];
+    localStorage.setItem("ba_print_mapping", JSON.stringify(mapping));
+    setBaList(prev => sortBaList(prev));
   };
 
   const getJumlahSP = (nomorPI: string | string[]) => {
@@ -281,7 +322,10 @@ export default function BapispFinalPage() {
     return matchSearch && matchTanggal && matchBulan && matchTahun;
   });
 
+  const unprintedCount = baListWithTTD.filter(b => !isBaPrinted(b.id)).length;
+
   const handlePrintBA = (ba: BeritaAcaraData) => {
+    handleMarkPrinted(ba);
     const piNomor = Array.isArray(ba.nomorPI) ? ba.nomorPI[0] : ba.nomorPI;
     const pi = piMap[piNomor];
     if (!pi) { alert("Data Proforma Invoice tidak ditemukan!"); return; }
@@ -379,7 +423,7 @@ export default function BapispFinalPage() {
 
       spHtml += `
         <div style="page-break-before: always;">
-          <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display=\'none\'" />
+          <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
           <div style="text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">SURAT PENGANGKUTAN</div>
           <div style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;">
@@ -440,7 +484,7 @@ export default function BapispFinalPage() {
             <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
               <p style="font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4;">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
               <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
-                <img src="/Picture2.png" alt="TTD" style="max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block;" onerror="this.style.display=\'none\'" />
+                <img src="/Picture2.png" alt="TTD" style="max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block;" onerror="this.style.display='none'" />
               </div>
               <p style="font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto;">HENDRA PRAMASYANTO</p>
             </div>
@@ -450,7 +494,7 @@ export default function BapispFinalPage() {
               <p style="font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto;">${surat.driverUnit || ""}</p>
             </div>
           </div>
-          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: auto; padding-top: 10px;" onerror="this.style.display=\'none\'" />
+          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: auto; padding-top: 10px;" onerror="this.style.display='none'" />
         </div>
       `;
     });
@@ -485,7 +529,7 @@ export default function BapispFinalPage() {
         </div>
 
         <div class="doc-page">
-          <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display=\'none\'" />
+          <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
           <div style="text-align: center; margin: 8px 0 12px 0;">
             <h1 style="font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline;">BERITA ACARA SERAH TERIMA BARANG</h1>
             <p style="font-size: 11px; font-weight: 600;">${ba.nomorSeri}</p>
@@ -534,7 +578,7 @@ export default function BapispFinalPage() {
               <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
                 <p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK PERTAMA</p>
                 <div style="position: relative; width: 100%; min-height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;">
-                  <img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.6; object-fit: contain; z-index: 1;" onerror="this.style.display=\'none\'" />
+                  <img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.6; object-fit: contain; z-index: 1;" onerror="this.style.display='none'" />
                   <div style="position: relative; z-index: 2;">
                     ${ttdImageHtml}
                   </div>
@@ -550,9 +594,9 @@ export default function BapispFinalPage() {
         <div class="page-break"></div>
 
         <div class="doc-page-pi" style="page-break-before: always;">
-          <img src="/LogoAGRO.png" alt="Watermark" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.6; pointer-events: none; z-index: 0;" onerror="this.style.display=\'none\'" />
+          <img src="/LogoAGRO.png" alt="Watermark" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.6; pointer-events: none; z-index: 0;" onerror="this.style.display='none'" />
           <div style="position: relative; z-index: 1;">
-            <img src="/logo.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display=\'none\'; this.parentElement.insertAdjacentHTML(\'afterbegin\', \'<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>\');" />
+            <img src="/logo.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'; this.parentElement.insertAdjacentHTML('afterbegin', '<div style=text-align:center;padding:10px;border:1px solid #ccc;margin-bottom:10px;>Logo tidak tersedia</div>');" />
             <div style="text-align: center; margin: 8px 0 10px 0; padding: 5px 0; background: #dcfce7; border-top: 2px solid #16a34a; border-bottom: 2px solid #16a34a; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
               <h1 style="color: #111; font-size: 15px; margin: 0; font-weight: bold; letter-spacing: 3px;">PROFORMA INVOICE</h1>
             </div>
@@ -646,6 +690,16 @@ export default function BapispFinalPage() {
 
   const columns = [
     {
+      key: "status",
+      header: "Status",
+      width: "110px",
+      render: (row: BeritaAcaraData) => (
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold ${isBaPrinted(row.id) ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+          {isBaPrinted(row.id) ? "SUDAH PRINT" : "BELUM PRINT"}
+        </span>
+      ),
+    },
+    {
       key: "no",
       header: "NO",
       width: "50px",
@@ -710,7 +764,7 @@ export default function BapispFinalPage() {
     {
       key: "aksi",
       header: "AKSI",
-      width: "100px",
+      width: "220px",
       render: (row: BeritaAcaraData) => (
         <div className="flex items-center gap-2">
           <button
@@ -719,6 +773,17 @@ export default function BapispFinalPage() {
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
             Print
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); isBaPrinted(row.id) ? handleUnmarkPrinted(row) : handleMarkPrinted(row); }}
+            className={`p-2 rounded-lg transition-colors ${isBaPrinted(row.id) ? "text-orange-600 hover:bg-orange-50" : "text-green-600 hover:bg-green-50"}`}
+            title={isBaPrinted(row.id) ? "Batalkan Print" : "Tandai Sudah Print"}
+          >
+            {isBaPrinted(row.id) ? (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            ) : (
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+            )}
           </button>
         </div>
       ),
@@ -729,6 +794,12 @@ export default function BapispFinalPage() {
     <div className="space-y-6">
       <div className="flex items-start sm:items-center justify-between gap-4">
         <Header title="BAPISP Final" subtitle="Daftar Berita Acara yang telah ditandatangani" />
+        {unprintedCount > 0 && (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-red-100 text-red-700 rounded-full text-sm font-bold">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" /></svg>
+            {unprintedCount} Belum Print
+          </div>
+        )}
       </div>
 
       <Card>

@@ -303,11 +303,14 @@ export default function RiwayatTransaksiPage() {
       (item.nomorPI && item.nomorPI.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.nomorSeri && item.nomorSeri.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.driverUnit && item.driverUnit.toLowerCase().includes(searchTerm.toLowerCase()));
+
     const matchJenis = filterJenis === "semua" ? true :
       filterJenis === "suratPengangkutan" ?
         (item.jenis === "suratPengangkutanGudangInduk" || item.jenis === "suratPengangkutanDO") :
         item.jenis === filterJenis;
-    const matchFot = filterFot ? item.fot === filterFot : true;
+
+    const matchFot = filterFot ? item.fot?.toUpperCase() === filterFot.toUpperCase() : true;
+
     const matchBulanTahun = (() => {
       if (!filterBulan && !filterTahun) return true;
       const date = item.tanggal ? new Date(item.tanggal) : new Date();
@@ -618,7 +621,7 @@ export default function RiwayatTransaksiPage() {
   const handlePrintSuratPDF = (item: UnifiedTransaksi) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-    const isGI = item.jenis === "suratPengangkutanGudangInduk";
+    const isGI = item.jenis === "suratPengangkutanGudangInduk" || item.fot?.toUpperCase() === "GUDANG INDUK";
     const piDisplay = item.nomorPIList && item.nomorPIList.length > 0
       ? item.nomorPIList.join(", ")
       : item.nomorPI || "";
@@ -684,7 +687,7 @@ export default function RiwayatTransaksiPage() {
           <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
         </div>
         <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
           <div class="title-bar">SURAT PENGANGKUTAN</div>
           <div class="info-section">
             <div class="info-row">
@@ -750,7 +753,7 @@ export default function RiwayatTransaksiPage() {
             <div class="signature-box">
               <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
               <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
-                <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" />
+                <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display=\'none\'" />
               </div>
               <p class="signature-name">HENDRA PRAMASYANTO</p>
             </div>
@@ -760,7 +763,7 @@ export default function RiwayatTransaksiPage() {
               <p class="signature-name">${item.driverUnit || ""}</p>
             </div>
           </div>
-          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
         </div>
       </body>
       </html>
