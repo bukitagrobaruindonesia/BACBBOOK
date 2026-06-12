@@ -1,7 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/app/context/AuthContext";
+import { collection, query, where, getDocs } from "firebase/firestore";
+import { db } from "@/app/lib/firebase";
 
 interface HeaderProps {
   title: string;
@@ -11,6 +13,27 @@ interface HeaderProps {
 export default function Header(props: HeaderProps) {
   const { title, subtitle } = props;
   const { user, logout } = useAuth();
+  const [namaKaryawan, setNamaKaryawan] = useState("");
+
+  useEffect(() => {
+    const fetchNamaKaryawan = async () => {
+      if (!user?.email) return;
+      try {
+        const q = query(collection(db, "karyawan"), where("email", "==", user.email));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const data = snap.docs[0].data();
+          setNamaKaryawan(data.nama || "");
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+    fetchNamaKaryawan();
+  }, [user]);
+
+  const displayName = namaKaryawan || user?.nama || "";
+  const initial = displayName ? displayName.charAt(0).toUpperCase() : "?";
 
   return (
     <header className="bg-white border-b border-green-100 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 sticky top-0 z-30 shadow-sm rounded-xl mb-6">
@@ -20,11 +43,11 @@ export default function Header(props: HeaderProps) {
       </div>
       <div className="flex items-center gap-3 w-full sm:w-auto">
         <div className="text-right hidden md:block">
-          <p className="text-sm font-semibold text-gray-800">{user?.nama}</p>
+          <p className="text-sm font-semibold text-gray-800">{displayName}</p>
           <p className="text-xs text-gray-500">{user?.email}</p>
         </div>
         <div className="h-10 w-10 rounded-full bg-gradient-to-br from-green-600 to-green-800 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-          {user?.nama ? user.nama.charAt(0).toUpperCase() : "?"}
+          {initial}
         </div>
         <button
           onClick={logout}
