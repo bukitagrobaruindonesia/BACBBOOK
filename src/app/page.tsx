@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Button from "@/app/components/ui/Button";
-import Table from "@/app/components/ui/Table";
 import Card from "@/app/components/ui/Card";
 import Select from "@/app/components/ui/Select";
 import { StockGudang } from "@/app/types";
@@ -262,10 +261,10 @@ export default function PublicPage() {
   ];
 
   const getUnitBadgeClass = (unit: string) => {
-    if (unit === "ZAK") return "bg-blue-100 text-blue-700";
-    if (unit === "DUS") return "bg-purple-100 text-purple-700";
-    if (unit === "BOTOL") return "bg-pink-100 text-pink-700";
-    return "bg-gray-100 text-gray-700";
+    if (unit === "ZAK") return "bg-blue-50 text-blue-600 border-blue-100";
+    if (unit === "DUS") return "bg-purple-50 text-purple-600 border-purple-100";
+    if (unit === "BOTOL") return "bg-pink-50 text-pink-600 border-pink-100";
+    return "bg-gray-50 text-gray-600 border-gray-100";
   };
 
   const hitungStokAwalKG = (row: StockGudang) => {
@@ -284,10 +283,10 @@ export default function PublicPage() {
 
   const getStockStatus = (row: StockGudang) => {
     const kg = hitungStokAkhirKG(row);
-    if (kg <= 0) return { label: "Habis", color: "bg-red-100 text-red-700 border-red-200" };
-    if (kg < 1000) return { label: "Menipis", color: "bg-orange-100 text-orange-700 border-orange-200" };
-    if (kg < 5000) return { label: "Sedang", color: "bg-yellow-100 text-yellow-700 border-yellow-200" };
-    return { label: "Aman", color: "bg-green-100 text-green-700 border-green-200" };
+    if (kg <= 0) return { label: "Habis", color: "bg-red-50 text-red-600 border-red-100", dot: "bg-red-500" };
+    if (kg < 1000) return { label: "Menipis", color: "bg-orange-50 text-orange-600 border-orange-100", dot: "bg-orange-500" };
+    if (kg < 5000) return { label: "Sedang", color: "bg-yellow-50 text-yellow-600 border-yellow-100", dot: "bg-yellow-500" };
+    return { label: "Aman", color: "bg-emerald-50 text-emerald-600 border-emerald-100", dot: "bg-emerald-500" };
   };
 
   const getTotalUnit = (unitType: string) => {
@@ -295,124 +294,6 @@ export default function PublicPage() {
       .filter((d: StockGudang) => d.unit === unitType)
       .reduce((sum: number, d: StockGudang) => sum + (d.stokAkhirUnit || 0), 0);
   };
-
-  const stockColumns = [
-    {
-      key: "fot",
-      header: "FOT",
-      width: "100px",
-      render: (row: StockGudang) => (
-        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">
-          {row.fot || "-"}
-        </span>
-      ),
-    },
-    {
-      key: "kodeBarang",
-      header: "Kode",
-      width: "120px",
-      render: (row: StockGudang) => (
-        <span className="font-mono font-semibold text-green-700 bg-green-50 px-2 py-1 rounded">
-          {row.kodeBarang}
-        </span>
-      ),
-    },
-    {
-      key: "namaBarang",
-      header: "Nama Barang",
-      render: (row: StockGudang) => (
-        <span className="font-medium text-gray-800">{row.namaBarang}</span>
-      ),
-    },
-    {
-      key: "unit",
-      header: "Unit",
-      width: "80px",
-      render: (row: StockGudang) => (
-        <span className={`px-2 py-1 rounded-md text-xs font-bold ${getUnitBadgeClass(row.unit)}`}>
-          {row.unit}
-        </span>
-      ),
-    },
-    {
-      key: "bobot",
-      header: "Bobot",
-      width: "100px",
-      render: (row: StockGudang) => (
-        <span className="font-mono text-gray-600">
-          {row.unit === "KG" ? "-" : `${row.bobotPerUnit?.toLocaleString()} KG`}
-        </span>
-      ),
-    },
-    {
-      key: "stokAwal",
-      header: "Stok Awal",
-      width: "140px",
-      render: (row: StockGudang) => (
-        <div className="text-sm">
-          {row.unit !== "KG" && (
-            <p className="font-mono">{row.stokAwalUnit?.toLocaleString()} {row.unit}</p>
-          )}
-          <p className="text-gray-500 text-xs">{hitungStokAwalKG(row).toLocaleString()} KG</p>
-        </div>
-      ),
-    },
-    {
-      key: "masuk",
-      header: "Masuk",
-      width: "130px",
-      render: (row: StockGudang) => (
-        <div className="text-sm">
-          {row.unit !== "KG" && (
-            <p className="text-green-600 font-mono">+{row.barangMasukUnit?.toLocaleString()} {row.unit}</p>
-          )}
-          <p className="text-green-500 text-xs">+{row.barangMasukKG.toLocaleString()} KG</p>
-        </div>
-      ),
-    },
-    {
-      key: "keluar",
-      header: "Keluar",
-      width: "130px",
-      render: (row: StockGudang) => (
-        <div className="text-sm">
-          {row.unit !== "KG" && (
-            <p className="text-red-600 font-mono">-{row.barangKeluarUnit?.toLocaleString()} {row.unit}</p>
-          )}
-          <p className="text-red-500 text-xs">-{row.barangKeluarKG.toLocaleString()} KG</p>
-        </div>
-      ),
-    },
-    {
-      key: "stokAkhir",
-      header: "Stok Akhir",
-      width: "150px",
-      render: (row: StockGudang) => (
-        <div className="text-sm">
-          {row.unit !== "KG" && (
-            <p className="font-mono font-bold text-green-700">{row.stokAkhirUnit?.toLocaleString()} {row.unit}</p>
-          )}
-          {row.unit === "KG" && (
-            <p className="font-mono font-bold text-green-700">{row.stokAkhirKG.toLocaleString()} KG</p>
-          )}
-          <p className="text-gray-500 text-xs">{hitungStokAkhirKG(row).toLocaleString()} KG</p>
-        </div>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      width: "100px",
-      render: (row: StockGudang) => {
-        const status = getStockStatus(row);
-        return (
-          <span className={`px-2 py-1 rounded-md text-xs font-bold border ${status.color}`}>
-            {status.label}
-          </span>
-        );
-      },
-    },
-  ];
 
   return (
     <>
@@ -485,18 +366,18 @@ export default function PublicPage() {
       <PalmPlantationBackground />
 
       <div className="min-h-screen relative z-10">
-        <nav className="bg-white/80 backdrop-blur-xl border-b border-green-200 sticky top-0 z-50 animate-fade-in-up">
+        <nav className="bg-white/80 backdrop-blur-xl border-b border-green-200/60 sticky top-0 z-50 animate-fade-in-up">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-600 to-green-800 rounded-lg flex items-center justify-center shadow-lg hover:scale-110 transition-transform">
+                <div className="w-10 h-10 bg-gradient-to-br from-green-600 to-green-800 rounded-xl flex items-center justify-center shadow-lg hover:scale-110 transition-transform duration-300">
                   <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
                   </svg>
                 </div>
                 <div>
-                  <h1 className="text-lg font-bold text-green-900">REKAP DATA</h1>
-                  <p className="text-xs text-green-700">PT Bukit Agrochemical</p>
+                  <h1 className="text-lg font-bold text-green-900 tracking-tight">REKAP DATA</h1>
+                  <p className="text-xs text-green-700 font-medium">PT Bukit Agrochemical</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -518,21 +399,21 @@ export default function PublicPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-bold text-green-900 mb-3">PT Bukit Agrochemical</h2>
-            <p className="text-lg text-green-700 mb-2">Sistem Administrasi Distributor Pupuk</p>
-            <p className="text-sm text-gray-500 max-w-2xl mx-auto">
+            <h2 className="text-3xl sm:text-4xl font-bold text-green-900 mb-3 tracking-tight">PT Bukit Agrochemical</h2>
+            <p className="text-lg text-green-700 mb-2 font-medium">Sistem Administrasi Distributor Pupuk</p>
+            <p className="text-sm text-gray-500 max-w-2xl mx-auto leading-relaxed">
               Platform digital untuk monitoring stock gudang secara real-time.
             </p>
           </section>
 
           <section className="animate-fade-in-up animate-delay-200">
-            <Card className="bg-white/85 backdrop-blur-md">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <Card className="bg-white/85 backdrop-blur-md shadow-xl border-0 rounded-2xl">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900">Laporan Stock Gudang</h3>
-                  <p className="text-sm text-gray-500">Data persediaan barang per lokasi FOT</p>
+                  <h3 className="text-xl font-bold text-gray-900 tracking-tight">Laporan Stock Gudang</h3>
+                  <p className="text-sm text-gray-500 mt-1">Data persediaan barang per lokasi FOT</p>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium">
+                <div className="flex items-center gap-2 px-4 py-2 bg-blue-50/80 text-blue-700 rounded-full text-sm font-semibold border border-blue-100">
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -562,8 +443,8 @@ export default function PublicPage() {
                 />
               </div>
 
-              <div className="relative w-full sm:w-96 mb-6">
-                <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="relative w-full sm:w-96 mb-8">
+                <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input
@@ -571,46 +452,46 @@ export default function PublicPage() {
                   placeholder="Cari kode, nama barang, atau unit..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white/90"
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-400 focus:bg-white transition-all duration-300 text-sm"
                 />
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                <div className="p-4 bg-green-50 rounded-xl border border-green-100 hover:scale-105 transition-transform animate-count-up animate-delay-100">
-                  <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Total Jenis</p>
-                  <p className="text-2xl font-bold text-green-700 mt-1">{filteredStockData.length}</p>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+                <div className="p-5 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl border border-green-100/80 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 animate-count-up animate-delay-100">
+                  <p className="text-xs text-green-600 uppercase tracking-wider font-bold">Total Jenis</p>
+                  <p className="text-3xl font-bold text-green-700 mt-2 tracking-tight">{filteredStockData.length}</p>
                 </div>
-                <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 hover:scale-105 transition-transform animate-count-up animate-delay-200">
-                  <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total ZAK</p>
-                  <p className="text-2xl font-bold text-blue-700 mt-1">{getTotalUnit("ZAK").toLocaleString()}</p>
+                <div className="p-5 bg-gradient-to-br from-blue-50 to-sky-50 rounded-2xl border border-blue-100/80 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 animate-count-up animate-delay-200">
+                  <p className="text-xs text-blue-600 uppercase tracking-wider font-bold">Total ZAK</p>
+                  <p className="text-3xl font-bold text-blue-700 mt-2 tracking-tight">{getTotalUnit("ZAK").toLocaleString()}</p>
                 </div>
-                <div className="p-4 bg-purple-50 rounded-xl border border-purple-100 hover:scale-105 transition-transform animate-count-up animate-delay-300">
-                  <p className="text-xs text-purple-600 uppercase tracking-wide font-semibold">Total DUS</p>
-                  <p className="text-2xl font-bold text-purple-700 mt-1">{getTotalUnit("DUS").toLocaleString()}</p>
+                <div className="p-5 bg-gradient-to-br from-purple-50 to-violet-50 rounded-2xl border border-purple-100/80 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 animate-count-up animate-delay-300">
+                  <p className="text-xs text-purple-600 uppercase tracking-wider font-bold">Total DUS</p>
+                  <p className="text-3xl font-bold text-purple-700 mt-2 tracking-tight">{getTotalUnit("DUS").toLocaleString()}</p>
                 </div>
-                <div className="p-4 bg-pink-50 rounded-xl border border-pink-100 hover:scale-105 transition-transform animate-count-up animate-delay-400">
-                  <p className="text-xs text-pink-600 uppercase tracking-wide font-semibold">Total BOTOL</p>
-                  <p className="text-2xl font-bold text-pink-700 mt-1">{getTotalUnit("BOTOL").toLocaleString()}</p>
+                <div className="p-5 bg-gradient-to-br from-pink-50 to-rose-50 rounded-2xl border border-pink-100/80 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 animate-count-up animate-delay-400">
+                  <p className="text-xs text-pink-600 uppercase tracking-wider font-bold">Total BOTOL</p>
+                  <p className="text-3xl font-bold text-pink-700 mt-2 tracking-tight">{getTotalUnit("BOTOL").toLocaleString()}</p>
                 </div>
-                <div className="p-4 bg-red-50 rounded-xl border border-red-100 hover:scale-105 transition-transform animate-count-up animate-delay-500">
-                  <p className="text-xs text-red-600 uppercase tracking-wide font-semibold">Stock Menipis</p>
-                  <p className="text-2xl font-bold text-red-700 mt-1">{filteredStockData.filter((d: StockGudang) => (d.unit === "ZAK" ? (d.stokAkhirUnit || 0) * (d.bobotPerUnit || 50) : d.stokAkhirKG) < 1000).length}</p>
+                <div className="p-5 bg-gradient-to-br from-red-50 to-orange-50 rounded-2xl border border-red-100/80 hover:shadow-lg hover:scale-[1.02] transition-all duration-300 animate-count-up animate-delay-500">
+                  <p className="text-xs text-red-600 uppercase tracking-wider font-bold">Stock Menipis</p>
+                  <p className="text-3xl font-bold text-red-700 mt-2 tracking-tight">{filteredStockData.filter((d: StockGudang) => (d.unit === "ZAK" ? (d.stokAkhirUnit || 0) * (d.bobotPerUnit || 50) : d.stokAkhirKG) < 1000).length}</p>
                 </div>
               </div>
 
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-                <div className="text-sm text-gray-500">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                <div className="text-sm text-gray-500 font-medium">
                   Menampilkan {filteredStockData.length} dari {stockData.length} data
-                  {selectedFot && ` | FOT: ${selectedFot}`}
-                  {selectedBulan && ` | Bulan: ${bulanOptions.find((b) => b.value === selectedBulan)?.label}`}
-                  {selectedTahun && ` | Tahun: ${selectedTahun}`}
+                  {selectedFot && <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded-md text-xs">FOT: {selectedFot}</span>}
+                  {selectedBulan && <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded-md text-xs">{bulanOptions.find((b) => b.value === selectedBulan)?.label}</span>}
+                  {selectedTahun && <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded-md text-xs">{selectedTahun}</span>}
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-gray-600">Tampilkan:</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-600 font-medium">Tampilkan:</span>
                   <select
                     value={itemsPerPage}
                     onChange={(e) => setItemsPerPage(Number(e.target.value))}
-                    className="px-3 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white/90"
+                    className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-400 transition-all cursor-pointer font-medium"
                   >
                     <option value={5}>5</option>
                     <option value={10}>10</option>
@@ -624,54 +505,169 @@ export default function PublicPage() {
 
               <div className="overflow-x-auto">
                 {isLoadingStock ? (
-                  <div className="flex justify-center py-12">
-                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-700"></div>
+                  <div className="flex flex-col items-center justify-center py-16 gap-4">
+                    <div className="animate-spin rounded-full h-12 w-12 border-[3px] border-green-200 border-t-green-600"></div>
+                    <p className="text-sm text-gray-400 font-medium">Memuat data stock...</p>
                   </div>
                 ) : paginatedData.length === 0 ? (
-                  <div className="flex flex-col items-center py-12 text-gray-400">
-                    <svg className="w-16 h-16 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                    </svg>
-                    <p className="font-medium text-lg">Belum ada data stock gudang</p>
-                    <p className="text-sm mt-1">Data akan muncul setelah admin menginput stock</p>
+                  <div className="flex flex-col items-center py-16 text-gray-400">
+                    <div className="w-20 h-20 bg-gray-50 rounded-2xl flex items-center justify-center mb-4">
+                      <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                      </svg>
+                    </div>
+                    <p className="font-semibold text-lg text-gray-500">Belum ada data stock gudang</p>
+                    <p className="text-sm mt-1 text-gray-400">Data akan muncul setelah admin menginput stock</p>
                   </div>
                 ) : (
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b-2 border-gray-200">
-                        {stockColumns.map((col) => (
-                          <th
-                            key={col.key}
-                            className="text-left py-3 px-2 font-bold text-gray-700 uppercase text-xs tracking-wider"
-                            style={col.width ? { width: col.width } : {}}
+                  <div className="space-y-3">
+                    <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-3 text-xs font-bold text-gray-500 uppercase tracking-wider">
+                      <div className="col-span-1">FOT</div>
+                      <div className="col-span-2">Kode / Nama</div>
+                      <div className="col-span-1 text-center">Unit</div>
+                      <div className="col-span-1 text-right">Bobot</div>
+                      <div className="col-span-2 text-right">Stok Awal</div>
+                      <div className="col-span-1 text-right">Masuk</div>
+                      <div className="col-span-1 text-right">Keluar</div>
+                      <div className="col-span-2 text-right">Stok Akhir</div>
+                      <div className="col-span-1 text-center">Status</div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {paginatedData.map((row: StockGudang, index: number) => {
+                        const status = getStockStatus(row);
+                        return (
+                          <div
+                            key={row.id}
+                            className="group bg-white rounded-2xl border border-gray-100 hover:border-green-200 hover:shadow-lg hover:shadow-green-50 transition-all duration-300 animate-fade-in-up overflow-hidden"
+                            style={{ animationDelay: `${index * 0.05}s` }}
                           >
-                            {col.header}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {paginatedData.map((row: StockGudang, index: number) => (
-                        <tr
-                          key={row.id}
-                          className="hover:bg-green-50/50 transition-colors animate-fade-in-up"
-                          style={{ animationDelay: `${index * 0.05}s` }}
-                        >
-                          {stockColumns.map((col) => (
-                            <td key={col.key} className="py-3 px-2">
-                              {col.render ? col.render(row as StockGudang) : (row as any)[col.key]}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                            <div className="lg:hidden p-5 space-y-4">
+                              <div className="flex items-start justify-between">
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg text-sm">
+                                      {row.fot || "-"}
+                                    </span>
+                                    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${getUnitBadgeClass(row.unit)}`}>
+                                      {row.unit}
+                                    </span>
+                                  </div>
+                                  <p className="font-mono text-sm font-semibold text-green-700">{row.kodeBarang}</p>
+                                  <p className="text-sm font-medium text-gray-800">{row.namaBarang}</p>
+                                </div>
+                                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}>
+                                  <span className={`w-2 h-2 rounded-full ${status.dot}`}></span>
+                                  {status.label}
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div className="bg-gray-50 rounded-xl p-3">
+                                  <p className="text-xs text-gray-500 mb-1">Stok Awal</p>
+                                  {row.unit !== "KG" && (
+                                    <p className="font-mono font-semibold text-gray-700">{row.stokAwalUnit?.toLocaleString()} {row.unit}</p>
+                                  )}
+                                  <p className="text-gray-400 text-xs">{hitungStokAwalKG(row).toLocaleString()} KG</p>
+                                </div>
+                                <div className="bg-gray-50 rounded-xl p-3">
+                                  <p className="text-xs text-gray-500 mb-1">Stok Akhir</p>
+                                  {row.unit !== "KG" && (
+                                    <p className="font-mono font-bold text-green-700">{row.stokAkhirUnit?.toLocaleString()} {row.unit}</p>
+                                  )}
+                                  {row.unit === "KG" && (
+                                    <p className="font-mono font-bold text-green-700">{row.stokAkhirKG.toLocaleString()} KG</p>
+                                  )}
+                                  <p className="text-gray-400 text-xs">{hitungStokAkhirKG(row).toLocaleString()} KG</p>
+                                </div>
+                                <div className="bg-green-50 rounded-xl p-3">
+                                  <p className="text-xs text-green-600 mb-1">Masuk</p>
+                                  {row.unit !== "KG" && (
+                                    <p className="font-mono text-green-700 font-semibold">+{row.barangMasukUnit?.toLocaleString()} {row.unit}</p>
+                                  )}
+                                  <p className="text-green-500 text-xs">+{row.barangMasukKG.toLocaleString()} KG</p>
+                                </div>
+                                <div className="bg-red-50 rounded-xl p-3">
+                                  <p className="text-xs text-red-600 mb-1">Keluar</p>
+                                  {row.unit !== "KG" && (
+                                    <p className="font-mono text-red-700 font-semibold">-{row.barangKeluarUnit?.toLocaleString()} {row.unit}</p>
+                                  )}
+                                  <p className="text-red-500 text-xs">-{row.barangKeluarKG.toLocaleString()} KG</p>
+                                </div>
+                              </div>
+
+                              {row.unit !== "KG" && (
+                                <div className="text-xs text-gray-400">
+                                  Bobot: {row.bobotPerUnit?.toLocaleString()} KG / {row.unit}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-4 items-center group-hover:bg-green-50/30 transition-colors duration-300">
+                              <div className="col-span-1">
+                                <span className="font-mono font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1.5 rounded-lg text-sm inline-block">
+                                  {row.fot || "-"}
+                                </span>
+                              </div>
+                              <div className="col-span-2">
+                                <p className="font-mono text-sm font-semibold text-green-700">{row.kodeBarang}</p>
+                                <p className="text-sm text-gray-600 mt-0.5 line-clamp-1">{row.namaBarang}</p>
+                              </div>
+                              <div className="col-span-1 text-center">
+                                <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${getUnitBadgeClass(row.unit)}`}>
+                                  {row.unit}
+                                </span>
+                              </div>
+                              <div className="col-span-1 text-right">
+                                <span className="font-mono text-sm text-gray-500">
+                                  {row.unit === "KG" ? "-" : `${row.bobotPerUnit?.toLocaleString()} KG`}
+                                </span>
+                              </div>
+                              <div className="col-span-2 text-right">
+                                {row.unit !== "KG" && (
+                                  <p className="font-mono text-sm font-medium text-gray-700">{row.stokAwalUnit?.toLocaleString()} {row.unit}</p>
+                                )}
+                                <p className="text-gray-400 text-xs">{hitungStokAwalKG(row).toLocaleString()} KG</p>
+                              </div>
+                              <div className="col-span-1 text-right">
+                                {row.unit !== "KG" && (
+                                  <p className="text-green-600 font-mono text-sm font-medium">+{row.barangMasukUnit?.toLocaleString()}</p>
+                                )}
+                                <p className="text-green-500 text-xs">+{row.barangMasukKG.toLocaleString()} KG</p>
+                              </div>
+                              <div className="col-span-1 text-right">
+                                {row.unit !== "KG" && (
+                                  <p className="text-red-600 font-mono text-sm font-medium">-{row.barangKeluarUnit?.toLocaleString()}</p>
+                                )}
+                                <p className="text-red-500 text-xs">-{row.barangKeluarKG.toLocaleString()} KG</p>
+                              </div>
+                              <div className="col-span-2 text-right">
+                                {row.unit !== "KG" && (
+                                  <p className="font-mono font-bold text-green-700 text-sm">{row.stokAkhirUnit?.toLocaleString()} {row.unit}</p>
+                                )}
+                                {row.unit === "KG" && (
+                                  <p className="font-mono font-bold text-green-700 text-sm">{row.stokAkhirKG.toLocaleString()} KG</p>
+                                )}
+                                <p className="text-gray-400 text-xs">{hitungStokAkhirKG(row).toLocaleString()} KG</p>
+                              </div>
+                              <div className="col-span-1 text-center">
+                                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}>
+                                  <span className={`w-2 h-2 rounded-full ${status.dot}`}></span>
+                                  {status.label}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 )}
               </div>
 
               {totalPages > 1 && (
-                <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-200 pt-5 animate-fade-in-up">
-                  <div className="text-sm text-gray-500">
+                <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-gray-100 pt-6 animate-fade-in-up">
+                  <div className="text-sm text-gray-500 font-medium">
                     Menampilkan {startIndex + 1} - {Math.min(endIndex, filteredStockData.length)} dari {filteredStockData.length} item
                   </div>
 
@@ -679,14 +675,14 @@ export default function PublicPage() {
                     <button
                       onClick={() => setCurrentPage(1)}
                       disabled={currentPage === 1}
-                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium hover:bg-green-50 hover:border-green-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="px-3.5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-green-50 hover:border-green-200 hover:text-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
                     >
                       Awal
                     </button>
                     <button
                       onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
                       disabled={currentPage === 1}
-                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium hover:bg-green-50 hover:border-green-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="px-3.5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-green-50 hover:border-green-200 hover:text-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -698,10 +694,10 @@ export default function PublicPage() {
                         <button
                           key={page}
                           onClick={() => setCurrentPage(page)}
-                          className={`w-9 h-9 rounded-lg text-sm font-bold transition-all ${
+                          className={`w-10 h-10 rounded-xl text-sm font-bold transition-all duration-200 ${
                             currentPage === page
-                              ? "bg-green-600 text-white shadow-md scale-110"
-                              : "border border-gray-300 hover:bg-green-50 hover:border-green-300 text-gray-700"
+                              ? "bg-green-600 text-white shadow-lg shadow-green-200 scale-110"
+                              : "border border-gray-200 hover:bg-green-50 hover:border-green-200 text-gray-600"
                           }`}
                         >
                           {page}
@@ -712,7 +708,7 @@ export default function PublicPage() {
                     <button
                       onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium hover:bg-green-50 hover:border-green-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="px-3.5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-green-50 hover:border-green-200 hover:text-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
                     >
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -721,7 +717,7 @@ export default function PublicPage() {
                     <button
                       onClick={() => setCurrentPage(totalPages)}
                       disabled={currentPage === totalPages}
-                      className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium hover:bg-green-50 hover:border-green-300 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="px-3.5 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-green-50 hover:border-green-200 hover:text-green-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200"
                     >
                       Akhir
                     </button>
@@ -731,8 +727,8 @@ export default function PublicPage() {
             </Card>
           </section>
 
-          <footer className="text-center py-8 border-t border-green-200/60 animate-fade-in-up animate-delay-300">
-            <p className="text-sm text-gray-500">
+          <footer className="text-center py-8 border-t border-green-200/40 animate-fade-in-up animate-delay-300">
+            <p className="text-sm text-gray-500 font-medium">
               PT Bukit Agrochemical Baru | Sistem Administrasi Distributor Pupuk
             </p>
             <p className="text-xs text-gray-400 mt-1">
