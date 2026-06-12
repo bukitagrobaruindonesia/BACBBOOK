@@ -137,6 +137,15 @@ const formatParty = (kg: number) => {
   return `${kg.toLocaleString()} KG`;
 };
 
+const isDOExpired = (tanggalKadaluarsa: string) => {
+  if (!tanggalKadaluarsa) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const kadaluarsa = new Date(tanggalKadaluarsa);
+  kadaluarsa.setHours(0, 0, 0, 0);
+  return kadaluarsa < today;
+};
+
 export default function SuratPengangkutanPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -296,10 +305,21 @@ export default function SuratPengangkutanPage() {
 
   const getAvailableDO = (currentItemId: number) => {
     return doList.filter((doItem) => {
+      if (isDOExpired(doItem.tanggalKadaluarsa)) return false;
       const sisa = getSisaDO(doItem);
       const usedInOtherItem = items.find((it) => it.id !== currentItemId && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO && it.jenisPupuk === doItem.namaProduk);
       if (usedInOtherItem) return false;
-      return sisa > 0;
+      if (sisa <= 0) return false;
+      const currentItem = items.find((it) => it.id === currentItemId);
+      if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
+        const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
+        if (pi) {
+          const prod = pi.produkItems.find((p) => p.namaProduk === currentItem.jenisPupuk);
+          const piFOT = (prod?.fot || getStockFotForProduct(currentItem.jenisPupuk) || "").trim();
+          if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) return false;
+        }
+      }
+      return true;
     });
   };
 
@@ -307,14 +327,27 @@ export default function SuratPengangkutanPage() {
     const doItem = doList.find((d) => d.nomorSubDO === nomorSubDO);
     if (!doItem) return;
 
+    if (isDOExpired(doItem.tanggalKadaluarsa)) {
+      setErrors((prev) => ({
+        ...prev,
+        [`nomorSubDO_${itemId}`]: `DO ${doItem.nomorSubDO} sudah kadaluarsa (${doItem.tanggalKadaluarsa}). Silakan perpanjang masa kadaluarsa di Input DO.`,
+      }));
+      return;
+    }
+
     const currentItem = items.find((it) => it.id === itemId);
     if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
-      if (doItem.namaProduk !== currentItem.jenisPupuk) {
-        setErrors((prev) => ({
-          ...prev,
-          [`nomorSubDO_${itemId}`]: `Produk DO (${doItem.namaProduk}) tidak sesuai dengan produk PI (${currentItem.jenisPupuk})`,
-        }));
-        return;
+      const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
+      if (pi) {
+        const prod = pi.produkItems.find((p) => p.namaProduk === currentItem.jenisPupuk);
+        const piFOT = (prod?.fot || getStockFotForProduct(currentItem.jenisPupuk) || "").trim();
+        if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
+          setErrors((prev) => ({
+            ...prev,
+            [`nomorSubDO_${itemId}`]: `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`,
+          }));
+          return;
+        }
       }
     }
 
@@ -588,23 +621,37 @@ export default function SuratPengangkutanPage() {
     return validProducts.every((prod) => statusMap[prod.namaProduk]?.status === "complete");
   };
 
-  const getPIAvailableForItem = (search: string) => {
+  const getPIAvailableForItem = (search: string, itemId?: number) => {
     return piList.filter((pi) => {
       if (isPIFullyLoaded(pi)) return false;
       if (!piHasValidProductForJenisSurat(pi)) return false;
       const searchLower = search.toLowerCase();
       const matchSearch = pi.nomorPI.toLowerCase().includes(searchLower) || pi.namaCustomer.toLowerCase().includes(searchLower);
       if (!matchSearch) return false;
+      if (itemId) {
+        const currentItem = items.find((it) => it.id === itemId);
+        if (currentItem && currentItem.nomorSubDO.trim()) {
+          const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
+          if (doItem) {
+            const hasMatchingFOT = pi.produkItems.some((prod) => {
+              const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim().toUpperCase();
+              return prodFOT === doItem.fot.trim().toUpperCase();
+            });
+            if (!hasMatchingFOT) return false;
+          }
+        }
+      }
       return true;
     });
   };
 
-  const getValidProductsForPI = (pi: ProformaInvoice) => {
+  const getValidProductsForPI = (pi: ProformaInvoice, doFOT?: string) => {
     return pi.produkItems.filter((prod) => {
       const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
       const isGI = isGudangIndukFOT(fot);
       if (jenisSurat === "gudangInduk") return isGI;
       if (jenisSurat === "do") return !isGI;
+      if (doFOT && doFOT.trim().toUpperCase() !== fot.toUpperCase()) return false;
       return true;
     });
   };
@@ -641,6 +688,23 @@ export default function SuratPengangkutanPage() {
     setPiSearchMap((prev) => ({ ...prev, [itemId]: pi.nomorPI }));
 
     const currentItem = items.find((it) => it.id === itemId);
+    if (currentItem && currentItem.nomorSubDO.trim()) {
+      const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
+      if (doItem) {
+        const hasMatchingFOT = pi.produkItems.some((prod) => {
+          const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim().toUpperCase();
+          return prodFOT === doItem.fot.trim().toUpperCase();
+        });
+        if (!hasMatchingFOT) {
+          setErrors((prev) => ({
+            ...prev,
+            [`nomorPI_${itemId}`]: `FOT Produk pada PI ${pi.nomorPI} tidak sesuai dengan FOT DO (${doItem.fot})`,
+          }));
+          return;
+        }
+      }
+    }
+
     if (currentItem && currentItem.nomorSubDO.trim()) {
       const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
       if (doItem) {
@@ -736,12 +800,22 @@ export default function SuratPengangkutanPage() {
     const currentItem = items.find((it) => it.id === itemId);
     if (currentItem && currentItem.nomorSubDO.trim()) {
       const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
-      if (doItem && doItem.namaProduk !== prod.namaProduk) {
-        setErrors((prev) => ({
-          ...prev,
-          [`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]: `Produk ${prod.namaProduk} tidak cocok dengan DO ${currentItem.nomorSubDO} (produk: ${doItem.namaProduk})`,
-        }));
-        return;
+      if (doItem) {
+        const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim().toUpperCase();
+        if (prodFOT !== doItem.fot.trim().toUpperCase()) {
+          setErrors((prev) => ({
+            ...prev,
+            [`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]: `FOT Produk (${prodFOT}) tidak sesuai dengan FOT DO (${doItem.fot})`,
+          }));
+          return;
+        }
+        if (doItem.namaProduk !== prod.namaProduk) {
+          setErrors((prev) => ({
+            ...prev,
+            [`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`]: `Produk ${prod.namaProduk} tidak cocok dengan DO ${currentItem.nomorSubDO} (produk: ${doItem.namaProduk})`,
+          }));
+          return;
+        }
       }
     }
 
@@ -972,24 +1046,36 @@ export default function SuratPengangkutanPage() {
         newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} pada PI ${item.nomorPI} sudah dimuat semua`;
       }
       if (isMandiri) {
-        if (!item.nomorSubDO.trim()) newErrors[`nomorSubDO_${idx}`] = "Nomor Sub DO wajib dipilih";
-        if (!item.nomorPO.trim()) newErrors[`nomorPO_${idx}`] = "Nomor PO wajib diisi";
-        if (!item.party.trim()) newErrors[`party_${idx}`] = "Party wajib diisi";
-
-        if (item.nomorSubDO.trim() && item.nomorPI.trim()) {
+        if (!item.nomorSubDO.trim()) {
+          newErrors[`nomorSubDO_${idx}`] = "Nomor Sub DO wajib dipilih";
+        } else {
           const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
-          const pi = piList.find((p) => p.nomorPI === item.nomorPI);
-          if (doItem && pi) {
+          if (doItem) {
+            if (isDOExpired(doItem.tanggalKadaluarsa)) {
+              newErrors[`nomorSubDO_${idx}`] = `DO ${doItem.nomorSubDO} sudah kadaluarsa (${doItem.tanggalKadaluarsa}). Silakan perpanjang masa kadaluarsa di Input DO.`;
+            }
+            if (item.nomorPI.trim() && item.jenisPupuk.trim()) {
+              const pi = piList.find((p) => p.nomorPI === item.nomorPI);
+              if (pi) {
+                const prod = pi.produkItems.find((p) => p.namaProduk === item.jenisPupuk);
+                const piFOT = (prod?.fot || getStockFotForProduct(item.jenisPupuk) || "").trim();
+                if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
+                  newErrors[`nomorSubDO_${idx}`] = `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`;
+                }
+              }
+            }
             if (doItem.namaProduk !== item.jenisPupuk) {
               newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak sesuai dengan produk yang dipesan (${item.jenisPupuk})`;
             }
-            const validProducts = getValidProductsForPI(pi);
+            const validProducts = item.nomorPI.trim() ? getValidProductsForPI(piList.find((p) => p.nomorPI === item.nomorPI)!) : [];
             const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
-            if (!matchProd) {
-              newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${pi.nomorPI}`;
+            if (!matchProd && item.nomorPI.trim()) {
+              newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${item.nomorPI}`;
             }
           }
         }
+        if (!item.nomorPO.trim()) newErrors[`nomorPO_${idx}`] = "Nomor PO wajib diisi";
+        if (!item.party.trim()) newErrors[`party_${idx}`] = "Party wajib diisi";
       }
       if (!item.pengambilanZAK.trim()) {
         newErrors[`pengambilan_${idx}`] = "Pengambilan wajib diisi";
@@ -1020,6 +1106,19 @@ export default function SuratPengangkutanPage() {
         const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
         if (doItem && item.jenisPupuk !== doItem.namaProduk) {
           newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} tidak cocok dengan DO ${item.nomorSubDO} (produk: ${doItem.namaProduk})`;
+        }
+      }
+      if (isMandiri && item.nomorSubDO.trim() && item.nomorPI.trim() && item.jenisPupuk.trim()) {
+        const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+        if (doItem) {
+          const pi = piList.find((p) => p.nomorPI === item.nomorPI);
+          if (pi) {
+            const prod = pi.produkItems.find((p) => p.namaProduk === item.jenisPupuk);
+            const piFOT = (prod?.fot || getStockFotForProduct(item.jenisPupuk) || "").trim();
+            if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
+              newErrors[`jenisPupuk_${idx}`] = `FOT Produk (${piFOT}) tidak sesuai dengan FOT DO (${doItem.fot})`;
+            }
+          }
         }
       }
     });
@@ -1610,9 +1709,10 @@ export default function SuratPengangkutanPage() {
             {items.map((item, idx) => {
               const searchVal = piSearchMap[item.id] || "";
               const showSearch = piShowMap[item.id] || false;
-              const filteredPI = getPIAvailableForItem(searchVal);
+              const filteredPI = getPIAvailableForItem(searchVal, item.id);
               const selectedPI = piList.find((p) => p.nomorPI === item.nomorPI);
-              const validProducts = selectedPI ? getValidProductsForPI(selectedPI) : [];
+              const doItemForFilter = item.nomorSubDO ? doList.find((d) => d.nomorSubDO === item.nomorSubDO) : null;
+              const validProducts = selectedPI ? getValidProductsForPI(selectedPI, doItemForFilter?.fot) : [];
               return (
                 <div key={item.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
                   <div className="flex items-center justify-between mb-3">
@@ -1642,6 +1742,13 @@ export default function SuratPengangkutanPage() {
                               </option>
                             ))}
                           </select>
+                          {getAvailableDO(item.id).length === 0 && (
+                            <p className="mt-1 text-xs text-amber-600">
+                              {item.nomorPI && item.jenisPupuk
+                                ? "Tidak ada DO yang tersedia dengan FOT dan produk yang sesuai, atau DO sudah kadaluarsa."
+                                : "Tidak ada DO yang tersedia (sudah habis, kadaluarsa, atau tidak ada sisa)."}
+                            </p>
+                          )}
                           {errors[`nomorSubDO_${item.id}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorSubDO_${item.id}`]}</p>}
                           {errors[`nomorSubDO_${idx}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorSubDO_${idx}`]}</p>}
                         </div>
@@ -1735,7 +1842,7 @@ export default function SuratPengangkutanPage() {
                     )}
                     {selectedPI && validProducts.length === 0 && (
                       <div className="md:col-span-3 p-3 bg-red-50 rounded-lg border border-red-200 text-xs text-red-600">
-                        {isGI ? "PI ini tidak memiliki produk dengan FOT Gudang Induk." : "PI ini tidak memiliki produk dengan FOT selain Gudang Induk."}
+                        {isGI ? "PI ini tidak memiliki produk dengan FOT Gudang Induk." : item.nomorSubDO ? "PI ini tidak memiliki produk dengan FOT yang sesuai dengan DO yang dipilih." : "PI ini tidak memiliki produk dengan FOT selain Gudang Induk."}
                       </div>
                     )}
                     <div className="md:col-span-3">
