@@ -158,6 +158,7 @@ export default function PublicPage() {
   const [selectedFot, setSelectedFot] = useState("");
   const [selectedBulan, setSelectedBulan] = useState("");
   const [selectedTahun, setSelectedTahun] = useState("");
+  const [selectedTanggal, setSelectedTanggal] = useState("");
   const [fotList, setFotList] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
@@ -168,7 +169,7 @@ export default function PublicPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedFot, selectedBulan, selectedTahun, searchTerm, itemsPerPage]);
+  }, [selectedFot, selectedBulan, selectedTahun, selectedTanggal, searchTerm, itemsPerPage]);
 
   const fetchStockData = async () => {
     try {
@@ -203,11 +204,16 @@ export default function PublicPage() {
       item.unit.toLowerCase().includes(searchTerm.toLowerCase());
     const matchFot = selectedFot ? item.fot === selectedFot : true;
     const matchBulanTahun = (() => {
-      if (!selectedBulan && !selectedTahun) return true;
+      if (!selectedBulan && !selectedTahun && !selectedTanggal) return true;
       const date = item.createdAt instanceof Date ? item.createdAt : new Date();
       const matchBulan = selectedBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === selectedBulan : true;
       const matchTahun = selectedTahun ? date.getFullYear().toString() === selectedTahun : true;
-      return matchBulan && matchTahun;
+      const matchTanggal = selectedTanggal
+        ? date.getDate().toString().padStart(2, "0") === selectedTanggal.split("-")[2] &&
+          (date.getMonth() + 1).toString().padStart(2, "0") === selectedTanggal.split("-")[1] &&
+          date.getFullYear().toString() === selectedTanggal.split("-")[0]
+        : true;
+      return matchBulan && matchTahun && matchTanggal;
     })();
     return matchSearch && matchFot && matchBulanTahun;
   });
@@ -293,6 +299,12 @@ export default function PublicPage() {
     return filteredStockData
       .filter((d: StockGudang) => d.unit === unitType)
       .reduce((sum: number, d: StockGudang) => sum + (d.stokAkhirUnit || 0), 0);
+  };
+
+  const formatTanggalDisplay = (dateStr: string) => {
+    if (!dateStr) return "";
+    const [y, m, d] = dateStr.split("-");
+    return `${d}-${m}-${y}`;
   };
 
   return (
@@ -422,13 +434,22 @@ export default function PublicPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <Select
                   label="Filter FOT"
                   value={selectedFot}
                   onChange={(e) => setSelectedFot(e.target.value)}
                   options={fotOptions}
                 />
+                <div className="space-y-1.5">
+                  <label className="text-sm font-semibold text-gray-700">Filter Tanggal</label>
+                  <input
+                    type="date"
+                    value={selectedTanggal}
+                    onChange={(e) => setSelectedTanggal(e.target.value)}
+                    className="w-full px-4 py-3 bg-gray-50/80 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/30 focus:border-green-400 focus:bg-white transition-all duration-300 text-sm text-gray-700"
+                  />
+                </div>
                 <Select
                   label="Filter Bulan"
                   value={selectedBulan}
@@ -480,11 +501,12 @@ export default function PublicPage() {
               </div>
 
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-                <div className="text-sm text-gray-500 font-medium">
-                  Menampilkan {filteredStockData.length} dari {stockData.length} data
-                  {selectedFot && <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded-md text-xs">FOT: {selectedFot}</span>}
-                  {selectedBulan && <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded-md text-xs">{bulanOptions.find((b) => b.value === selectedBulan)?.label}</span>}
-                  {selectedTahun && <span className="ml-2 px-2 py-0.5 bg-gray-100 rounded-md text-xs">{selectedTahun}</span>}
+                <div className="text-sm text-gray-500 font-medium flex flex-wrap items-center gap-2">
+                  <span>Menampilkan {filteredStockData.length} dari {stockData.length} data</span>
+                  {selectedFot && <span className="px-2 py-0.5 bg-gray-100 rounded-md text-xs">FOT: {selectedFot}</span>}
+                  {selectedTanggal && <span className="px-2 py-0.5 bg-gray-100 rounded-md text-xs">Tanggal: {formatTanggalDisplay(selectedTanggal)}</span>}
+                  {selectedBulan && <span className="px-2 py-0.5 bg-gray-100 rounded-md text-xs">{bulanOptions.find((b) => b.value === selectedBulan)?.label}</span>}
+                  {selectedTahun && <span className="px-2 py-0.5 bg-gray-100 rounded-md text-xs">{selectedTahun}</span>}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-gray-600 font-medium">Tampilkan:</span>
