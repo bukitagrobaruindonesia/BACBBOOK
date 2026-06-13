@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, where,
-  serverTimestamp, getDoc, addDoc, runTransaction,
+  serverTimestamp, getDoc, addDoc, setDoc, runTransaction, Timestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -905,13 +905,7 @@ export default function RekapProformaInvoicePage() {
         ttdHormatImage: "/Picture4.png",
         updatedAt: serverTimestamp(),
       };
-      const q = query(collection(db, "arsipInvoice"), where("nomorInvoice", "==", invoiceNomor));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        await updateDoc(doc(db, "arsipInvoice", snap.docs[0].id), arsipData);
-      } else {
-        await addDoc(collection(db, "arsipInvoice"), { ...arsipData, createdAt: serverTimestamp() });
-      }
+      await setDoc(doc(db, "arsipInvoice", invoiceNomor), { ...arsipData, createdAt: serverTimestamp() }, { merge: true });
       setIsInvoiceModalOpen(false);
       alert("Invoice berhasil diterbitkan!");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice."); } finally { setIsSubmitting(false); }
@@ -987,13 +981,7 @@ export default function RekapProformaInvoicePage() {
         ttdHormatImage: "/Picture4.png",
         updatedAt: serverTimestamp(),
       };
-      const q = query(collection(db, "arsipInvoiceSementara"), where("nomorInvoice", "==", invoiceNomor));
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        await updateDoc(doc(db, "arsipInvoiceSementara", snap.docs[0].id), arsipData);
-      } else {
-        await addDoc(collection(db, "arsipInvoiceSementara"), { ...arsipData, createdAt: serverTimestamp() });
-      }
+      await setDoc(doc(db, "arsipInvoiceSementara", invoiceNomor), { ...arsipData, createdAt: serverTimestamp() }, { merge: true });
       setIsInvoiceModalOpen(false);
       alert("Invoice sementara berhasil diterbitkan!");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice sementara."); } finally { setIsSubmitting(false); }
