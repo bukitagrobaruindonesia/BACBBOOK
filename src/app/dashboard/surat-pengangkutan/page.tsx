@@ -14,6 +14,7 @@ import {
   where,
   getDoc,
   runTransaction,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -468,56 +469,33 @@ export default function SuratPengangkutanPage() {
       const year = now.getFullYear();
       const roman = getRomanMonth(now.getMonth() + 1);
       const prefix = `BAGB-SP-DO/${year}/${roman}`;
-      const q = query(
-        collection(db, "suratPengangkutan"),
-        where("jenisSurat", "==", "do"),
-        where("subJenisDO", "==", "dikuasakan")
-      );
-      const snapshot = await getDocs(q);
-      const numbers: number[] = [];
-      snapshot.docs.forEach((doc) => {
-        const nomorSeri = doc.data().nomorSeri || "";
-        if (nomorSeri.startsWith(prefix)) {
-          const parts = nomorSeri.split("/");
-          const last = parseInt(parts[parts.length - 1]);
-          if (!isNaN(last)) numbers.push(last);
+      const counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+      return await runTransaction(db, async (transaction) => {
+        const counterSnap = await transaction.get(counterRef);
+        let currentCount = 0;
+        if (counterSnap.exists()) {
+          currentCount = counterSnap.data().count || 0;
         }
+        const nextCount = currentCount + 1;
+        transaction.set(counterRef, { count: nextCount, updatedAt: Timestamp.now() }, { merge: true });
+        return `${prefix}/${String(nextCount).padStart(4, "0")}`;
       });
-      numbers.sort((a, b) => a - b);
-      let nextUrut = 1;
-      for (const num of numbers) {
-        if (num === nextUrut) nextUrut++;
-        else if (num > nextUrut) break;
-      }
-      return `${prefix}/${String(nextUrut).padStart(4, "0")}`;
     }
-
     const perusahaan = formData.kepadaPerusahaan.trim();
     if (!perusahaan) return "";
-
     const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
     const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
-
-    const snapshot = await getDocs(collection(db, "suratPengangkutan"));
-    const numbers: number[] = [];
-    snapshot.docs.forEach((doc) => {
-      const data = doc.data();
-      if (data.jenisSurat !== "do" || data.subJenisDO !== "mandiri") return;
-      const nomorSeri = data.nomorSeri || "";
-      if (!nomorSeri.includes("-SP-")) return;
-      const [prefixPart, numPart] = nomorSeri.split("-SP-");
-      if (!prefixPart || !prefixPart.endsWith(`-${perusahaan}`)) return;
-      const num = parseInt(numPart);
-      if (!isNaN(num)) numbers.push(num);
+    const counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
+    return await runTransaction(db, async (transaction) => {
+      const counterSnap = await transaction.get(counterRef);
+      let currentCount = 0;
+      if (counterSnap.exists()) {
+        currentCount = counterSnap.data().count || 0;
+      }
+      const nextCount = currentCount + 1;
+      transaction.set(counterRef, { count: nextCount, updatedAt: Timestamp.now() }, { merge: true });
+      return `BAGB-DO-${nomorSubDO}-${perusahaan}-SP-${String(nextCount).padStart(4, "0")}`;
     });
-
-    numbers.sort((a, b) => a - b);
-    let nextUrut = 1;
-    for (const num of numbers) {
-      if (num === nextUrut) nextUrut++;
-      else if (num > nextUrut) break;
-    }
-    return `BAGB-DO-${nomorSubDO}-${perusahaan}-SP-${String(nextUrut).padStart(4, "0")}`;
   };
 
   const generateNomorSeri = async () => {
@@ -1307,12 +1285,7 @@ export default function SuratPengangkutanPage() {
   const handlePrintPDF = async () => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-    const nomorSeri = await generateNomorSeri();
-    if (!nomorSeri) {
-      setFieldError("submit", "Gagal generate nomor seri untuk preview.");
-      printWindow.close();
-      return;
-    }
+    const nomorSeri = "PREVIEW-" + Date.now();
     const isGI = jenisSurat === "gudangInduk";
     const isDikuasakan = subJenisDO === "dikuasakan";
     const itemsHtml = items
