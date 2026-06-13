@@ -13,8 +13,7 @@ import {
   updateDoc,
   where,
   getDoc,
-  runTransaction,
-  Timestamp,
+  runTransaction, Timestamp, setDoc,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -470,14 +469,12 @@ export default function SuratPengangkutanPage() {
       const roman = getRomanMonth(now.getMonth() + 1);
       const prefix = `BAGB-SP-DO/${year}/${roman}`;
       const counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+      await setDoc(counterRef, { count: 0, updatedAt: Timestamp.now() }, { merge: true });
       return await runTransaction(db, async (transaction) => {
         const counterSnap = await transaction.get(counterRef);
-        let currentCount = 0;
-        if (counterSnap.exists()) {
-          currentCount = counterSnap.data().count || 0;
-        }
+        const currentCount = counterSnap.data()?.count || 0;
         const nextCount = currentCount + 1;
-        transaction.set(counterRef, { count: nextCount, updatedAt: Timestamp.now() }, { merge: true });
+        transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
         return `${prefix}/${String(nextCount).padStart(4, "0")}`;
       });
     }
@@ -486,14 +483,12 @@ export default function SuratPengangkutanPage() {
     const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
     const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
     const counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
+    await setDoc(counterRef, { count: 0, updatedAt: Timestamp.now() }, { merge: true });
     return await runTransaction(db, async (transaction) => {
       const counterSnap = await transaction.get(counterRef);
-      let currentCount = 0;
-      if (counterSnap.exists()) {
-        currentCount = counterSnap.data().count || 0;
-      }
+      const currentCount = counterSnap.data()?.count || 0;
       const nextCount = currentCount + 1;
-      transaction.set(counterRef, { count: nextCount, updatedAt: Timestamp.now() }, { merge: true });
+      transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
       return `BAGB-DO-${nomorSubDO}-${perusahaan}-SP-${String(nextCount).padStart(4, "0")}`;
     });
   };
