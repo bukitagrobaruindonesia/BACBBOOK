@@ -60,7 +60,6 @@ interface SuratPengangkutanItem {
   party: string;
   pengambilanZAK: string;
   sisa: string;
-  sisaZAK: number;
   bobotPerUnit: number;
   maxZAK: number;
   fot: string;
@@ -70,7 +69,6 @@ interface SuratPengangkutanItem {
   doLoadedKG: number;
   piKuantitas: number;
   piLoadedKG: number;
-  unit: string;
 }
 
 interface ExistingSurat {
@@ -137,14 +135,6 @@ const formatParty = (kg: number) => {
     return mt % 1 === 0 ? `${mt.toFixed(0)} MT` : `${mt.toFixed(2)} MT`;
   }
   return `${kg.toLocaleString()} KG`;
-};
-
-const formatSisa = (sisaZAK: number, bobotPerUnit: number, unit: string) => {
-  if (!unit || unit.toUpperCase() !== "ZAK") {
-    return `${sisaZAK} ZAK`;
-  }
-  const sisaKG = sisaZAK * bobotPerUnit;
-  return formatParty(sisaKG);
 };
 
 const isDOExpired = (tanggalKadaluarsa: string) => {
@@ -408,8 +398,6 @@ export default function SuratPengangkutanPage() {
         const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
         const maxZAKPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
         const finalMaxZAK = item.piKuantitas > 0 ? Math.min(maxZAKDO, maxZAKPI) : maxZAKDO;
-        const sisaZAK = finalMaxZAK;
-        const unit = item.unit || "ZAK";
         return {
           ...item,
           nomorSubDO: doItem.nomorSubDO,
@@ -420,8 +408,7 @@ export default function SuratPengangkutanPage() {
           doPartyKG: doItem.partyKG,
           doLoadedKG: loadedDO,
           maxZAK: finalMaxZAK,
-          sisa: formatSisa(sisaZAK, bobot, unit),
-          sisaZAK: sisaZAK,
+          sisa: formatParty(finalMaxZAK * bobot),
           party: formatParty(doItem.partyKG),
           pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
           namaCustomer: doItem.namaPerusahaan,
@@ -758,7 +745,6 @@ export default function SuratPengangkutanPage() {
     let jenisPupuk = "";
     let piKuantitas = 0;
     let piLoadedKG = 0;
-    let unit = "ZAK";
 
     if (firstProd) {
       bobot = getBobotPerUnit(firstProd.namaProduk);
@@ -766,7 +752,6 @@ export default function SuratPengangkutanPage() {
       jenisPupuk = firstProd.namaProduk;
       piKuantitas = firstProd.kuantitas || 0;
       piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || 0;
-      unit = firstProd.satuan || "ZAK";
     }
 
     setItems((prev) =>
@@ -778,7 +763,6 @@ export default function SuratPengangkutanPage() {
         const piSisa = Math.max(0, piKuantitas - piLoadedKG);
         const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
         const finalMaxZAK = hasDO ? Math.min(partyZAKDO, maxZAKPI) : maxZAKPI;
-        const sisaZAK = hasDO ? partyZAKDO : maxZAKPI;
         return {
           ...item,
           nomorPI: pi.nomorPI,
@@ -790,9 +774,7 @@ export default function SuratPengangkutanPage() {
           piLoadedKG: piLoadedKG,
           maxZAK: finalMaxZAK,
           party: hasDO ? item.party : formatParty(piKuantitas),
-          sisa: formatSisa(sisaZAK, hasDO ? item.bobotPerUnit : bobot, unit),
-          sisaZAK: sisaZAK,
-          unit: unit,
+          sisa: hasDO ? formatParty(partyZAKDO * item.bobotPerUnit) : formatParty(maxZAKPI * bobot),
           pengambilanZAK: "",
         };
       })
@@ -832,7 +814,6 @@ export default function SuratPengangkutanPage() {
     const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
     const piLoadedKG = statusMap[prod.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
     const piKuantitas = prod.kuantitas || 0;
-    const unit = prod.satuan || "ZAK";
 
     setItems((prev) =>
       prev.map((item) => {
@@ -843,7 +824,6 @@ export default function SuratPengangkutanPage() {
         const piSisa = Math.max(0, piKuantitas - piLoadedKG);
         const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
         const finalMaxZAK = hasDO ? Math.min(partyZAKDO, maxZAKPI) : maxZAKPI;
-        const sisaZAK = hasDO ? partyZAKDO : maxZAKPI;
         return {
           ...item,
           jenisPupuk: hasDO ? item.jenisPupuk : prod.namaProduk,
@@ -853,9 +833,7 @@ export default function SuratPengangkutanPage() {
           piLoadedKG: piLoadedKG,
           maxZAK: finalMaxZAK,
           party: hasDO ? item.party : formatParty(piKuantitas),
-          sisa: formatSisa(sisaZAK, hasDO ? item.bobotPerUnit : bobot, unit),
-          sisaZAK: sisaZAK,
-          unit: unit,
+          sisa: hasDO ? formatParty(partyZAKDO * item.bobotPerUnit) : formatParty(maxZAKPI * bobot),
           pengambilanZAK: "",
         };
       })
@@ -874,7 +852,6 @@ export default function SuratPengangkutanPage() {
         party: "",
         pengambilanZAK: "",
         sisa: "",
-        sisaZAK: 0,
         bobotPerUnit: 50,
         maxZAK: 0,
         fot: "",
@@ -884,7 +861,6 @@ export default function SuratPengangkutanPage() {
         doLoadedKG: 0,
         piKuantitas: 0,
         piLoadedKG: 0,
-        unit: "",
       },
     ]);
   };
@@ -897,17 +873,15 @@ export default function SuratPengangkutanPage() {
     const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
     const bobot = firstProd ? getBobotPerUnit(firstProd.namaProduk) : 50;
     const fot = firstProd ? (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim() : "";
-    const unit = firstProd ? (firstProd.satuan || "ZAK") : "ZAK";
 
     let piKuantitas = 0;
     let piLoadedKG = 0;
-    let sisaZAK = 0;
 
     if (firstProd) {
       piKuantitas = firstProd.kuantitas || 0;
       piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || 0;
       const piSisa = Math.max(0, piKuantitas - piLoadedKG);
-      sisaZAK = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
+      const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
 
       setItems((prev) => [
         ...prev,
@@ -918,10 +892,9 @@ export default function SuratPengangkutanPage() {
           jenisPupuk: firstProd.namaProduk,
           party: formatParty(piKuantitas),
           pengambilanZAK: "",
-          sisa: formatSisa(sisaZAK, bobot, unit),
-          sisaZAK: sisaZAK,
+          sisa: formatParty(maxZAKPI * bobot),
           bobotPerUnit: bobot,
-          maxZAK: sisaZAK,
+          maxZAK: maxZAKPI,
           fot: fot,
           nomorPI: pi.nomorPI,
           namaCustomer: pi.namaCustomer,
@@ -929,7 +902,6 @@ export default function SuratPengangkutanPage() {
           doLoadedKG: 0,
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
-          unit: unit,
         },
       ]);
     } else {
@@ -943,7 +915,6 @@ export default function SuratPengangkutanPage() {
           party: "",
           pengambilanZAK: "",
           sisa: "",
-          sisaZAK: 0,
           bobotPerUnit: 50,
           maxZAK: 0,
           fot: "",
@@ -953,7 +924,6 @@ export default function SuratPengangkutanPage() {
           doLoadedKG: 0,
           piKuantitas: 0,
           piLoadedKG: 0,
-          unit: "",
         },
       ]);
     }
@@ -1000,16 +970,13 @@ export default function SuratPengangkutanPage() {
         if (field === "pengambilanZAK") {
           const zak = parseFloat(value) || 0;
           const partyZAK = item.bobotPerUnit > 0 ? Math.floor(item.doPartyKG / item.bobotPerUnit) : 0;
-          let sisaZAK = 0;
           if (item.maxZAK > 0 && zak > item.maxZAK) {
             updated.pengambilanZAK = String(item.maxZAK);
-            sisaZAK = Math.max(0, partyZAK - item.maxZAK);
-            updated.sisa = formatSisa(sisaZAK, item.bobotPerUnit, item.unit);
-            updated.sisaZAK = sisaZAK;
-          } else if (partyZAK > 0) {
-            sisaZAK = Math.max(0, partyZAK - zak);
-            updated.sisa = formatSisa(sisaZAK, item.bobotPerUnit, item.unit);
-            updated.sisaZAK = sisaZAK;
+            updated.sisa = formatParty(Math.max(0, partyZAK - item.maxZAK) * item.bobotPerUnit);
+          } else if (partyZAK > 0 || item.maxZAK > 0) {
+            const baseZAK = partyZAK > 0 ? partyZAK : item.maxZAK;
+            const sisaZAK = Math.max(0, baseZAK - zak);
+            updated.sisa = formatParty(sisaZAK * item.bobotPerUnit);
           }
           const idx = items.findIndex((it) => it.id === id);
           clearFieldError(`pengambilan_${idx}`);
@@ -1184,11 +1151,9 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: item.bobotPerUnit,
           totalKG: (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit,
           sisa: item.sisa,
-          sisaZAK: item.sisaZAK,
           fot: item.fot,
           nomorPI: item.nomorPI || null,
           namaCustomer: item.namaCustomer || null,
-          unit: item.unit || null,
         })),
         totalPengambilanKG: totalPengambilanKG,
         nomorSeri: nomorSeri,
@@ -1383,7 +1348,7 @@ export default function SuratPengangkutanPage() {
         <p class="recipient-title">Kepada Yth :</p>
         <p class="recipient-name">${formData.kepadaNama || ""}</p>
         <p class="recipient-name">${formData.kepadaPerusahaan || ""}</p>
-        <p class="recipient-address">${(formData.kepadaAlamat || "").replace(/\n/g, "<br>")}</p>
+        <p class="recipient-address">${(formData.kepadaAlamat || "").split("\n").join("<br>")}</p>
       </div>`;
     }
 
@@ -1882,10 +1847,10 @@ export default function SuratPengangkutanPage() {
                       )}
                     </div>
                     <div>
-                      <Input label={`Sisa${item.unit && item.unit.toUpperCase() !== "ZAK" ? " (ZAK)" : ""}`} type="text" value={item.sisa} onChange={(e) => handleItemChange(item.id, "sisa", e.target.value)} placeholder="Auto-calculate" readOnly />
-                      {item.bobotPerUnit > 0 && item.sisaZAK > 0 && item.unit && item.unit.toUpperCase() !== "ZAK" && (
+                      <Input label="Sisa" type="text" value={item.sisa} onChange={(e) => handleItemChange(item.id, "sisa", e.target.value)} placeholder="Auto-calculate" readOnly />
+                      {item.bobotPerUnit > 0 && item.sisa && (
                         <p className="mt-1 text-xs text-gray-500">
-                          = {(item.sisaZAK * item.bobotPerUnit).toLocaleString()} KG
+                          = {(parseFloat(item.sisa || "0") * item.bobotPerUnit).toLocaleString()} KG
                         </p>
                       )}
                     </div>
