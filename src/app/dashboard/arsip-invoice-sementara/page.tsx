@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { collection, getDocs, query, doc, deleteDoc, updateDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
@@ -109,11 +109,40 @@ const numberToWords = (num: number): string => {
   return result.trim() + " RUPIAH";
 };
 
+const bulanOptions = [
+  { value: "", label: "Semua Bulan" },
+  { value: "01", label: "Januari" },
+  { value: "02", label: "Februari" },
+  { value: "03", label: "Maret" },
+  { value: "04", label: "April" },
+  { value: "05", label: "Mei" },
+  { value: "06", label: "Juni" },
+  { value: "07", label: "Juli" },
+  { value: "08", label: "Agustus" },
+  { value: "09", label: "September" },
+  { value: "10", label: "Oktober" },
+  { value: "11", label: "November" },
+  { value: "12", label: "Desember" },
+];
+
+const generateTahunOptions = () => {
+  const currentYear = new Date().getFullYear();
+  const years = [{ value: "", label: "Semua Tahun" }];
+  for (let y = currentYear; y >= currentYear - 5; y--) {
+    years.push({ value: String(y), label: String(y) });
+  }
+  return years;
+};
+
 export default function ArsipInvoiceSementaraPage() {
   const [data, setData] = useState<ArsipInvoiceSementara[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<"all" | "unprinted" | "printed">("all");
+  const [filterBulan, setFilterBulan] = useState("");
+  const [filterTahun, setFilterTahun] = useState("");
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedItem, setSelectedItem] = useState<ArsipInvoiceSementara | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [deleteItem, setDeleteItem] = useState<ArsipInvoiceSementara | null>(null);
@@ -171,16 +200,41 @@ export default function ArsipInvoiceSementaraPage() {
     } catch (error) { console.error(error); } finally { setIsLoading(false); }
   };
 
-  const filteredData = data.filter((item) => {
-    const matchSearch =
-      item.nomorInvoice?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.nomorSeriSP?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase());
-    if (filterStatus === "unprinted") return matchSearch && !item.isPrinted;
-    if (filterStatus === "printed") return matchSearch && item.isPrinted;
-    return matchSearch;
-  });
+  const filteredData = useMemo(() => {
+    let result = data.filter((item) => {
+      const matchSearch =
+        item.nomorInvoice?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.nomorSeriSP?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.namaCustomer?.toLowerCase().includes(searchTerm.toLowerCase());
+      if (filterStatus === "unprinted") return matchSearch && !item.isPrinted;
+      if (filterStatus === "printed") return matchSearch && item.isPrinted;
+      return matchSearch;
+    });
+    if (filterBulan || filterTahun) {
+      result = result.filter((item) => {
+        if (!item.tanggalInvoice) return false;
+        const dateParts = item.tanggalInvoice.split("-");
+        if (dateParts.length < 3) return false;
+        const itemBulan = dateParts[1];
+        const itemTahun = dateParts[2];
+        const matchBulan = filterBulan ? itemBulan === filterBulan : true;
+        const matchTahun = filterTahun ? itemTahun === filterTahun : true;
+        return matchBulan && matchTahun;
+      });
+    }
+    return result;
+  }, [data, searchTerm, filterStatus, filterBulan, filterTahun]);
+
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage) || 1;
+  const paginatedData = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return filteredData.slice(start, start + itemsPerPage);
+  }, [filteredData, currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, filterStatus, filterBulan, filterTahun, itemsPerPage]);
 
   const handleDetail = (item: ArsipInvoiceSementara) => {
     setSelectedItem(item);
@@ -544,6 +598,58 @@ export default function ArsipInvoiceSementaraPage() {
     },
   ];
 
+  const tahunOptions = generateTahunOptions();
+
+  const PaginationControls = () => {
+    const pages = [];
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || (i >= currentPage - 1 && i <= currentPage + 1)) {
+        pages.push(i);
+      } else if (i === currentPage - 2 || i === currentPage + 2) {
+        pages.push(-1);
+      }
+    }
+    const uniquePages = pages.filter((p, idx, arr) => p !== -1 || arr[idx - 1] !== -1);
+    return (
+      <div className="flex items-center justify-between mt-6">
+        <div className="text-sm text-gray-500">
+          Menampilkan {filteredData.length > 0 ? (currentPage - 1) * itemsPerPage + 1 : 0} - {Math.min(currentPage * itemsPerPage, filteredData.length)} dari {filteredData.length} data
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+          >
+            Sebelumnya
+          </button>
+          {uniquePages.map((p, idx) =>
+            p === -1 ? (
+              <span key={`dots-${idx}`} className="px-2 text-gray-400">...</span>
+            ) : (
+              <button
+                key={p}
+                onClick={() => setCurrentPage(p)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  p === currentPage ? "bg-green-600 text-white" : "border border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                {p}
+              </button>
+            )
+          )}
+          <button
+            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+            className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition-colors"
+          >
+            Selanjutnya
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-4">
@@ -561,18 +667,35 @@ export default function ArsipInvoiceSementaraPage() {
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input type="text" placeholder="Cari nomor invoice, PI, SP, customer..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={filterBulan} onChange={(e) => setFilterBulan(e.target.value)} className="px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+              {bulanOptions.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+            </select>
+            <select value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} className="px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+              {tahunOptions.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
             <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
               <option value="all">Semua</option>
               <option value="unprinted">Belum Print</option>
               <option value="printed">Sudah Print</option>
             </select>
+            <select value={itemsPerPage} onChange={(e) => setItemsPerPage(Number(e.target.value))} className="px-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white">
+              <option value={5}>5 / hal</option>
+              <option value={10}>10 / hal</option>
+              <option value={15}>15 / hal</option>
+              <option value={20}>20 / hal</option>
+              <option value={25}>25 / hal</option>
+              <option value={30}>30 / hal</option>
+              <option value={50}>50 / hal</option>
+              <option value={100}>100 / hal</option>
+            </select>
           </div>
         </div>
         <div className="text-sm text-gray-500 mb-4">
-          Menampilkan {filteredData.length} dari {data.length} data
+          Total {filteredData.length} data ditemukan
         </div>
-        <Table columns={columns} data={filteredData} isLoading={isLoading} emptyMessage="Belum ada arsip invoice sementara" keyExtractor={(row) => row.id} onRowClick={handleDetail} />
+        <Table columns={columns} data={paginatedData} isLoading={isLoading} emptyMessage="Belum ada arsip invoice sementara" keyExtractor={(row) => row.id} onRowClick={handleDetail} />
+        <PaginationControls />
       </Card>
       <Modal isOpen={isDetailModalOpen} onClose={() => setIsDetailModalOpen(false)} title={`Detail Invoice ${selectedItem?.nomorInvoice}`} size="lg" footer={
         <div className="flex justify-end gap-3">
