@@ -69,7 +69,10 @@ interface FormDataState {
   selectedTTD: string;
 }
 
-const COUNTER_REF = doc(db, "counters", "piCounter");
+const getRomanMonth = (month: number) => {
+  const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
+  return romans[month - 1] || "I";
+};
 
 export default function InputProformaInvoicePage() {
   const { user } = useAuth();
@@ -146,38 +149,35 @@ export default function InputProformaInvoicePage() {
   };
 
   const getUniquePINumber = async (): Promise<string> => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const shortYear = String(year).slice(-2);
+    const roman = getRomanMonth(now.getMonth() + 1);
+    const prefix = "BAGB-PI-(W)";
+    const counterRef = doc(db, "counters", `piCounter_${year}_${roman}`);
     const maxRetries = 10;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const result = await runTransaction(db, async (transaction) => {
-          const counterDoc = await transaction.get(COUNTER_REF);
+          const counterDoc = await transaction.get(counterRef);
           let lastNum = 0;
           if (counterDoc.exists()) {
             lastNum = counterDoc.data().lastNumber || 0;
           }
           let candidateNum = lastNum + 1;
-          let candidatePI = `BAGB-PI-${String(candidateNum).padStart(3, "0")}`;
-          const piRef = doc(db, "proformaInvoice", candidatePI);
-          const piDoc = await transaction.get(piRef);
-          if (piDoc.exists()) {
-            let searchNum = candidateNum + 1;
-            let found = false;
-            while (searchNum <= candidateNum + 100 && !found) {
-              const testPI = `BAGB-PI-${String(searchNum).padStart(3, "0")}`;
-              const testRef = doc(db, "proformaInvoice", testPI);
-              const testDoc = await transaction.get(testRef);
-              if (!testDoc.exists()) {
-                candidateNum = searchNum;
-                candidatePI = testPI;
-                found = true;
-              }
-              searchNum++;
-            }
-            if (!found) {
-              throw new Error("No available PI number found");
-            }
+          let candidatePI = `${prefix}/${roman}/${shortYear}-${String(candidateNum).padStart(3, "0")}`;
+          const safeLockId = candidatePI.replace(/\//g, "_");
+          let lockRef = doc(db, "piNumberLocks", safeLockId);
+          let lockDoc = await transaction.get(lockRef);
+          while (lockDoc.exists()) {
+            candidateNum++;
+            candidatePI = `${prefix}/${roman}/${shortYear}-${String(candidateNum).padStart(3, "0")}`;
+            const safeId = candidatePI.replace(/\//g, "_");
+            lockRef = doc(db, "piNumberLocks", safeId);
+            lockDoc = await transaction.get(lockRef);
           }
-          transaction.set(COUNTER_REF, { lastNumber: candidateNum });
+          transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
+          transaction.set(counterRef, { lastNumber: candidateNum });
           return candidatePI;
         });
         return result;
