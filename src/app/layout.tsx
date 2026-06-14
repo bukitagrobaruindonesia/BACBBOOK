@@ -6,7 +6,7 @@ import { AuthProvider } from "./context/AuthContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "REKAP PI - PT Bukit Agrochemical",
+  title: "REKAPBOOK - PT Bukit Agrochemical Baru",
   description: "Sistem Administrasi Distributor Pupuk - PT Bukit Agrochemical",
   keywords: ["pupuk", "agrochemical", "administrasi", "stock gudang", "proforma invoice"],
   authors: [{ name: "PT Bukit Agrochemical" }],
