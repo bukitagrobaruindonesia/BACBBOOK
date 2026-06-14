@@ -23,6 +23,27 @@ import Card from "@/app/components/ui/Card";
 import Table from "@/app/components/ui/Table";
 import { StockGudang } from "@/app/types";
 
+interface BarangRusakRow {
+  id: string;
+  transaksiId: string;
+  rusakIndex: number;
+  fot: string;
+  kodeBarang: string;
+  namaBarang: string;
+  namaProdusen: string;
+  unitMasuk: string;
+  tanggal: string;
+  createdBy: string;
+  unit: string;
+  jumlah: number;
+  keterangan: string;
+  fotoUrls: string[];
+  status: string;
+  tanggalPenggantian: string;
+  jumlahPenggantian: number;
+  penggantianFotoUrls: string[];
+}
+
 export default function LaporanInputStockGudangPage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockGudang[]>([]);
@@ -54,6 +75,14 @@ export default function LaporanInputStockGudangPage() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateKodeBarang, setDuplicateKodeBarang] = useState("");
 
+  const [barangRusakList, setBarangRusakList] = useState<BarangRusakRow[]>([]);
+  const [rusakSearchQuery, setRusakSearchQuery] = useState("");
+  const [rusakFilterFot, setRusakFilterFot] = useState("");
+  const [rusakFilterStatus, setRusakFilterStatus] = useState("");
+  const [rusakCurrentPage, setRusakCurrentPage] = useState(1);
+  const [rusakItemsPerPage, setRusakItemsPerPage] = useState(10);
+  const [selectedRusakFoto, setSelectedRusakFoto] = useState<{ urls: string[]; index: number } | null>(null);
+
   const unitOptions = [
     { value: "ZAK", label: "ZAK" },
     { value: "DUS", label: "DUS" },
@@ -69,14 +98,40 @@ export default function LaporanInputStockGudangPage() {
     { value: "100", label: "100 per halaman" },
   ];
 
+  const statusOptions = [
+    { value: "", label: "Semua Status" },
+    { value: "belum diganti", label: "Belum Diganti" },
+    { value: "sudah diganti", label: "Sudah Diganti" },
+  ];
+
   useEffect(() => {
     fetchStockGudang();
     fetchFotList();
+    fetchBarangRusak();
   }, []);
 
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, filterFot, itemsPerPage]);
+
+  useEffect(() => {
+    setRusakCurrentPage(1);
+  }, [rusakSearchQuery, rusakFilterFot, rusakFilterStatus, rusakItemsPerPage]);
+
+  useEffect(() => {
+    const numberInputs = document.querySelectorAll('input[type="number"]');
+    const handler = (e: Event) => {
+      (e.target as HTMLInputElement).blur();
+    };
+    numberInputs.forEach((input) => {
+      input.addEventListener("wheel", handler, { passive: true });
+    });
+    return () => {
+      numberInputs.forEach((input) => {
+        input.removeEventListener("wheel", handler);
+      });
+    };
+  }, [formData]);
 
   const fetchFotList = async () => {
     try {
@@ -106,6 +161,44 @@ export default function LaporanInputStockGudangPage() {
         updatedAt: doc.data().updatedAt?.toDate(),
       } as StockGudang));
       setStockList(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const fetchBarangRusak = async () => {
+    try {
+      const q = query(collection(db, "transaksiBarangMasuk"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+      const list: BarangRusakRow[] = [];
+      snapshot.docs.forEach((docSnap) => {
+        const d = docSnap.data();
+        if (d.adaBarangRusak && Array.isArray(d.barangRusak)) {
+          d.barangRusak.forEach((r: any, idx: number) => {
+            list.push({
+              id: `${docSnap.id}_${idx}`,
+              transaksiId: docSnap.id,
+              rusakIndex: idx,
+              fot: d.fot || "",
+              kodeBarang: d.kodeBarang || "",
+              namaBarang: d.namaBarang || "",
+              namaProdusen: d.namaProdusen || "",
+              unitMasuk: d.unit || "ZAK",
+              tanggal: d.tanggal || "",
+              createdBy: d.createdBy || "",
+              unit: r.unit || "ZAK",
+              jumlah: r.jumlah || 0,
+              keterangan: r.keterangan || "",
+              fotoUrls: r.fotoUrls || [],
+              status: r.status || "belum diganti",
+              tanggalPenggantian: r.tanggalPenggantian || "",
+              jumlahPenggantian: r.jumlahPenggantian || 0,
+              penggantianFotoUrls: r.penggantianFotoUrls || [],
+            });
+          });
+        }
+      });
+      setBarangRusakList(list);
     } catch (error) {
       console.error(error);
     }
@@ -423,6 +516,44 @@ export default function LaporanInputStockGudangPage() {
     return pages;
   };
 
+  const rusakFiltered = barangRusakList.filter((r) => {
+    const matchesSearch =
+      r.namaBarang.toLowerCase().includes(rusakSearchQuery.toLowerCase()) ||
+      r.kodeBarang.toLowerCase().includes(rusakSearchQuery.toLowerCase()) ||
+      r.fot.toLowerCase().includes(rusakSearchQuery.toLowerCase()) ||
+      r.keterangan.toLowerCase().includes(rusakSearchQuery.toLowerCase());
+    const matchesFot = rusakFilterFot ? r.fot === rusakFilterFot : true;
+    const matchesStatus = rusakFilterStatus ? r.status === rusakFilterStatus : true;
+    return matchesSearch && matchesFot && matchesStatus;
+  });
+
+  const rusakTotalPages = Math.ceil(rusakFiltered.length / rusakItemsPerPage);
+  const rusakStartIndex = (rusakCurrentPage - 1) * rusakItemsPerPage;
+  const rusakEndIndex = rusakStartIndex + rusakItemsPerPage;
+  const rusakPaginated = rusakFiltered.slice(rusakStartIndex, rusakEndIndex);
+  const rusakStartItem = rusakFiltered.length > 0 ? rusakStartIndex + 1 : 0;
+  const rusakEndItem = Math.min(rusakEndIndex, rusakFiltered.length);
+
+  const goToRusakPage = (page: number) => {
+    if (page >= 1 && page <= rusakTotalPages) {
+      setRusakCurrentPage(page);
+    }
+  };
+
+  const renderRusakPageNumbers = () => {
+    const pages: number[] = [];
+    const maxVisible = 5;
+    let start = Math.max(1, rusakCurrentPage - Math.floor(maxVisible / 2));
+    let end = Math.min(rusakTotalPages, start + maxVisible - 1);
+    if (end - start + 1 < maxVisible) {
+      start = Math.max(1, end - maxVisible + 1);
+    }
+    for (let i = start; i <= end; i++) {
+      pages.push(i);
+    }
+    return pages;
+  };
+
   const columns = [
     {
       key: "fot",
@@ -585,6 +716,121 @@ export default function LaporanInputStockGudangPage() {
           </button>
         </div>
       ),
+    },
+  ];
+
+  const rusakColumns = [
+    {
+      key: "fot",
+      header: "FOT",
+      width: "80px",
+      render: (row: BarangRusakRow) => (
+        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded text-xs">{row.fot}</span>
+      ),
+    },
+    {
+      key: "tanggal",
+      header: "Tanggal",
+      width: "110px",
+      render: (row: BarangRusakRow) => <span className="text-xs text-gray-700">{row.tanggal}</span>,
+    },
+    {
+      key: "kodeBarang",
+      header: "Kode",
+      width: "100px",
+      render: (row: BarangRusakRow) => (
+        <span className="font-mono font-semibold text-green-700 bg-green-50 px-2 py-1 rounded text-xs">{row.kodeBarang}</span>
+      ),
+    },
+    {
+      key: "namaBarang",
+      header: "Nama Barang",
+      render: (row: BarangRusakRow) => <span className="text-sm font-medium text-gray-800">{row.namaBarang}</span>,
+    },
+    {
+      key: "jumlah",
+      header: "Jumlah Rusak",
+      width: "100px",
+      render: (row: BarangRusakRow) => (
+        <span className="font-mono font-bold text-red-700">{row.jumlah.toLocaleString("id-ID")} {row.unit}</span>
+      ),
+    },
+    {
+      key: "keterangan",
+      header: "Keterangan",
+      width: "140px",
+      render: (row: BarangRusakRow) => <span className="text-xs text-gray-600">{row.keterangan}</span>,
+    },
+    {
+      key: "foto",
+      header: "Foto",
+      width: "80px",
+      render: (row: BarangRusakRow) => (
+        <div>
+          {(() => {
+            const rf = row.fotoUrls;
+            return rf.length > 0 ? (
+            <button
+              onClick={() => setSelectedRusakFoto({ urls: rf, index: 0 })}
+              className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-bold hover:bg-amber-200 transition-colors"
+            >
+              {rf.length} Foto
+            </button>
+          ) : (
+            <span className="text-xs text-gray-400">-</span>
+          );
+          })()}
+        </div>
+      ),
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "120px",
+      render: (row: BarangRusakRow) => (
+        <span
+          className={`px-2 py-1 rounded-md text-xs font-bold ${
+            row.status === "sudah diganti"
+              ? "bg-green-100 text-green-700"
+              : "bg-red-100 text-red-700"
+          }`}
+        >
+          {row.status === "sudah diganti" ? "SUDAH DIGANTI" : "BELUM DIGANTI"}
+        </span>
+      ),
+    },
+    {
+      key: "detailPenggantian",
+      header: "Detail Penggantian",
+      width: "180px",
+      render: (row: BarangRusakRow) => {
+        if (row.status !== "sudah diganti") {
+          return <span className="text-xs text-gray-400">-</span>;
+        }
+        return (
+          <div className="text-xs space-y-1">
+            <p className="text-green-700 font-semibold">{row.jumlahPenggantian.toLocaleString("id-ID")} {row.unitMasuk} diganti</p>
+            <p className="text-gray-500">Tgl: {row.tanggalPenggantian}</p>
+            {(() => {
+              const pgf = row.penggantianFotoUrls;
+              return pgf.length > 0 && (
+              <button
+                onClick={() => setSelectedRusakFoto({ urls: pgf, index: 0 })}
+                className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold hover:bg-blue-200 transition-colors"
+              >
+                {pgf.length} Foto Ganti
+              </button>
+            );
+            })()}
+          </div>
+        );
+      },
+    },
+    {
+      key: "createdBy",
+      header: "Oleh",
+      width: "100px",
+      render: (row: BarangRusakRow) => <span className="text-xs text-gray-500">{row.createdBy}</span>,
     },
   ];
 
@@ -791,7 +1037,7 @@ export default function LaporanInputStockGudangPage() {
           </form>
         </div>
 
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
           <Card
             title={`Data Stock Gudang (${filteredStockList.length} item)`}
             icon={
@@ -887,6 +1133,104 @@ export default function LaporanInputStockGudangPage() {
               </div>
             )}
           </Card>
+
+          <Card
+            title={`Stok Barang Rusak (${rusakFiltered.length} item)`}
+            icon={
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            }
+          >
+            <div className="mb-4 flex flex-col sm:flex-row gap-3">
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  placeholder="Cari nama barang, kode, FOT, atau keterangan..."
+                  value={rusakSearchQuery}
+                  onChange={(e) => setRusakSearchQuery(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <div className="sm:w-40">
+                <Select
+                  value={rusakFilterFot}
+                  onChange={(e) => setRusakFilterFot(e.target.value)}
+                  options={[
+                    { value: "", label: "Semua FOT" },
+                    ...uniqueFotList.map((f) => ({ value: f, label: f })),
+                  ]}
+                />
+              </div>
+              <div className="sm:w-44">
+                <Select
+                  value={rusakFilterStatus}
+                  onChange={(e) => setRusakFilterStatus(e.target.value)}
+                  options={statusOptions}
+                />
+              </div>
+            </div>
+
+            <Table
+              columns={rusakColumns}
+              data={rusakPaginated}
+              isLoading={false}
+              emptyMessage="Belum ada data barang rusak"
+              keyExtractor={(row) => row.id}
+            />
+
+            {rusakFiltered.length > 0 && (
+              <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center gap-3">
+                  <span className="text-sm text-gray-500">
+                    Menampilkan {rusakStartItem}-{rusakEndItem} dari {rusakFiltered.length} data
+                  </span>
+                  <Select
+                    value={rusakItemsPerPage.toString()}
+                    onChange={(e) => setRusakItemsPerPage(parseInt(e.target.value))}
+                    options={itemsPerPageOptions}
+                    className="w-36 text-sm"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => goToRusakPage(rusakCurrentPage - 1)}
+                    disabled={rusakCurrentPage === 1}
+                    className="px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 text-gray-700"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+
+                  {renderRusakPageNumbers().map((page) => (
+                    <button
+                      key={page}
+                      onClick={() => goToRusakPage(page)}
+                      className={`min-w-[36px] px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        rusakCurrentPage === page
+                          ? "bg-red-600 text-white shadow-sm"
+                          : "text-gray-700 hover:bg-gray-100"
+                      }`}
+                    >
+                      {page}
+                    </button>
+                  ))}
+
+                  <button
+                    onClick={() => goToRusakPage(rusakCurrentPage + 1)}
+                    disabled={rusakCurrentPage === rusakTotalPages}
+                    className="px-3 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-100 text-gray-700"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            )}
+          </Card>
         </div>
       </div>
 
@@ -947,6 +1291,39 @@ export default function LaporanInputStockGudangPage() {
               >
                 Mengerti
               </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedRusakFoto && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4" onClick={() => setSelectedRusakFoto(null)}>
+          <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
+            <button
+              onClick={() => setSelectedRusakFoto(null)}
+              className="absolute -top-12 right-0 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={selectedRusakFoto.urls[selectedRusakFoto.index]}
+              alt="Foto Barang Rusak"
+              className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <p className="text-white text-sm mt-4 font-medium">
+              Foto {selectedRusakFoto.index + 1} dari {selectedRusakFoto.urls.length}
+            </p>
+            <div className="flex gap-2 mt-3">
+              {selectedRusakFoto.urls.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={(e) => { e.stopPropagation(); setSelectedRusakFoto({ ...selectedRusakFoto, index: idx }); }}
+                  className={`w-2.5 h-2.5 rounded-full transition-colors ${idx === selectedRusakFoto.index ? "bg-white" : "bg-white/40 hover:bg-white/60"}`}
+                />
+              ))}
             </div>
           </div>
         </div>

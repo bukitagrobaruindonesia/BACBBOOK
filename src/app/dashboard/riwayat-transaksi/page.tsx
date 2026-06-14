@@ -19,6 +19,11 @@ interface BarangRusakItem {
   unit: string;
   jumlah: number;
   keterangan: string;
+  fotoUrls: string[];
+  status: string;
+  tanggalPenggantian: string;
+  jumlahPenggantian: number;
+  penggantianFotoUrls: string[];
 }
 
 interface UnifiedTransaksi {
@@ -72,6 +77,9 @@ interface UnifiedTransaksi {
   kepadaNama?: string;
   kepadaPerusahaan?: string;
   kepadaAlamat?: string;
+  isPenggantianRusak?: boolean;
+  referensiTransaksiId?: string;
+  referensiRusakIndex?: number;
 }
 
 interface StockItem {
@@ -125,7 +133,7 @@ const parseNomorSeri = (nomorSeri: string) => {
 
 const validateNomorSeriFormat = (value: string) => {
   const giRegex = new RegExp("^BAGB-SP/\d{4}/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)/\d{4}$");
-  const doRegex = new RegExp("^BAGB-SP-DO.+-\d{4}$");
+  const doRegex = new RegExp("^BAGB-SP-DO.+-.{4}$");
   return giRegex.test(value.trim()) || doRegex.test(value.trim());
 };
 
@@ -148,6 +156,7 @@ export default function RiwayatTransaksiPage() {
   const [existingSuratList, setExistingSuratList] = useState<ExistingSurat[]>([]);
   const [nomorSeriError, setNomorSeriError] = useState("");
   const [selectedFotoIndex, setSelectedFotoIndex] = useState<number | null>(null);
+  const [selectedRusakFoto, setSelectedRusakFoto] = useState<{ urls: string[]; index: number } | null>(null);
   const [ttdList, setTtdList] = useState<TTDData[]>([]);
 
   const [editForm, setEditForm] = useState({
@@ -194,6 +203,26 @@ export default function RiwayatTransaksiPage() {
     fetchTTD();
   }, []);
 
+  useEffect(() => {
+    if (isEditModalOpen) {
+      const timer = setTimeout(() => {
+        const numberInputs = document.querySelectorAll('input[type="number"]');
+        const handler = (e: Event) => {
+          (e.target as HTMLInputElement).blur();
+        };
+        numberInputs.forEach((input) => {
+          input.addEventListener("wheel", handler, { passive: true });
+        });
+        return () => {
+          numberInputs.forEach((input) => {
+            input.removeEventListener("wheel", handler);
+          });
+        };
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isEditModalOpen, editForm, editSuratForm]);
+
   const fetchData = async () => {
     setIsLoading(true);
     try {
@@ -203,7 +232,7 @@ export default function RiwayatTransaksiPage() {
         const d = doc.data();
         return {
           id: doc.id,
-          jenis: "barangMasuk",
+          jenis: d.isPenggantianRusak ? "penggantianRusak" : "barangMasuk",
           tanggal: d.tanggal,
           kodeBarang: d.kodeBarang || "",
           namaBarang: d.namaBarang || "",
@@ -219,8 +248,20 @@ export default function RiwayatTransaksiPage() {
           nomorKontainer: d.nomorKontainer || "",
           nomorDO: d.nomorDO || "",
           fotoUrls: d.fotoUrls || null,
-          barangRusak: d.barangRusak || null,
+          barangRusak: d.barangRusak ? d.barangRusak.map((r: any) => ({
+              unit: r.unit || "",
+              jumlah: r.jumlah || 0,
+              keterangan: r.keterangan || "",
+              fotoUrls: r.fotoUrls || [],
+              status: r.status || "belum diganti",
+              tanggalPenggantian: r.tanggalPenggantian || "",
+              jumlahPenggantian: r.jumlahPenggantian || 0,
+              penggantianFotoUrls: r.penggantianFotoUrls || [],
+            })) : null,
           adaBarangRusak: d.adaBarangRusak || false,
+          isPenggantianRusak: d.isPenggantianRusak || false,
+          referensiTransaksiId: d.referensiTransaksiId || "",
+          referensiRusakIndex: d.referensiRusakIndex,
         } as UnifiedTransaksi;
       });
 
@@ -400,6 +441,7 @@ export default function RiwayatTransaksiPage() {
     setSelectedItem(item);
     setIsDetailModalOpen(true);
     setSelectedFotoIndex(null);
+    setSelectedRusakFoto(null);
   };
 
   const handleEdit = (item: UnifiedTransaksi) => {
@@ -467,7 +509,7 @@ export default function RiwayatTransaksiPage() {
 
   const handleUpdateRegular = async () => {
     let collectionName = "";
-    if (selectedItem!.jenis === "barangMasuk") collectionName = "transaksiBarangMasuk";
+    if (selectedItem!.jenis === "barangMasuk" || selectedItem!.jenis === "penggantianRusak") collectionName = "transaksiBarangMasuk";
     else collectionName = "transaksiBarangKeluar";
     const jumlahZAK = parseFloat(editForm.jumlahZAK) || 0;
     const botolPerDus = editForm.unit === "BOTOL" ? parseFloat(editForm.botolPerDus) || 0 : null;
@@ -658,14 +700,15 @@ export default function RiwayatTransaksiPage() {
 
   const handleDelete = async (item: UnifiedTransaksi) => {
     let collectionName = "";
-    if (item.jenis === "barangMasuk") collectionName = "transaksiBarangMasuk";
+    if (item.jenis === "barangMasuk" || item.jenis === "penggantianRusak") collectionName = "transaksiBarangMasuk";
     else collectionName = "transaksiBarangKeluar";
     const jenisLabel = item.jenis === "barangMasuk" ? "Barang Masuk" :
+      item.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" :
       item.jenis === "suratPengangkutanGudangInduk" ? "Surat Pengangkutan Gudang Induk" :
       item.jenis === "suratPengangkutanDO" ? "Surat Pengangkutan DO" : "Barang Keluar";
     if (!confirm(`Apakah Anda yakin ingin menghapus data ${jenisLabel} ini?`)) return;
     try {
-      if (item.jenis === "barangMasuk") {
+      if (item.jenis === "barangMasuk" || item.jenis === "penggantianRusak") {
         const stock = getStockExactMatch(item.kodeBarang, item.namaBarang);
         if (stock) {
           const stockRef = doc(db, "stockGudang", stock.id);
@@ -685,6 +728,19 @@ export default function RiwayatTransaksiPage() {
               stokAkhirKG: Math.max(0, currentStokKG - minusKG),
               updatedAt: serverTimestamp(),
             });
+          }
+        }
+        if (item.jenis === "barangMasuk" && item.adaBarangRusak && item.barangRusak) {
+          const transaksiRef = doc(db, "transaksiBarangMasuk", item.id);
+          const transaksiSnap = await getDoc(transaksiRef);
+          if (transaksiSnap.exists()) {
+            const tData = transaksiSnap.data();
+            const barangRusakArray = tData.barangRusak || [];
+            const hasReplaced = barangRusakArray.some((r: any) => r.status === "sudah diganti");
+            if (hasReplaced) {
+              alert("Tidak dapat menghapus transaksi ini karena terdapat barang rusak yang sudah diganti.");
+              return;
+            }
           }
         }
       }
@@ -758,6 +814,7 @@ export default function RiwayatTransaksiPage() {
   const handleExportExcel = () => {
     const exportData = filteredData.map((item) => ({
       "Jenis Transaksi": item.jenis === "barangMasuk" ? "Barang Masuk" :
+        item.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" :
         item.jenis === "suratPengangkutanGudangInduk" ? "Surat Pengangkutan Gudang Induk" :
         item.jenis === "suratPengangkutanDO" ? "Surat Pengangkutan DO" : "Barang Keluar",
       "Tanggal": item.tanggal,
@@ -885,23 +942,26 @@ export default function RiwayatTransaksiPage() {
 
     const ttd = ttdList.length > 0 ? ttdList[0] : null;
 
-    const rusakRows = item.barangRusak.map((r, idx) => `
+    const rusakRows = item.barangRusak.map((r, idx) => {
+      const fotoHtml = r.fotoUrls && r.fotoUrls.length > 0
+        ? `<div style="margin-top: 6px;"><p style="font-size: 9px; font-weight: 600; margin-bottom: 4px;">FOTO DOKUMENTASI:</p><div style="display: flex; flex-wrap: wrap; gap: 6px;">${r.fotoUrls.map((f, i) => `<img src="${f}" alt="Foto ${i + 1}" style="width: 80px; height: 80px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px;" />`).join("")}</div></div>`
+        : "";
+      const penggantianHtml = r.status === "sudah diganti"
+        ? `<div style="margin-top: 6px; padding: 6px; background: #f0fdf4; border: 1px solid #16a34a; border-radius: 4px;"><p style="font-size: 9px; font-weight: 700; color: #16a34a;">SUDAH DIGANTI</p><p style="font-size: 9px; color: #333;">Tanggal: ${r.tanggalPenggantian || "-"}</p><p style="font-size: 9px; color: #333;">Jumlah Penggantian: ${(r.jumlahPenggantian || 0).toLocaleString("id-ID")} ${item.unit || "ZAK"}</p>${r.penggantianFotoUrls && r.penggantianFotoUrls.length > 0 ? `<div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px;">${r.penggantianFotoUrls.map((f, i) => `<img src="${f}" alt="Foto Ganti ${i + 1}" style="width: 80px; height: 80px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px;" />`).join("")}</div>` : ""}</div>`
+        : "";
+      return `
       <tr>
         <td style="text-align: center; padding: 8px; border: 1px solid #000; font-size: 11px;">${idx + 1}</td>
         <td style="text-align: center; padding: 8px; border: 1px solid #000; font-size: 11px; font-weight: 600;">${r.unit}</td>
         <td style="text-align: center; padding: 8px; border: 1px solid #000; font-size: 11px;">${r.jumlah.toLocaleString("id-ID")}</td>
-        <td style="padding: 8px; border: 1px solid #000; font-size: 11px;">${r.keterangan}</td>
+        <td style="padding: 8px; border: 1px solid #000; font-size: 11px;">
+          <p>${r.keterangan}</p>
+          ${fotoHtml}
+          ${penggantianHtml}
+        </td>
       </tr>
-    `).join("");
-
-    const fotoHtml = item.fotoUrls && item.fotoUrls.length > 0
-      ? `<div style="margin-top: 16px;">
-          <p style="font-size: 11px; font-weight: 700; margin-bottom: 8px;">DOKUMENTASI FOTO:</p>
-          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
-            ${item.fotoUrls.map((f, i) => `<img src="${f}" alt="Foto ${i + 1}" style="width: 140px; height: 140px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px;" />`).join("")}
-          </div>
-        </div>`
-      : "";
+    `;
+    }).join("");
 
     const sopirInfo = item.sopirNopolList && item.sopirNopolList.length > 0
       ? item.sopirNopolList.filter(s => s.namaSopir || s.nopol).map((s, i) =>
@@ -966,15 +1026,13 @@ export default function RiwayatTransaksiPage() {
                 <th style="width: 40px;">NO</th>
                 <th style="width: 100px;">SATUAN</th>
                 <th style="width: 100px;">JUMLAH</th>
-                <th>KETERANGAN</th>
+                <th>KETERANGAN & DOKUMENTASI</th>
               </tr>
             </thead>
             <tbody>
               ${rusakRows}
             </tbody>
           </table>
-
-          ${fotoHtml}
 
           <div class="notes-box">
             <p style="font-weight: 700; margin-bottom: 6px;">Keterangan:</p>
@@ -1012,6 +1070,7 @@ export default function RiwayatTransaksiPage() {
     { value: "barangMasuk", label: "Barang Masuk" },
     { value: "barangKeluar", label: "Barang Keluar" },
     { value: "suratPengangkutan", label: "Surat Pengangkutan" },
+    { value: "penggantianRusak", label: "Penggantian Barang Rusak" },
   ];
 
   const bulanOptions = [
@@ -1052,6 +1111,7 @@ export default function RiwayatTransaksiPage() {
 
   const getJenisBadgeClass = (jenis: string) => {
     if (jenis === "barangMasuk") return "bg-blue-100 text-blue-700";
+    if (jenis === "penggantianRusak") return "bg-teal-100 text-teal-700";
     if (jenis === "suratPengangkutanGudangInduk") return "bg-green-100 text-green-700";
     if (jenis === "suratPengangkutanDO") return "bg-purple-100 text-purple-700";
     return "bg-orange-100 text-orange-700";
@@ -1059,6 +1119,7 @@ export default function RiwayatTransaksiPage() {
 
   const getJenisLabel = (jenis: string) => {
     if (jenis === "barangMasuk") return "MASUK";
+    if (jenis === "penggantianRusak") return "PENGGANTIAN";
     if (jenis === "suratPengangkutanGudangInduk") return "GUDANG INDUK";
     if (jenis === "suratPengangkutanDO") return "DO";
     return "KELUAR";
@@ -1098,7 +1159,7 @@ export default function RiwayatTransaksiPage() {
           ) : (
             <span className="font-mono font-bold text-green-700 bg-green-50 px-2 py-1 rounded text-xs block">{row.kodeBarang || "-"}</span>
           )}
-          {row.jenis === "barangMasuk" && row.nomorKontainer && (
+          {(row.jenis === "barangMasuk" || row.jenis === "penggantianRusak") && row.nomorKontainer && (
             <span className="font-mono text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded block">{row.nomorKontainer}</span>
           )}
         </div>
@@ -1189,6 +1250,9 @@ export default function RiwayatTransaksiPage() {
           {row.nomorDO && (
             <span className="px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-600">DO</span>
           )}
+          {row.isPenggantianRusak && (
+            <span className="px-2 py-0.5 rounded text-xs font-bold bg-teal-100 text-teal-700">GANTI</span>
+          )}
         </div>
       ),
     },
@@ -1236,6 +1300,7 @@ export default function RiwayatTransaksiPage() {
   const getTotalMasuk = () => filteredData.filter((d) => d.jenis === "barangMasuk").length;
   const getTotalKeluar = () => filteredData.filter((d) => d.jenis === "barangKeluar").length;
   const getTotalSurat = () => filteredData.filter((d) => d.jenis === "suratPengangkutanGudangInduk" || d.jenis === "suratPengangkutanDO").length;
+  const getTotalPenggantian = () => filteredData.filter((d) => d.jenis === "penggantianRusak").length;
   const isBotol = editForm.unit === "BOTOL";
   const isSuratEdit = selectedItem?.jenis === "suratPengangkutanGudangInduk" || selectedItem?.jenis === "suratPengangkutanDO";
 
@@ -1302,7 +1367,7 @@ export default function RiwayatTransaksiPage() {
           <Select label="Filter Tahun" value={filterTahun} onChange={(e) => setFilterTahun(e.target.value)} options={tahunOptions} />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
           <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
             <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Total Transaksi</p>
             <p className="text-2xl font-bold text-blue-700 mt-1">{filteredData.length}</p>
@@ -1310,6 +1375,10 @@ export default function RiwayatTransaksiPage() {
           <div className="p-4 bg-green-50 rounded-xl border border-green-100">
             <p className="text-xs text-green-600 uppercase tracking-wide font-semibold">Barang Masuk</p>
             <p className="text-2xl font-bold text-green-700 mt-1">{getTotalMasuk()}</p>
+          </div>
+          <div className="p-4 bg-teal-50 rounded-xl border border-teal-100">
+            <p className="text-xs text-teal-600 uppercase tracking-wide font-semibold">Penggantian</p>
+            <p className="text-2xl font-bold text-teal-700 mt-1">{getTotalPenggantian()}</p>
           </div>
           <div className="p-4 bg-orange-50 rounded-xl border border-orange-100">
             <p className="text-xs text-orange-600 uppercase tracking-wide font-semibold">Barang Keluar</p>
@@ -1358,6 +1427,7 @@ export default function RiwayatTransaksiPage() {
             <div className="flex items-center gap-3 mb-4">
               <span className={`px-3 py-1.5 rounded-lg text-sm font-bold ${getJenisBadgeClass(selectedItem.jenis)}`}>
                 {selectedItem.jenis === "barangMasuk" ? "TRANSAKSI BARANG MASUK" :
+                 selectedItem.jenis === "penggantianRusak" ? "PENGGANTIAN BARANG RUSAK" :
                  selectedItem.jenis === "suratPengangkutanGudangInduk" ? "SURAT PENGANGKUTAN GUDANG INDUK" :
                  selectedItem.jenis === "suratPengangkutanDO" ? "SURAT PENGANGKUTAN DO" :
                  "TRANSAKSI BARANG KELUAR"}
@@ -1372,7 +1442,15 @@ export default function RiwayatTransaksiPage() {
               </div>
             )}
 
-            {selectedItem.jenis === "barangMasuk" && (
+            {selectedItem.isPenggantianRusak && (
+              <div className="p-4 bg-teal-50 rounded-xl border border-teal-200">
+                <p className="text-xs text-teal-600 uppercase tracking-wide font-semibold">Referensi Penggantian</p>
+                <p className="text-sm text-teal-700">Transaksi ID: <span className="font-mono">{selectedItem.referensiTransaksiId}</span></p>
+                <p className="text-sm text-teal-700">Index Rusak: {selectedItem.referensiRusakIndex}</p>
+              </div>
+            )}
+
+            {(selectedItem.jenis === "barangMasuk" || selectedItem.jenis === "penggantianRusak") && (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-200">
@@ -1414,6 +1492,8 @@ export default function RiwayatTransaksiPage() {
                             <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Satuan</th>
                             <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Jumlah</th>
                             <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Keterangan</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Status</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Foto</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1423,6 +1503,32 @@ export default function RiwayatTransaksiPage() {
                               <td className="px-3 py-2 text-sm font-semibold text-gray-900 border">{r.unit}</td>
                               <td className="px-3 py-2 text-sm text-gray-900 text-right font-mono border">{r.jumlah.toLocaleString("id-ID")}</td>
                               <td className="px-3 py-2 text-sm text-gray-700 border">{r.keterangan}</td>
+                              <td className="px-3 py-2 text-sm border">
+                                <span className={`px-2 py-0.5 rounded text-xs font-bold ${r.status === "sudah diganti" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+                                  {r.status === "sudah diganti" ? "SUDAH DIGANTI" : "BELUM DIGANTI"}
+                                </span>
+                                {r.status === "sudah diganti" && (
+                                  <div className="mt-1 text-xs text-gray-500">
+                                    <p>Tgl: {r.tanggalPenggantian}</p>
+                                    <p>Jml: {r.jumlahPenggantian?.toLocaleString("id-ID")} {selectedItem.unit}</p>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-sm border">
+                                {(() => {
+                                  const rf = r.fotoUrls;
+                                  return rf.length > 0 ? (
+                                  <button
+                                    onClick={() => setSelectedRusakFoto({ urls: rf, index: 0 })}
+                                    className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-bold hover:bg-amber-200 transition-colors"
+                                  >
+                                    {rf.length} Foto
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-gray-400">-</span>
+                                );
+                                })()}
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -1517,7 +1623,7 @@ export default function RiwayatTransaksiPage() {
                   </div>
                 </div>
               </>
-            ) : selectedItem.jenis !== "barangMasuk" ? (
+            ) : selectedItem.jenis !== "barangMasuk" && selectedItem.jenis !== "penggantianRusak" ? (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-gray-50 rounded-xl">
@@ -1605,7 +1711,40 @@ export default function RiwayatTransaksiPage() {
         </div>
       )}
 
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={isSuratEdit ? "Edit Surat Pengangkutan" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : "Transaksi Barang Keluar"}`} size="lg" footer={
+      {selectedRusakFoto && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4" onClick={() => setSelectedRusakFoto(null)}>
+          <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
+            <button
+              onClick={() => setSelectedRusakFoto(null)}
+              className="absolute -top-12 right-0 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={selectedRusakFoto.urls[selectedRusakFoto.index]}
+              alt="Foto Barang Rusak"
+              className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <p className="text-white text-sm mt-4 font-medium">
+              Foto {selectedRusakFoto.index + 1} dari {selectedRusakFoto.urls.length}
+            </p>
+            <div className="flex gap-2 mt-3">
+              {selectedRusakFoto.urls.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={(e) => { e.stopPropagation(); setSelectedRusakFoto({ ...selectedRusakFoto, index: idx }); }}
+                  className={`w-2.5 h-2.5 rounded-full transition-colors ${idx === selectedRusakFoto.index ? "bg-white" : "bg-white/40 hover:bg-white/60"}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={isSuratEdit ? "Edit Surat Pengangkutan" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : selectedItem?.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" : "Transaksi Barang Keluar"}`} size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Batal</Button>
           <Button variant="primary" onClick={handleUpdate} isLoading={isSubmitting} disabled={isSuratEdit && !!nomorSeriError}>Simpan Perubahan</Button>
