@@ -31,6 +31,12 @@ interface SopirNopolItem {
   nomorSIM: string;
 }
 
+interface BarangRusakItem {
+  unit: string;
+  jumlah: string;
+  keterangan: string;
+}
+
 export default function TransaksiBarangMasukPage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockItem[]>([]);
@@ -47,6 +53,8 @@ export default function TransaksiBarangMasukPage() {
     jumlahZAK: "",
     botolPerDus: "",
     fot: "",
+    nomorKontainer: "",
+    nomorDO: "",
   });
 
   const [sopirNopolList, setSopirNopolList] = useState<SopirNopolItem[]>([
@@ -63,11 +71,24 @@ export default function TransaksiBarangMasukPage() {
     volumeMl: "500",
   });
 
+  const [fotoFiles, setFotoFiles] = useState<string[]>([]);
+  const [fotoLoading, setFotoLoading] = useState(false);
+  const [barangRusakList, setBarangRusakList] = useState<BarangRusakItem[]>([]);
+  const [adaBarangRusak, setAdaBarangRusak] = useState(false);
+
   const unitOptions = [
     { value: "ZAK", label: "ZAK" },
     { value: "DUS", label: "DUS" },
     { value: "KG", label: "KG" },
     { value: "BOTOL", label: "BOTOL" },
+  ];
+
+  const unitRusakOptions = [
+    { value: "ZAK", label: "ZAK" },
+    { value: "DUS", label: "DUS" },
+    { value: "KG", label: "KG" },
+    { value: "BOTOL", label: "BOTOL" },
+    { value: "UNIT", label: "UNIT" },
   ];
 
   useEffect(() => {
@@ -112,6 +133,72 @@ export default function TransaksiBarangMasukPage() {
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          let width = img.width;
+          let height = img.height;
+          const maxDimension = 1920;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { reject(new Error("Canvas context failed")); return; }
+          ctx.drawImage(img, 0, 0, width, height);
+          let quality = 0.9;
+          let result = canvas.toDataURL("image/jpeg", quality);
+          const maxBytes = maxSizeMB * 1024 * 1024;
+          while (result.length > maxBytes && quality > 0.1) {
+            quality -= 0.1;
+            result = canvas.toDataURL("image/jpeg", quality);
+          }
+          resolve(result);
+        };
+        img.onerror = () => reject(new Error("Image load failed"));
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error("File read failed"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    setFotoLoading(true);
+    try {
+      const newPhotos: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const compressed = await compressImage(file, 2);
+        newPhotos.push(compressed);
+      }
+      setFotoFiles((prev) => [...prev, ...newPhotos]);
+    } catch (error) {
+      console.error(error);
+      setErrors((prev) => ({ ...prev, foto: "Gagal memproses foto. Silakan coba lagi." }));
+    } finally {
+      setFotoLoading(false);
+      e.target.value = "";
+    }
+  };
+
+  const removeFoto = (index: number) => {
+    setFotoFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleNamaBarangChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -179,15 +266,43 @@ export default function TransaksiBarangMasukPage() {
     setSopirNopolList((prev) => prev.filter((item) => item.id !== id));
   };
 
+  const addBarangRusak = () => {
+    setBarangRusakList((prev) => [...prev, { unit: "ZAK", jumlah: "", keterangan: "" }]);
+  };
+
+  const removeBarangRusak = (index: number) => {
+    setBarangRusakList((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleBarangRusakChange = (index: number, field: keyof BarangRusakItem, value: string) => {
+    setBarangRusakList((prev) => {
+      const newList = [...prev];
+      newList[index] = { ...newList[index], [field]: value };
+      return newList;
+    });
+  };
+
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
     if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib dipilih";
     if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah harus lebih dari 0";
     if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
+    if (!formData.nomorKontainer.trim()) newErrors.nomorKontainer = "Nomor kontainer wajib diisi";
 
     if (formData.unit === "BOTOL") {
       if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Botol per DUS tidak valid";
+    }
+
+    if (adaBarangRusak && barangRusakList.length > 0) {
+      barangRusakList.forEach((item, idx) => {
+        if (!item.jumlah || parseFloat(item.jumlah) <= 0) {
+          newErrors[`barangRusak_${idx}_jumlah`] = "Jumlah barang rusak tidak valid";
+        }
+        if (!item.keterangan.trim()) {
+          newErrors[`barangRusak_${idx}_keterangan`] = "Keterangan wajib diisi";
+        }
+      });
     }
 
     setErrors(newErrors);
@@ -348,6 +463,16 @@ export default function TransaksiBarangMasukPage() {
           nomorSIM: s.nomorSIM.trim() || null,
         }));
 
+      const barangRusakData = adaBarangRusak
+        ? barangRusakList
+            .filter((b) => b.jumlah && parseFloat(b.jumlah) > 0)
+            .map((b) => ({
+              unit: b.unit,
+              jumlah: parseFloat(b.jumlah) || 0,
+              keterangan: b.keterangan.trim(),
+            }))
+        : [];
+
       const transaksiData: any = {
         tanggal: formData.tanggal,
         kodeBarang: formData.kodeBarang.trim(),
@@ -357,6 +482,11 @@ export default function TransaksiBarangMasukPage() {
         totalKG: totalKG,
         sopirNopolList: sopirNopolValues.length > 0 ? sopirNopolValues : null,
         fot: formData.fot.trim().toUpperCase(),
+        nomorKontainer: formData.nomorKontainer.trim().toUpperCase(),
+        nomorDO: formData.nomorDO.trim().toUpperCase() || null,
+        fotoUrls: fotoFiles.length > 0 ? fotoFiles : null,
+        barangRusak: barangRusakData.length > 0 ? barangRusakData : null,
+        adaBarangRusak: adaBarangRusak && barangRusakData.length > 0,
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -407,9 +537,14 @@ export default function TransaksiBarangMasukPage() {
         jumlahZAK: "",
         botolPerDus: "",
         fot: "",
+        nomorKontainer: "",
+        nomorDO: "",
       });
       setSopirNopolList([{ id: 1, namaSopir: "", nopol: "", nomorSIM: "" }]);
       setMatchedStock(null);
+      setFotoFiles([]);
+      setBarangRusakList([]);
+      setAdaBarangRusak(false);
 
       fetchStockGudang();
       setTimeout(() => setSuccessMessage(""), 5000);
@@ -528,6 +663,27 @@ export default function TransaksiBarangMasukPage() {
               readOnly
               className="bg-gray-100"
             />
+
+            <Input
+              label="Nomor Kontainer"
+              type="text"
+              name="nomorKontainer"
+              value={formData.nomorKontainer}
+              onChange={handleChange}
+              placeholder="Contoh: BSIU 123456 7"
+              error={errors.nomorKontainer}
+              required
+            />
+
+            <Input
+              label="Nomor DO (Delivery Order)"
+              type="text"
+              name="nomorDO"
+              value={formData.nomorDO}
+              onChange={handleChange}
+              placeholder="Opsional"
+              error={errors.nomorDO}
+            />
           </div>
 
           {matchedStock && (
@@ -577,6 +733,147 @@ export default function TransaksiBarangMasukPage() {
                 error={errors.botolPerDus}
                 required
               />
+            )}
+          </div>
+        </Card>
+
+        <Card title="Foto Dokumentasi">
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <label className="relative cursor-pointer inline-flex items-center px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium">
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Tambah Foto
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFotoUpload}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  disabled={fotoLoading}
+                />
+              </label>
+              {fotoLoading && (
+                <span className="text-sm text-gray-500 flex items-center gap-2">
+                  <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Memproses...
+                </span>
+              )}
+            </div>
+
+            {errors.foto && (
+              <p className="text-sm text-red-600">{errors.foto}</p>
+            )}
+
+            {fotoFiles.length > 0 && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                {fotoFiles.map((foto, idx) => (
+                  <div key={idx} className="relative group">
+                    <img
+                      src={foto}
+                      alt={`Foto ${idx + 1}`}
+                      className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeFoto(idx)}
+                      className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                    <p className="text-xs text-center text-gray-500 mt-1">Foto {idx + 1}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs text-gray-500">
+              Maksimal 2MB per foto. Foto akan otomatis dikompres jika melebihi batas.
+            </p>
+          </div>
+        </Card>
+
+        <Card title="Barang Rusak">
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="adaBarangRusak"
+                checked={adaBarangRusak}
+                onChange={(e) => setAdaBarangRusak(e.target.checked)}
+                className="w-5 h-5 text-green-600 rounded border-gray-300 focus:ring-green-500"
+              />
+              <label htmlFor="adaBarangRusak" className="text-sm font-medium text-gray-700">
+                Terdapat barang rusak / cacat pada saat penerimaan
+              </label>
+            </div>
+
+            {adaBarangRusak && (
+              <div className="space-y-4">
+                {barangRusakList.map((item, index) => (
+                  <div key={index} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-sm font-semibold text-gray-700">Barang Rusak {index + 1}</h4>
+                      {barangRusakList.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeBarangRusak(index)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <Select
+                        label="Satuan"
+                        value={item.unit}
+                        onChange={(e) => handleBarangRusakChange(index, "unit", e.target.value)}
+                        options={unitRusakOptions}
+                        required
+                      />
+                      <Input
+                        label="Jumlah"
+                        type="number"
+                        value={item.jumlah}
+                        onChange={(e) => handleBarangRusakChange(index, "jumlah", e.target.value)}
+                        placeholder="Masukkan jumlah"
+                        error={errors[`barangRusak_${index}_jumlah`]}
+                        required
+                      />
+                      <Input
+                        label="Keterangan"
+                        type="text"
+                        value={item.keterangan}
+                        onChange={(e) => handleBarangRusakChange(index, "keterangan", e.target.value)}
+                        placeholder="Contoh: Kemasan sobek, basah, dll"
+                        error={errors[`barangRusak_${index}_keterangan`]}
+                        required
+                      />
+                    </div>
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addBarangRusak}
+                >
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Tambah Barang Rusak
+                </Button>
+              </div>
             )}
           </div>
         </Card>
@@ -654,9 +951,14 @@ export default function TransaksiBarangMasukPage() {
                 jumlahZAK: "",
                 botolPerDus: "",
                 fot: "",
+                nomorKontainer: "",
+                nomorDO: "",
               });
               setSopirNopolList([{ id: 1, namaSopir: "", nopol: "", nomorSIM: "" }]);
               setMatchedStock(null);
+              setFotoFiles([]);
+              setBarangRusakList([]);
+              setAdaBarangRusak(false);
               setErrors({});
             }}
           >

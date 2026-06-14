@@ -389,7 +389,7 @@ export default function PublicPage() {
                 </div>
                 <div>
                   <h1 className="text-lg font-bold text-green-900 tracking-tight">REKAP DATA</h1>
-                  <p className="text-xs text-green-700 font-medium">PT Bukit Agrochemical</p>
+                  <p className="text-xs text-green-700 font-medium">PT Bukit Agrochemical Baru</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -411,7 +411,7 @@ export default function PublicPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
               </svg>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-bold text-green-900 mb-3 tracking-tight">PT Bukit Agrochemical</h2>
+            <h2 className="text-3xl sm:text-4xl font-bold text-green-900 mb-3 tracking-tight">PT Bukit Agrochemical Baru</h2>
             <p className="text-lg text-green-700 mb-2 font-medium">Sistem Administrasi Distributor Pupuk</p>
             <p className="text-sm text-gray-500 max-w-2xl mx-auto leading-relaxed">
               Platform digital untuk monitoring stock gudang secara real-time.

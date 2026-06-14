@@ -15,6 +15,12 @@ import Select from "@/app/components/ui/Select";
 import Card from "@/app/components/ui/Card";
 import { exportToExcel } from "@/app/utils/exportExcel";
 
+interface BarangRusakItem {
+  unit: string;
+  jumlah: number;
+  keterangan: string;
+}
+
 interface UnifiedTransaksi {
   id: string;
   jenis: string;
@@ -46,9 +52,26 @@ interface UnifiedTransaksi {
     bobotPerUnit: number;
     totalKG: number;
     sisa: string;
+    nomorPI?: string;
+    fot?: string;
   }>;
   totalPengambilanKG?: number;
   nomorPIList?: string[];
+  nomorKontainer?: string;
+  nomorDO?: string;
+  fotoUrls?: string[];
+  barangRusak?: BarangRusakItem[];
+  adaBarangRusak?: boolean;
+  sopirNopolList?: Array<{
+    namaSopir: string | null;
+    nopol: string | null;
+    nomorSIM: string | null;
+  }>;
+  jenisSurat?: string;
+  subJenisDO?: string;
+  kepadaNama?: string;
+  kepadaPerusahaan?: string;
+  kepadaAlamat?: string;
 }
 
 interface StockItem {
@@ -77,6 +100,13 @@ interface ExistingSurat {
   nomorSeri: string;
 }
 
+interface TTDData {
+  id: string;
+  nama: string;
+  jabatan: string;
+  ttdImage: string;
+}
+
 const getRomanMonth = (month: number) => {
   const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
   return romans[month - 1] || "I";
@@ -94,8 +124,9 @@ const parseNomorSeri = (nomorSeri: string) => {
 };
 
 const validateNomorSeriFormat = (value: string) => {
-  const regex = /^BAGB-SP\/\d{4}\/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)\/\d{4}$/;
-  return regex.test(value.trim());
+  const giRegex = new RegExp("^BAGB-SP/\d{4}/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)/\d{4}$");
+  const doRegex = new RegExp("^BAGB-SP-DO.+-\d{4}$");
+  return giRegex.test(value.trim()) || doRegex.test(value.trim());
 };
 
 export default function RiwayatTransaksiPage() {
@@ -116,6 +147,8 @@ export default function RiwayatTransaksiPage() {
   const [piList, setPiList] = useState<ProformaInvoiceItem[]>([]);
   const [existingSuratList, setExistingSuratList] = useState<ExistingSurat[]>([]);
   const [nomorSeriError, setNomorSeriError] = useState("");
+  const [selectedFotoIndex, setSelectedFotoIndex] = useState<number | null>(null);
+  const [ttdList, setTtdList] = useState<TTDData[]>([]);
 
   const [editForm, setEditForm] = useState({
     tanggal: "",
@@ -131,6 +164,8 @@ export default function RiwayatTransaksiPage() {
     nomorSuratPengangkutan: "",
     fot: "",
     sopirNopol: "",
+    nomorKontainer: "",
+    nomorDO: "",
   });
 
   const [editSuratForm, setEditSuratForm] = useState({
@@ -156,6 +191,7 @@ export default function RiwayatTransaksiPage() {
     fetchStockGudang();
     fetchProformaInvoice();
     fetchExistingSurat();
+    fetchTTD();
   }, []);
 
   const fetchData = async () => {
@@ -163,22 +199,30 @@ export default function RiwayatTransaksiPage() {
     try {
       const masukQuery = query(collection(db, "transaksiBarangMasuk"), orderBy("createdAt", "desc"));
       const masukSnapshot = await getDocs(masukQuery);
-      const masukData = masukSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        jenis: "barangMasuk",
-        tanggal: doc.data().tanggal,
-        kodeBarang: doc.data().kodeBarang,
-        namaBarang: doc.data().namaBarang,
-        unit: doc.data().unit,
-        jumlahZAK: doc.data().jumlahZAK,
-        totalKG: doc.data().totalKG || 0,
-        fot: doc.data().fot,
-        createdBy: doc.data().createdBy,
-        createdAt: doc.data().createdAt?.toDate(),
-        sopirNopol: doc.data().sopirNopol,
-        botolPerDus: doc.data().botolPerDus,
-        bobotPerBotol: doc.data().bobotPerBotol,
-      } as UnifiedTransaksi));
+      const masukData = masukSnapshot.docs.map((doc) => {
+        const d = doc.data();
+        return {
+          id: doc.id,
+          jenis: "barangMasuk",
+          tanggal: d.tanggal,
+          kodeBarang: d.kodeBarang || "",
+          namaBarang: d.namaBarang || "",
+          unit: d.unit || "ZAK",
+          jumlahZAK: d.jumlahZAK || 0,
+          totalKG: d.totalKG || 0,
+          fot: d.fot || "",
+          createdBy: d.createdBy || "",
+          createdAt: d.createdAt?.toDate(),
+          sopirNopolList: d.sopirNopolList || null,
+          botolPerDus: d.botolPerDus,
+          bobotPerBotol: d.bobotPerBotol,
+          nomorKontainer: d.nomorKontainer || "",
+          nomorDO: d.nomorDO || "",
+          fotoUrls: d.fotoUrls || null,
+          barangRusak: d.barangRusak || null,
+          adaBarangRusak: d.adaBarangRusak || false,
+        } as UnifiedTransaksi;
+      });
 
       const keluarQuery = query(collection(db, "transaksiBarangKeluar"), orderBy("createdAt", "desc"));
       const keluarSnapshot = await getDocs(keluarQuery);
@@ -208,6 +252,11 @@ export default function RiwayatTransaksiPage() {
           driverUnit: d.driverUnit,
           nomorPolisi: d.nomorPolisi,
           nomorSIM: d.nomorSIM,
+          jenisSurat: d.jenisSurat || "gudangInduk",
+          subJenisDO: d.subJenisDO || "",
+          kepadaNama: d.kepadaNama || "",
+          kepadaPerusahaan: d.kepadaPerusahaan || "",
+          kepadaAlamat: d.kepadaAlamat || "",
         } as UnifiedTransaksi;
       });
 
@@ -273,6 +322,15 @@ export default function RiwayatTransaksiPage() {
     } catch (error) { console.error(error); }
   };
 
+  const fetchTTD = async () => {
+    try {
+      const q = query(collection(db, "ttd"), orderBy("nama", "asc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as TTDData));
+      setTtdList(data);
+    } catch (error) { console.error(error); }
+  };
+
   const checkNomorSeriExists = (value: string, excludeNomorSeri?: string) => {
     if (!value.trim()) { setNomorSeriError(""); return false; }
     if (!validateNomorSeriFormat(value)) {
@@ -317,7 +375,9 @@ export default function RiwayatTransaksiPage() {
       (item.namaCustomer && item.namaCustomer.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.nomorPI && item.nomorPI.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.nomorSeri && item.nomorSeri.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.driverUnit && item.driverUnit.toLowerCase().includes(searchTerm.toLowerCase()));
+      (item.driverUnit && item.driverUnit.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (item.nomorKontainer && item.nomorKontainer.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (item.nomorDO && item.nomorDO.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchJenis = filterJenis === "semua" ? true :
       filterJenis === "suratPengangkutan" ?
@@ -339,6 +399,7 @@ export default function RiwayatTransaksiPage() {
   const handleDetail = (item: UnifiedTransaksi) => {
     setSelectedItem(item);
     setIsDetailModalOpen(true);
+    setSelectedFotoIndex(null);
   };
 
   const handleEdit = (item: UnifiedTransaksi) => {
@@ -381,6 +442,8 @@ export default function RiwayatTransaksiPage() {
         nomorSuratPengangkutan: item.nomorSuratPengangkutan || "",
         fot: item.fot,
         sopirNopol: item.driverUnit || "",
+        nomorKontainer: item.nomorKontainer || "",
+        nomorDO: item.nomorDO || "",
       });
     }
     setIsEditModalOpen(true);
@@ -418,6 +481,10 @@ export default function RiwayatTransaksiPage() {
       fot: editForm.fot.trim().toUpperCase(),
       updatedAt: serverTimestamp(),
     };
+    if (selectedItem!.jenis === "barangMasuk") {
+      updateData.nomorKontainer = editForm.nomorKontainer.trim().toUpperCase();
+      updateData.nomorDO = editForm.nomorDO.trim().toUpperCase() || null;
+    }
     if (editForm.unit === "BOTOL") {
       updateData.botolPerDus = botolPerDus;
       updateData.bobotPerBotol = bobotPerBotol;
@@ -701,6 +768,8 @@ export default function RiwayatTransaksiPage() {
       "Jumlah": item.jumlahZAK || 0,
       "Total KG": item.totalPengambilanKG || (item.items ? item.items.reduce((sum, it) => sum + (it.totalKG || 0), 0) : 0),
       "FOT": item.fot || "-",
+      "Nomor Kontainer": item.nomorKontainer || "-",
+      "Nomor DO": item.nomorDO || "-",
       "Customer": item.namaCustomer || "-",
       "No PI": item.nomorPI || (item.nomorPIList ? item.nomorPIList.join("; ") : "-"),
       "No Invoice": item.nomorInvoice || "-",
@@ -708,6 +777,7 @@ export default function RiwayatTransaksiPage() {
       "No Polisi": item.nomorPolisi || "-",
       "No Surat Pengangkutan": item.nomorSuratPengangkutan || item.nomorSeri || "-",
       "Total Pengambilan KG": item.totalPengambilanKG || 0,
+      "Ada Barang Rusak": item.adaBarangRusak ? "Ya" : "Tidak",
       "Dibuat Oleh": item.createdBy,
       "Tanggal Dibuat": item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-",
     }));
@@ -717,7 +787,9 @@ export default function RiwayatTransaksiPage() {
   const handlePrintSuratPDF = (item: UnifiedTransaksi) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
-    const isGI = item.jenis === "suratPengangkutanGudangInduk" || item.fot?.toUpperCase() === "GUDANG INDUK";
+    const isGI = item.jenis === "suratPengangkutanGudangInduk";
+    const isMandiri = item.jenis === "suratPengangkutanDO" && item.subJenisDO === "mandiri";
+    const isDikuasakan = item.jenis === "suratPengangkutanDO" && item.subJenisDO === "dikuasakan";
     const piDisplay = item.nomorPIList && item.nomorPIList.length > 0
       ? item.nomorPIList.join(", ")
       : item.nomorPI || "";
@@ -727,8 +799,9 @@ export default function RiwayatTransaksiPage() {
         (it, idx) => `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
-          ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI ? (piDisplay || "-") : (it.nomorPO || "-")}</td>
+          ${isMandiri ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
+          ${isGI || isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPI || piDisplay || "-"}</td>` : ""}
+          ${isMandiri || isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPO || "-"}</td>` : ""}
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
@@ -738,128 +811,194 @@ export default function RiwayatTransaksiPage() {
       )
       .join("");
 
+    let recipientBox = "";
+    if (isGI) {
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">Bapak Kepala Gudang Induk</p><p class="recipient-name">PT Bukit Agrochemical Baru</p><p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p></div>`;
+    } else if (isDikuasakan) {
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">${item.namaCustomer || ""}</p><p class="recipient-name">${item.namaCustomer || ""}</p></div>`;
+    } else {
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">${item.kepadaNama || item.namaCustomer || ""}</p><p class="recipient-name">${item.kepadaPerusahaan || item.namaCustomer || ""}</p><p class="recipient-address">${(item.kepadaAlamat || "").replace(/\n/g, "<br>")}</p></div>`;
+    }
+
     const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Surat Pengangkutan ${item.nomorSeri || ""}</title>
-        <style>
-          @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
-          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
-          .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .info-section { margin-bottom: 12px; }
-          .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
-          .info-label { font-weight: 600; }
-          .recipient-box { border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px; }
-          .recipient-title { font-size: 9px; color: #333; margin-bottom: 2px; }
-          .recipient-name { font-size: 11px; font-weight: 700; }
-          .recipient-address { font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px; }
-          .salutation { font-size: 10px; margin-bottom: 8px; }
-          .salutation p { margin-bottom: 2px; }
-          .table-section { margin-bottom: 10px; }
-          .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table { width: 100%; border-collapse: collapse; }
-          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
-          .notes-section { margin-top: 10px; font-size: 9px; }
-          .notes-section p { margin-bottom: 2px; }
-          .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; align-items: flex-end; }
-          .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-          .signature-title { font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4; }
-          .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
-          .signature-name { font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
-          .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
-          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="print-bar no-print">
-          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-        </div>
+      <!DOCTYPE html><html><head><title>Surat Pengangkutan ${item.nomorSeri || ""}</title>
+      <style>
+        @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
+        .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
+        .header-img { width: 100%; display: block; margin-bottom: 0; }
+        .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .info-section { margin-bottom: 12px; }
+        .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
+        .info-label { font-weight: 600; }
+        .recipient-box { border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px; }
+        .recipient-title { font-size: 9px; color: #333; margin-bottom: 2px; }
+        .recipient-name { font-size: 11px; font-weight: 700; }
+        .recipient-address { font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px; }
+        .salutation { font-size: 10px; margin-bottom: 8px; }
+        .salutation p { margin-bottom: 2px; }
+        .table-section { margin-bottom: 10px; }
+        .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
+        .notes-section { margin-top: 10px; font-size: 9px; }
+        .notes-section p { margin-bottom: 2px; }
+        .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; align-items: flex-end; }
+        .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .signature-title { font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4; }
+        .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
+        .signature-name { font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
+        .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
+        .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+        .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+        @media print { .print-bar { display: none !important; } }
+      </style></head><body>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
         <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
           <div class="title-bar">SURAT PENGANGKUTAN</div>
           <div class="info-section">
-            <div class="info-row">
-              <span>Lamandau, ${new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Nomor Seri : ${item.nomorSeri || "-"}</span>
-            </div>
+            <div class="info-row"><span>Lamandau, ${new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
+            <div class="info-row"><span class="info-label">Nomor Seri : ${item.nomorSeri || "-"}</span></div>
+            ${!isGI ? `<div class="info-row"><span class="info-label">Nomor PI : ${piDisplay}</span></div>` : ""}
+          </div>${recipientBox}
+          <div class="salutation"><p>Dengan Hormat,</p><p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p></div>
+          <div class="table-section"><div class="table-title">DASAR PENGANGKUTAN</div>
+            <table class="data-table"><thead><tr><th style="width: 30px;">NO</th>${isMandiri ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}${isGI || isDikuasakan ? `<th style="width: 100px;">NOMOR PI</th>` : ""}${isMandiri || isDikuasakan ? `<th style="width: 100px;">NOMOR PO</th>` : ""}<th>JENIS PUPUK</th><th style="width: 60px;">PARTY</th><th style="width: 100px;">PENGAMBILAN<br>ZAK</th><th style="width: 60px;">SISA</th></tr></thead><tbody>${itemsHtml}</tbody></table></div>
+          <div class="table-section"><div class="table-title">DATA UNIT ANGKUTAN</div>
+            <table class="data-table"><tbody><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorPolisi || "-"}</td></tr><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.driverUnit || "-"}</td></tr><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorSIM || "-"}</td></tr></tbody></table></div>
+          <div class="notes-section"><p style="font-weight: 700;">Notes :</p><p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p><p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p><p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p></div>
+          <div class="signature-row"><div class="signature-box"><p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p><div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;"><img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" /></div><p class="signature-name">HENDRA PRAMASYANTO</p></div><div class="signature-box"><p class="signature-title">Diangkut oleh,<br>Driver</p><div style="min-height: 60px; margin-bottom: 4px;"></div><p class="signature-name">${item.driverUnit || ""}</p></div></div>
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+        </div></body></html>`;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
+  const handlePrintBeritaAcara = (item: UnifiedTransaksi) => {
+    if (!item.barangRusak || item.barangRusak.length === 0) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const ttd = ttdList.length > 0 ? ttdList[0] : null;
+
+    const rusakRows = item.barangRusak.map((r, idx) => `
+      <tr>
+        <td style="text-align: center; padding: 8px; border: 1px solid #000; font-size: 11px;">${idx + 1}</td>
+        <td style="text-align: center; padding: 8px; border: 1px solid #000; font-size: 11px; font-weight: 600;">${r.unit}</td>
+        <td style="text-align: center; padding: 8px; border: 1px solid #000; font-size: 11px;">${r.jumlah.toLocaleString("id-ID")}</td>
+        <td style="padding: 8px; border: 1px solid #000; font-size: 11px;">${r.keterangan}</td>
+      </tr>
+    `).join("");
+
+    const fotoHtml = item.fotoUrls && item.fotoUrls.length > 0
+      ? `<div style="margin-top: 16px;">
+          <p style="font-size: 11px; font-weight: 700; margin-bottom: 8px;">DOKUMENTASI FOTO:</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+            ${item.fotoUrls.map((f, i) => `<img src="${f}" alt="Foto ${i + 1}" style="width: 140px; height: 140px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px;" />`).join("")}
           </div>
-          <div class="recipient-box">
-            <p class="recipient-title">Kepada Yth :</p>
-            <p class="recipient-name">Bapak Kepala Gudang Induk</p>
-            <p class="recipient-name">PT Bukit Agrochemical Baru</p>
-            <p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p>
+        </div>`
+      : "";
+
+    const sopirInfo = item.sopirNopolList && item.sopirNopolList.length > 0
+      ? item.sopirNopolList.filter(s => s.namaSopir || s.nopol).map((s, i) =>
+          `<p style="font-size: 10px; margin-bottom: 2px;">${i + 1}. ${s.namaSopir || "-"} | ${s.nopol || "-"} | SIM: ${s.nomorSIM || "-"}</p>`
+        ).join("")
+      : "-";
+
+    const html = `
+      <!DOCTYPE html><html><head><title>Berita Acara Barang Rusak</title>
+      <style>
+        @page { size: A4; margin: 12mm; }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #000; }
+        .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
+        .header-img { width: 100%; display: block; margin-bottom: 0; }
+        .title-bar { text-align: center; background: #b91c1c; color: white; padding: 8px 0; margin: 8px 0 14px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; font-size: 10px; }
+        .info-item { display: flex; gap: 4px; }
+        .info-label { font-weight: 600; white-space: nowrap; }
+        .info-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; }
+        .info-box-title { font-size: 10px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 4px; }
+        .table-title { text-align: center; background: #fee2e2; border: 1px solid #000; border-bottom: none; padding: 5px 0; font-size: 11px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+        .data-table th { background: #fef2f2; font-size: 10px; padding: 6px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .data-table td { border: 1px solid #000; padding: 6px; vertical-align: top; }
+        .notes-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; font-size: 10px; }
+        .notes-box p { margin-bottom: 4px; }
+        .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 24px; align-items: flex-end; }
+        .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .signature-title { font-size: 10px; margin-bottom: 4px; min-height: 32px; line-height: 1.4; }
+        .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
+        .signature-name { font-size: 11px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
+        .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
+        .print-btn { background: #b91c1c; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+        .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+        @media print { .print-bar { display: none !important; } }
+      </style></head><body>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
+        <div class="page">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <div class="title-bar">BERITA ACARA BARANG RUSAK</div>
+
+          <div class="info-grid">
+            <div class="info-item"><span class="info-label">Tanggal:</span> <span>${new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
+            <div class="info-item"><span class="info-label">FOT:</span> <span>${item.fot || "-"}</span></div>
+            <div class="info-item"><span class="info-label">Kode Barang:</span> <span>${item.kodeBarang || "-"}</span></div>
+            <div class="info-item"><span class="info-label">Nomor Kontainer:</span> <span>${item.nomorKontainer || "-"}</span></div>
+            <div class="info-item"><span class="info-label">Nama Barang:</span> <span>${item.namaBarang || "-"}</span></div>
+            <div class="info-item"><span class="info-label">Nomor DO:</span> <span>${item.nomorDO || "-"}</span></div>
           </div>
-          <div class="salutation">
-            <p>Dengan Hormat,</p>
-            <p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p>
+
+          <div class="info-box">
+            <div class="info-box-title">Informasi Sopir & Kendaraan</div>
+            ${sopirInfo}
           </div>
-          <div class="table-section">
-            <div class="table-title">DASAR PENGANGKUTAN</div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width: 30px;">NO</th>
-                  ${!isGI ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
-                  <th style="width: 100px;">NOMOR PI</th>
-                  <th>JENIS PUPUK</th>
-                  <th style="width: 60px;">PARTY</th>
-                  <th style="width: 100px;">PENGAMBILAN<br>ZAK</th>
-                  <th style="width: 60px;">SISA</th>
-                </tr>
-              </thead>
-              <tbody>${itemsHtml}</tbody>
-            </table>
+
+          <div class="table-title">RINCIAN BARANG RUSAK / CACAT</div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 40px;">NO</th>
+                <th style="width: 100px;">SATUAN</th>
+                <th style="width: 100px;">JUMLAH</th>
+                <th>KETERANGAN</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rusakRows}
+            </tbody>
+          </table>
+
+          ${fotoHtml}
+
+          <div class="notes-box">
+            <p style="font-weight: 700; margin-bottom: 6px;">Keterangan:</p>
+            <p>Barang rusak tersebut ditemukan pada saat proses penerimaan barang masuk ke gudang. Barang yang rusak telah dicatat dan akan diproses sesuai prosedur perusahaan.</p>
+            <p style="margin-top: 8px; font-weight: 700;">Dibuat oleh: ${item.createdBy || "-"}</p>
           </div>
-          <div class="table-section">
-            <div class="table-title">DATA UNIT ANGKUTAN</div>
-            <table class="data-table">
-              <tbody>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorPolisi || "-"}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.driverUnit || "-"}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorSIM || "-"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <div class="notes-section">
-            <p style="font-weight: 700;">Notes :</p>
-            <p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
-            <p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
-            <p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
-          </div>
+
           <div class="signature-row">
             <div class="signature-box">
-              <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+              <p class="signature-title">Diverifikasi oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
               <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
-                <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display=\'none\'" />
+                ${ttd ? `<img src="${ttd.ttdImage}" alt="TTD" class="signature-img" onerror="this.style.display='none'" />` : `<div style="min-height: 60px;"></div>`}
               </div>
-              <p class="signature-name">HENDRA PRAMASYANTO</p>
+              <p class="signature-name">${ttd ? ttd.nama : "_________________"}</p>
+              ${ttd ? `<p style="font-size: 9px; color: #333; margin-top: 3px;">${ttd.jabatan}</p>` : ""}
             </div>
             <div class="signature-box">
-              <p class="signature-title">Diangkut oleh,<br>Driver</p>
+              <p class="signature-title">Diserahkan oleh,<br>Sopir / Driver</p>
               <div style="min-height: 60px; margin-bottom: 4px;"></div>
-              <p class="signature-name">${item.driverUnit || ""}</p>
+              <p class="signature-name">${item.sopirNopolList && item.sopirNopolList[0]?.namaSopir ? item.sopirNopolList[0].namaSopir : ""}</p>
             </div>
           </div>
-          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
+
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
         </div>
       </body>
       </html>
@@ -950,14 +1089,19 @@ export default function RiwayatTransaksiPage() {
     },
     {
       key: "nomorSeri",
-      header: "Nomor Seri",
-      width: "180px",
+      header: "Nomor Seri / Kontainer",
+      width: "200px",
       render: (row: UnifiedTransaksi) => (
-        row.nomorSeri ? (
-          <span className="font-mono font-bold text-green-700 bg-green-50 px-2 py-1 rounded text-xs">{row.nomorSeri}</span>
-        ) : (
-          <span className="font-mono font-bold text-green-700 bg-green-50 px-2 py-1 rounded text-xs">{row.kodeBarang || "-"}</span>
-        )
+        <div className="space-y-1">
+          {row.nomorSeri ? (
+            <span className="font-mono font-bold text-green-700 bg-green-50 px-2 py-1 rounded text-xs block">{row.nomorSeri}</span>
+          ) : (
+            <span className="font-mono font-bold text-green-700 bg-green-50 px-2 py-1 rounded text-xs block">{row.kodeBarang || "-"}</span>
+          )}
+          {row.jenis === "barangMasuk" && row.nomorKontainer && (
+            <span className="font-mono text-xs text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded block">{row.nomorKontainer}</span>
+          )}
+        </div>
       ),
     },
     {
@@ -1031,9 +1175,27 @@ export default function RiwayatTransaksiPage() {
       ),
     },
     {
+      key: "status",
+      header: "Status",
+      width: "100px",
+      render: (row: UnifiedTransaksi) => (
+        <div className="flex flex-col gap-1">
+          {row.adaBarangRusak && (
+            <span className="px-2 py-0.5 rounded text-xs font-bold bg-red-100 text-red-700">RUSAK</span>
+          )}
+          {row.fotoUrls && row.fotoUrls.length > 0 && (
+            <span className="px-2 py-0.5 rounded text-xs font-bold bg-amber-100 text-amber-700">{row.fotoUrls.length} FOTO</span>
+          )}
+          {row.nomorDO && (
+            <span className="px-2 py-0.5 rounded text-xs font-bold bg-gray-100 text-gray-600">DO</span>
+          )}
+        </div>
+      ),
+    },
+    {
       key: "aksi",
       header: "Aksi",
-      width: "150px",
+      width: "180px",
       render: (row: UnifiedTransaksi) => (
         <div className="flex items-center gap-2">
           <button onClick={(e) => { e.stopPropagation(); handleDetail(row); }} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Detail">
@@ -1046,6 +1208,13 @@ export default function RiwayatTransaksiPage() {
             <button onClick={(e) => { e.stopPropagation(); handlePrintSuratPDF(row); }} className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print PDF">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+              </svg>
+            </button>
+          )}
+          {row.jenis === "barangMasuk" && row.adaBarangRusak && (
+            <button onClick={(e) => { e.stopPropagation(); handlePrintBeritaAcara(row); }} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Print Berita Acara Rusak">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </button>
           )}
@@ -1114,7 +1283,7 @@ export default function RiwayatTransaksiPage() {
             <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
             </svg>
-            <input type="text" placeholder="Cari kode, nama barang, FOT, customer, nomor seri..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
+            <input type="text" placeholder="Cari kode, nama barang, FOT, customer, nomor seri, kontainer..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all" />
           </div>
           <div className="flex gap-3">
             <Button variant="secondary" onClick={handleExportExcel}>
@@ -1174,6 +1343,14 @@ export default function RiwayatTransaksiPage() {
               Print PDF
             </Button>
           )}
+          {selectedItem?.jenis === "barangMasuk" && selectedItem?.adaBarangRusak && (
+            <Button variant="danger" onClick={() => selectedItem && handlePrintBeritaAcara(selectedItem)}>
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Print Berita Acara
+            </Button>
+          )}
         </div>
       }>
         {selectedItem && (
@@ -1193,6 +1370,80 @@ export default function RiwayatTransaksiPage() {
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Nomor Seri</p>
                 <p className="text-lg font-bold text-green-700 font-mono">{selectedItem.nomorSeri}</p>
               </div>
+            )}
+
+            {selectedItem.jenis === "barangMasuk" && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-200">
+                    <p className="text-xs text-indigo-600 uppercase tracking-wide font-semibold">Nomor Kontainer</p>
+                    <p className="text-lg font-bold text-indigo-700 font-mono">{selectedItem.nomorKontainer || "-"}</p>
+                  </div>
+                  <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Nomor DO</p>
+                    <p className="text-lg font-bold text-gray-700 font-mono">{selectedItem.nomorDO || "-"}</p>
+                  </div>
+                </div>
+
+                {selectedItem.fotoUrls && selectedItem.fotoUrls.length > 0 && (
+                  <div className="p-4 bg-gray-50 rounded-xl">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-3">Dokumentasi Foto ({selectedItem.fotoUrls.length})</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                      {selectedItem.fotoUrls.map((foto, idx) => (
+                        <div key={idx} className="relative cursor-pointer group" onClick={() => setSelectedFotoIndex(idx)}>
+                          <img
+                            src={foto}
+                            alt={`Foto ${idx + 1}`}
+                            className="w-full h-24 object-cover rounded-lg border border-gray-200 group-hover:border-indigo-400 transition-colors"
+                          />
+                          <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">{idx + 1}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {selectedItem.adaBarangRusak && selectedItem.barangRusak && selectedItem.barangRusak.length > 0 && (
+                  <div className="p-4 bg-red-50 rounded-xl border border-red-200">
+                    <p className="text-xs text-red-600 uppercase tracking-wide font-semibold mb-3">Barang Rusak / Cacat</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="bg-red-100">
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">No</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Satuan</th>
+                            <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Jumlah</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Keterangan</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedItem.barangRusak.map((r, idx) => (
+                            <tr key={idx} className="border-b">
+                              <td className="px-3 py-2 text-sm text-gray-900 border">{idx + 1}</td>
+                              <td className="px-3 py-2 text-sm font-semibold text-gray-900 border">{r.unit}</td>
+                              <td className="px-3 py-2 text-sm text-gray-900 text-right font-mono border">{r.jumlah.toLocaleString("id-ID")}</td>
+                              <td className="px-3 py-2 text-sm text-gray-700 border">{r.keterangan}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {selectedItem.sopirNopolList && selectedItem.sopirNopolList.length > 0 && (
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold mb-2">Sopir & Kendaraan</p>
+                    <div className="space-y-2">
+                      {selectedItem.sopirNopolList.filter(s => s.namaSopir || s.nopol).map((s, idx) => (
+                        <div key={idx} className="text-sm text-blue-800">
+                          <span className="font-semibold">{idx + 1}.</span> {s.namaSopir || "-"} | {s.nopol || "-"} | SIM: {s.nomorSIM || "-"}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             {selectedItem.jenis === "suratPengangkutanGudangInduk" || selectedItem.jenis === "suratPengangkutanDO" ? (
@@ -1266,7 +1517,7 @@ export default function RiwayatTransaksiPage() {
                   </div>
                 </div>
               </>
-            ) : (
+            ) : selectedItem.jenis !== "barangMasuk" ? (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="p-4 bg-gray-50 rounded-xl">
@@ -1309,7 +1560,7 @@ export default function RiwayatTransaksiPage() {
                   </>
                 )}
               </>
-            )}
+            ) : null}
             <div className="p-4 bg-gray-50 rounded-xl">
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Informasi Tambahan</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
@@ -1320,6 +1571,39 @@ export default function RiwayatTransaksiPage() {
           </div>
         )}
       </Modal>
+
+      {selectedFotoIndex !== null && selectedItem?.fotoUrls && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4" onClick={() => setSelectedFotoIndex(null)}>
+          <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
+            <button
+              onClick={() => setSelectedFotoIndex(null)}
+              className="absolute -top-12 right-0 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={selectedItem.fotoUrls[selectedFotoIndex]}
+              alt={`Foto ${selectedFotoIndex + 1}`}
+              className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <p className="text-white text-sm mt-4 font-medium">
+              Foto {selectedFotoIndex + 1} dari {selectedItem.fotoUrls.length}
+            </p>
+            <div className="flex gap-2 mt-3">
+              {selectedItem.fotoUrls.map((_, idx) => (
+                <button
+                  key={idx}
+                  onClick={(e) => { e.stopPropagation(); setSelectedFotoIndex(idx); }}
+                  className={`w-2.5 h-2.5 rounded-full transition-colors ${idx === selectedFotoIndex ? "bg-white" : "bg-white/40 hover:bg-white/60"}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={isSuratEdit ? "Edit Surat Pengangkutan" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : "Transaksi Barang Keluar"}`} size="lg" footer={
         <div className="flex justify-end gap-3">
@@ -1383,6 +1667,12 @@ export default function RiwayatTransaksiPage() {
               <Input label={`Jumlah (${editForm.unit === "KG" ? "KG" : "ZAK"})`} type="number" value={editForm.jumlahZAK} onChange={(e) => setEditForm((prev) => ({ ...prev, jumlahZAK: e.target.value }))} required />
               <Input label="FOT" type="text" value={editForm.fot} onChange={(e) => setEditForm((prev) => ({ ...prev, fot: e.target.value }))} required />
             </div>
+            {selectedItem?.jenis === "barangMasuk" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Input label="Nomor Kontainer" type="text" value={editForm.nomorKontainer} onChange={(e) => setEditForm((prev) => ({ ...prev, nomorKontainer: e.target.value }))} required />
+                <Input label="Nomor DO" type="text" value={editForm.nomorDO} onChange={(e) => setEditForm((prev) => ({ ...prev, nomorDO: e.target.value }))} />
+              </div>
+            )}
             {isBotol && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Input label="Botol per DUS" type="number" value={editForm.botolPerDus} onChange={(e) => setEditForm((prev) => ({ ...prev, botolPerDus: e.target.value }))} />
