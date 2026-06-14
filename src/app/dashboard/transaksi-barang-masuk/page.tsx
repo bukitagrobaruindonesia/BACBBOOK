@@ -103,6 +103,7 @@ export default function TransaksiBarangMasukPage() {
     tanggal: new Date().toISOString().split("T")[0],
     jumlahZAK: "",
     fotoUrls: [] as string[],
+    maxJumlah: 0,
   });
   const [penggantianLoading, setPenggantianLoading] = useState(false);
   const [penggantianSuccess, setPenggantianSuccess] = useState("");
@@ -726,6 +727,11 @@ export default function TransaksiBarangMasukPage() {
       setErrors((prev) => ({ ...prev, penggantianJumlah: "Jumlah penggantian tidak valid" }));
       return;
     }
+    const jumlahInput = parseFloat(penggantianForm.jumlahZAK) || 0;
+    if (penggantianForm.maxJumlah > 0 && jumlahInput > penggantianForm.maxJumlah) {
+      setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi ${penggantianForm.maxJumlah}` }));
+      return;
+    }
 
     setPenggantianLoading(true);
     setPenggantianSuccess("");
@@ -819,6 +825,7 @@ export default function TransaksiBarangMasukPage() {
         tanggal: new Date().toISOString().split("T")[0],
         jumlahZAK: "",
         fotoUrls: [],
+        maxJumlah: 0,
       });
       setShowPenggantianForm(false);
       fetchStockGudang();
@@ -1325,14 +1332,21 @@ export default function TransaksiBarangMasukPage() {
                     const val = e.target.value;
                     if (val) {
                       const [tid, ridx] = val.split("_");
-                      setPenggantianForm((prev) => ({ ...prev, transaksiId: tid, rusakIndex: parseInt(ridx) || 0 }));
+                      const selected = unreplacedRusakList.find((r) => r.transaksiId === tid && r.rusakIndex === parseInt(ridx));
+                      setPenggantianForm((prev) => ({ ...prev, transaksiId: tid, rusakIndex: parseInt(ridx) || 0, jumlahZAK: "", maxJumlah: selected ? selected.rusakJumlah : 0 }));
+                      setErrors((prev) => { const n = { ...prev }; delete n.penggantianJumlah; delete n.penggantian; return n; });
                     } else {
-                      setPenggantianForm((prev) => ({ ...prev, transaksiId: "", rusakIndex: 0 }));
+                      setPenggantianForm((prev) => ({ ...prev, transaksiId: "", rusakIndex: 0, jumlahZAK: "", maxJumlah: 0 }));
                     }
                   }}
                   options={unreplacedOptions}
                   required
                 />
+                {penggantianForm.maxJumlah > 0 && (
+                  <p className="text-xs text-amber-700 font-semibold">
+                    Maksimal penggantian: {penggantianForm.maxJumlah} {(() => { const sel = unreplacedRusakList.find((r) => r.transaksiId === penggantianForm.transaksiId && r.rusakIndex === penggantianForm.rusakIndex); return sel ? sel.rusakUnit : ""; })()}
+                  </p>
+                )}
                 <Input
                   label="Tanggal Penggantian"
                   type="date"
@@ -1341,11 +1355,20 @@ export default function TransaksiBarangMasukPage() {
                   required
                 />
                 <Input
-                  label="Jumlah Penggantian (ZAK/KG sesuai unit asli)"
+                  label={`Jumlah Penggantian (max: ${penggantianForm.maxJumlah} ${(() => { const sel = unreplacedRusakList.find((r) => r.transaksiId === penggantianForm.transaksiId && r.rusakIndex === penggantianForm.rusakIndex); return sel ? sel.rusakUnit : "ZAK"; })()})`}
                   type="number"
                   value={penggantianForm.jumlahZAK}
-                  onChange={(e) => setPenggantianForm((prev) => ({ ...prev, jumlahZAK: e.target.value }))}
-                  placeholder="Masukkan jumlah penggantian"
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const num = parseFloat(val) || 0;
+                    if (penggantianForm.maxJumlah > 0 && num > penggantianForm.maxJumlah) {
+                      setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi ${penggantianForm.maxJumlah}` }));
+                    } else {
+                      setErrors((prev) => { const n = { ...prev }; delete n.penggantianJumlah; return n; });
+                    }
+                    setPenggantianForm((prev) => ({ ...prev, jumlahZAK: val }));
+                  }}
+                  placeholder={`Maksimal ${penggantianForm.maxJumlah}`}
                   error={errors.penggantianJumlah}
                   required
                 />
