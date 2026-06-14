@@ -242,7 +242,7 @@ export default function Sidebar() {
       `}
       >
         <div className="p-6 border-b border-green-700/50">
-          <h1 className="text-xl font-bold tracking-tight">REKAP PI</h1>
+          <h1 className="text-xl font-bold tracking-tight">REKAP BOOK</h1>
           <p className="text-xs text-green-200 mt-1">Sistem Admin Distributor</p>
         </div>
 
