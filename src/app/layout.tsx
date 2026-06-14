@@ -6,15 +6,22 @@ import { AuthProvider } from "./context/AuthContext";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "REKAP DATA - PT Bukit Agrochemical Baru",
-  description: "Sistem Administrasi Distributor Pupuk - PT Bukit Agrochemical BARU",
+  title: "REKAP PI - PT Bukit Agrochemical",
+  description: "Sistem Administrasi Distributor Pupuk - PT Bukit Agrochemical",
   keywords: ["pupuk", "agrochemical", "administrasi", "stock gudang", "proforma invoice"],
-  authors: [{ name: "PT Bukit Agrochemical Baru" }],
+  authors: [{ name: "PT Bukit Agrochemical" }],
   manifest: "/manifest.json",
   icons: {
-    icon: "/LogoAGRO.png",
+    icon: [
+      { url: "/LogoAGRO.png", sizes: "512x512", type: "image/png" },
+      { url: "/LogoAGRO.png", sizes: "192x192", type: "image/png" },
+      { url: "/LogoAGRO.png", sizes: "32x32", type: "image/png" },
+      { url: "/LogoAGRO.png", sizes: "16x16", type: "image/png" },
+    ],
     shortcut: "/LogoAGRO.png",
-    apple: "/LogoAGRO.png",
+    apple: [
+      { url: "/LogoAGRO.png", sizes: "180x180", type: "image/png" },
+    ],
   },
 };
 
