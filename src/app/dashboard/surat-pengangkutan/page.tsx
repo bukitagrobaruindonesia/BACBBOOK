@@ -114,6 +114,29 @@ interface SuratDODoc {
   items: SuratDOItem[];
 }
 
+interface CounterDoc {
+  count?: number;
+  updatedAt?: Timestamp;
+}
+
+interface DODoc {
+  loadedKG?: number;
+  partyKG?: number;
+}
+
+interface PIDoc {
+  produkItems?: Array<{ kuantitas?: number }>;
+  sisaPengambilanKG?: number;
+  statusPengangkutan?: string;
+}
+
+interface StockDoc {
+  stokAkhirUnit?: number;
+  stokAkhirKG?: number;
+  barangKeluarUnit?: number;
+  barangKeluarKG?: number;
+}
+
 const getRomanMonth = (month: number) => {
   const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
   return romans[month - 1] || "I";
@@ -334,6 +357,9 @@ export default function SuratPengangkutanPage() {
       if (currentItem && currentItem.jenisPupuk.trim()) {
         if (doItem.namaProduk !== currentItem.jenisPupuk) return false;
       }
+      if (currentItem && currentItem.fot.trim()) {
+        if (doItem.fot.trim().toUpperCase() !== currentItem.fot.trim().toUpperCase()) return false;
+      }
       return true;
     });
   };
@@ -348,6 +374,12 @@ export default function SuratPengangkutanPage() {
 
     const doItem = doList.find((d) => d.nomorSubDO === nomorSubDO);
     if (!doItem) return;
+
+    const currentItem = items.find((it) => it.id === itemId);
+    if (currentItem && currentItem.fot.trim() && doItem.fot.trim().toUpperCase() !== currentItem.fot.trim().toUpperCase()) {
+      setFieldError(`nomorSubDO_${itemId}`, `FOT DO (${doItem.fot}) tidak sesuai dengan FOT produk PI (${currentItem.fot})`);
+      return;
+    }
 
     if (isDOExpired(doItem.tanggalKadaluarsa)) {
       setFieldError(`nomorSubDO_${itemId}`, `DO ${doItem.nomorSubDO} sudah kadaluarsa (${doItem.tanggalKadaluarsa}). Silakan perpanjang masa kadaluarsa di Input DO.`);
@@ -392,29 +424,6 @@ export default function SuratPengangkutanPage() {
         kepadaAlamat: matchedFOT ? matchedFOT.alamatFOT : "",
       }));
     }
-  };
-
-  const generateNomorSeriGI = (transaction: any, now: Date) => {
-    const year = now.getFullYear();
-    const roman = getRomanMonth(now.getMonth() + 1);
-    const prefix = `BAGB-SP/${year}/${roman}`;
-    const counterRef = doc(db, "counters", `suratPengangkutanGI_${year}_${roman}`);
-    return { counterRef, prefix };
-  };
-
-  const generateNomorSeriDO = (transaction: any, now: Date) => {
-    if (subJenisDO === "dikuasakan") {
-      const year = now.getFullYear();
-      const roman = getRomanMonth(now.getMonth() + 1);
-      const prefix = `BAGB-SP-DO/${year}/${roman}`;
-      const counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
-      return { counterRef, prefix, isMandiri: false };
-    }
-    const perusahaan = formData.kepadaPerusahaan.trim();
-    const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
-    const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
-    const counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
-    return { counterRef, prefix: "", isMandiri: true, nomorSubDO, perusahaan };
   };
 
   const fetchProformaInvoice = async () => {
@@ -918,6 +927,9 @@ export default function SuratPengangkutanPage() {
             if (isDOExpired(doItem.tanggalKadaluarsa)) {
               newErrors[`nomorSubDO_${idx}`] = `DO ${doItem.nomorSubDO} sudah kadaluarsa (${doItem.tanggalKadaluarsa}). Silakan perpanjang masa kadaluarsa di Input DO.`;
             }
+            if (item.fot.trim() && doItem.fot.trim().toUpperCase() !== item.fot.trim().toUpperCase()) {
+              newErrors[`nomorSubDO_${idx}`] = `FOT DO (${doItem.fot}) tidak sesuai dengan FOT produk PI (${item.fot})`;
+            }
           }
         }
         if (!item.nomorPO.trim()) newErrors[`nomorPO_${idx}`] = "Nomor PO wajib diisi";
@@ -985,129 +997,150 @@ export default function SuratPengangkutanPage() {
       const isMandiri = subJenisDO === "mandiri";
       const isDikuasakan = subJenisDO === "dikuasakan";
       const now = new Date();
-      let nomorSeri = "";
 
-      await runTransaction(db, async (transaction) => {
-        if (jenisSurat === "gudangInduk") {
+      const doItemsWithId = items.filter((it) => it.doId);
+      const piItemsWithId = items.filter((it) => it.piId);
+      const stockItemsForGI = isGI
+        ? items.map((it) => getStockForProduct(it.jenisPupuk)).filter((s): s is StockItem => !!s)
+        : [];
+
+      const doRefs = doItemsWithId.map((it) => doc(db, "do", it.doId!));
+      const piRefs = piItemsWithId.map((it) => doc(db, "proformaInvoice", it.piId!));
+      const stockRefs = stockItemsForGI.map((s) => doc(db, "stockGudang", s.id));
+
+      let counterRef: any;
+      let counterPrefix = "";
+      let isMandiriCounter = false;
+      let mandiriNomorSubDO = "";
+      let mandiriPerusahaan = "";
+
+      if (jenisSurat === "gudangInduk") {
+        const year = now.getFullYear();
+        const roman = getRomanMonth(now.getMonth() + 1);
+        counterPrefix = `BAGB-SP/${year}/${roman}`;
+        counterRef = doc(db, "counters", `suratPengangkutanGI_${year}_${roman}`);
+      } else if (jenisSurat === "do") {
+        if (subJenisDO === "dikuasakan") {
           const year = now.getFullYear();
           const roman = getRomanMonth(now.getMonth() + 1);
-          const prefix = `BAGB-SP/${year}/${roman}`;
-          const counterRef = doc(db, "counters", `suratPengangkutanGI_${year}_${roman}`);
-          const counterSnap = await transaction.get(counterRef);
-          let currentCount = 0;
-          if (counterSnap.exists()) {
-            currentCount = counterSnap.data().count || 0;
-          } else {
-            transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
-          }
-          const nextCount = currentCount + 1;
-          transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
-          nomorSeri = `${prefix}/${String(nextCount).padStart(4, "0")}`;
+          counterPrefix = `BAGB-SP-DO/${year}/${roman}`;
+          counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+        } else {
+          const perusahaan = formData.kepadaPerusahaan.trim();
+          const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
+          const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
+          if (!perusahaan || !nomorSubDO) throw new Error("Data tidak lengkap untuk generate nomor seri");
+          mandiriNomorSubDO = nomorSubDO;
+          mandiriPerusahaan = perusahaan;
+          isMandiriCounter = true;
+          counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
+        }
+      }
+
+      await runTransaction(db, async (transaction) => {
+        const allReads = [transaction.get(counterRef)];
+        doRefs.forEach((ref) => allReads.push(transaction.get(ref)));
+        piRefs.forEach((ref) => allReads.push(transaction.get(ref)));
+        stockRefs.forEach((ref) => allReads.push(transaction.get(ref)));
+
+        const allSnaps = await Promise.all(allReads);
+
+        const counterSnap = allSnaps[0];
+        const doSnaps = allSnaps.slice(1, 1 + doRefs.length);
+        const piSnaps = allSnaps.slice(1 + doRefs.length, 1 + doRefs.length + piRefs.length);
+        const stockSnaps = allSnaps.slice(1 + doRefs.length + piRefs.length);
+
+        const counterData = counterSnap.data() as CounterDoc | undefined;
+        let currentCount = 0;
+        if (counterData) {
+          currentCount = counterData.count || 0;
+        } else {
+          transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
+        }
+        const nextCount = currentCount + 1;
+        transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
+
+        let nomorSeri = "";
+        if (jenisSurat === "gudangInduk") {
+          nomorSeri = `${counterPrefix}/${String(nextCount).padStart(4, "0")}`;
         } else if (jenisSurat === "do") {
           if (subJenisDO === "dikuasakan") {
-            const year = now.getFullYear();
-            const roman = getRomanMonth(now.getMonth() + 1);
-            const prefix = `BAGB-SP-DO/${year}/${roman}`;
-            const counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
-            const counterSnap = await transaction.get(counterRef);
-            let currentCount = 0;
-            if (counterSnap.exists()) {
-              currentCount = counterSnap.data().count || 0;
-            } else {
-              transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
-            }
-            const nextCount = currentCount + 1;
-            transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
-            nomorSeri = `${prefix}/${String(nextCount).padStart(4, "0")}`;
+            nomorSeri = `${counterPrefix}/${String(nextCount).padStart(4, "0")}`;
           } else {
-            const perusahaan = formData.kepadaPerusahaan.trim();
-            const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
-            const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
-            if (!perusahaan || !nomorSubDO) throw new Error("Data tidak lengkap untuk generate nomor seri");
-            const counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
-            const counterSnap = await transaction.get(counterRef);
-            let currentCount = 0;
-            if (counterSnap.exists()) {
-              currentCount = counterSnap.data().count || 0;
-            } else {
-              transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
-            }
-            const nextCount = currentCount + 1;
-            transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
-            nomorSeri = `BAGB-DO-${nomorSubDO}-${perusahaan}-SP-${String(nextCount).padStart(4, "0")}`;
+            nomorSeri = `BAGB-DO-${mandiriNomorSubDO}-${mandiriPerusahaan}-SP-${String(nextCount).padStart(4, "0")}`;
           }
         }
 
         if (!nomorSeri) throw new Error("Gagal generate nomor seri");
 
         if (isMandiri) {
-          for (const item of items) {
-            if (item.doId) {
-              const doRef = doc(db, "do", item.doId);
-              const doSnap = await transaction.get(doRef);
-              if (!doSnap.exists()) throw new Error(`DO ${item.nomorSubDO} tidak ditemukan`);
-              const currentLoaded = doSnap.data().loadedKG || 0;
-              const addKG = (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
-              const party = doSnap.data().partyKG || 0;
-              if (currentLoaded + addKG > party) {
-                throw new Error(`Pengambilan melebihi party DO ${item.nomorSubDO}`);
-              }
-              transaction.update(doRef, { loadedKG: currentLoaded + addKG, updatedAt: serverTimestamp() });
+          doSnaps.forEach((snap, idx) => {
+            const item = doItemsWithId[idx];
+            if (!snap.exists()) throw new Error(`DO ${item.nomorSubDO} tidak ditemukan`);
+            const doData = snap.data() as DODoc;
+            const currentLoaded = doData.loadedKG || 0;
+            const addKG = (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
+            const party = doData.partyKG || 0;
+            if (currentLoaded + addKG > party) {
+              throw new Error(`Pengambilan melebihi party DO ${item.nomorSubDO}`);
             }
-          }
+            transaction.update(doRefs[idx], { loadedKG: currentLoaded + addKG, updatedAt: serverTimestamp() });
+          });
         }
 
-        const piDeductions: Record<string, { piId: string; kg: number }> = {};
-        for (const item of items) {
+        const piDeductions: Record<string, { ref: any; piId: string; kg: number }> = {};
+        piItemsWithId.forEach((item) => {
           if (item.piId && item.nomorPI) {
             if (!piDeductions[item.nomorPI]) {
-              piDeductions[item.nomorPI] = { piId: item.piId, kg: 0 };
+              const refIdx = piRefs.findIndex((r) => r.id === item.piId);
+              piDeductions[item.nomorPI] = { ref: piRefs[refIdx], piId: item.piId, kg: 0 };
             }
             piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
           }
-        }
-        for (const [nomorPI, { piId, kg }] of Object.entries(piDeductions)) {
-          const piRef = doc(db, "proformaInvoice", piId);
-          const piSnap = await transaction.get(piRef);
+        });
+        Object.entries(piDeductions).forEach(([nomorPI, { ref }]) => {
+          const snapIdx = piRefs.findIndex((r) => r.id === piDeductions[nomorPI].piId);
+          const piSnap = piSnaps[snapIdx];
           if (!piSnap.exists()) throw new Error(`PI ${nomorPI} tidak ditemukan`);
-          const totalOrdered = (piSnap.data().produkItems || []).reduce((sum: number, p: any) => sum + (p.kuantitas || 0), 0);
-          const currentSisa = piSnap.data().sisaPengambilanKG !== undefined ? piSnap.data().sisaPengambilanKG : totalOrdered;
+          const piData = piSnap.data() as PIDoc;
+          const totalOrdered = (piData.produkItems || []).reduce((sum: number, p: any) => sum + (p.kuantitas || 0), 0);
+          const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : totalOrdered;
+          const kg = piDeductions[nomorPI].kg;
           if (currentSisa - kg < 0) {
             throw new Error(`Pengambilan melebihi sisa PI ${nomorPI}`);
           }
           const newSisa = currentSisa - kg;
-          transaction.update(piRef, {
+          transaction.update(ref, {
             sisaPengambilanKG: newSisa,
             statusPengangkutan: newSisa <= 0 ? "complete" : "partial",
             updatedAt: serverTimestamp(),
           });
-        }
+        });
 
         if (isGI) {
-          for (const item of items) {
-            const stockMatch = getStockForProduct(item.jenisPupuk);
-            if (stockMatch) {
-              const stockRef = doc(db, "stockGudang", stockMatch.id);
-              const stockSnap = await transaction.get(stockRef);
-              if (stockSnap.exists()) {
-                const currentData = stockSnap.data();
-                const currentStokUnit = currentData.stokAkhirUnit || 0;
-                const currentStokKG = currentData.stokAkhirKG || 0;
-                const minusUnit = parseFloat(item.pengambilanZAK) || 0;
-                const minusKG = minusUnit * item.bobotPerUnit;
-                if (currentStokUnit - minusUnit < 0 || currentStokKG - minusKG < 0) {
-                  throw new Error(`Stok gudang untuk ${item.jenisPupuk} tidak mencukupi`);
-                }
-                transaction.update(stockRef, {
-                  barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
-                  barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
-                  stokAkhirUnit: currentStokUnit - minusUnit,
-                  stokAkhirKG: currentStokKG - minusKG,
-                  updatedAt: serverTimestamp(),
-                });
-              }
+          stockSnaps.forEach((snap, idx) => {
+            const item = items.find((it) => {
+              const stock = getStockForProduct(it.jenisPupuk);
+              return stock && stock.id === stockRefs[idx].id;
+            });
+            if (!item) return;
+            if (!snap.exists()) throw new Error(`Stok untuk ${item.jenisPupuk} tidak ditemukan`);
+            const currentData = snap.data() as StockDoc;
+            const currentStokUnit = currentData.stokAkhirUnit || 0;
+            const currentStokKG = currentData.stokAkhirKG || 0;
+            const minusUnit = parseFloat(item.pengambilanZAK) || 0;
+            const minusKG = minusUnit * item.bobotPerUnit;
+            if (currentStokUnit - minusUnit < 0 || currentStokKG - minusKG < 0) {
+              throw new Error(`Stok gudang untuk ${item.jenisPupuk} tidak mencukupi`);
             }
-          }
+            transaction.update(stockRefs[idx], {
+              barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
+              barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
+              stokAkhirUnit: currentStokUnit - minusUnit,
+              stokAkhirKG: currentStokKG - minusKG,
+              updatedAt: serverTimestamp(),
+            });
+          });
         }
 
         const totalPengambilanKG = items.reduce((sum, item) => {
@@ -1194,7 +1227,7 @@ export default function SuratPengangkutanPage() {
         transaction.set(transaksiRef, transaksiData);
       });
 
-      setSuccessMessage(`Surat pengangkutan berhasil dibuat! Nomor Seri: ${nomorSeri}`);
+      setSuccessMessage(`Surat pengangkutan berhasil dibuat!`);
       resetForm();
       fetchExistingSurat();
       fetchStockGudang();
@@ -1237,172 +1270,110 @@ export default function SuratPengangkutanPage() {
     const nomorSeri = "PREVIEW-" + Date.now();
     const isGI = jenisSurat === "gudangInduk";
     const isDikuasakan = subJenisDO === "dikuasakan";
+    const isMandiri = subJenisDO === "mandiri";
+
     const itemsHtml = items
       .map(
-        (item, idx) => `
-        <tr>
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
-          ${!isGI && !isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.nomorSubDO || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (item.nomorPI || "-") : (item.nomorPO || "-")}</td>
-          <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${item.jenisPupuk || ""}</td>
-          ${!isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.party || "-"}</td>` : ""}
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.pengambilanZAK || "-"} ZAK</td>
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${item.sisa || "-"}</td>
-        </tr>
-      `
+        (item, idx) =>
+          `<tr>` +
+          `<td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${idx + 1}</td>` +
+          (!isGI && !isDikuasakan ? `<td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${item.nomorSubDO || "-"}</td>` : "") +
+          `<td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${isGI || isDikuasakan ? (item.nomorPI || "-") : (item.nomorPO || "-")}</td>` +
+          `<td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;font-weight:600;">${item.jenisPupuk || ""}</td>` +
+          (!isDikuasakan ? `<td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${item.party || "-"}</td>` : "") +
+          `<td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${item.pengambilanZAK || "-"} ZAK</td>` +
+          `<td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${item.sisa || "-"}</td>` +
+          `</tr>`
       )
       .join("");
+
     const piNumbers = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i).join(", ");
 
     let recipientBox = "";
     if (jenisSurat === "gudangInduk") {
-      recipientBox = `<div class="recipient-box">
-        <p class="recipient-title">Kepada Yth :</p>
-        <p class="recipient-name">Bapak Kepala Gudang Induk</p>
-        <p class="recipient-name">PT Bukit Agrochemical Baru</p>
-        <p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p>
-      </div>`;
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">Bapak Kepala Gudang Induk</p><p class="recipient-name">PT Bukit Agrochemical Baru</p><p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p></div>`;
     } else if (isDikuasakan) {
       const firstItem = items.find((it) => it.nomorPI.trim() !== "");
       const customerName = firstItem?.namaCustomer || "";
-      recipientBox = `<div class="recipient-box">
-        <p class="recipient-title">Kepada Yth :</p>
-        <p class="recipient-name">${customerName}</p>
-        <p class="recipient-name">${customerName}</p>
-      </div>`;
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">${customerName}</p><p class="recipient-name">${customerName}</p></div>`;
     } else {
-      recipientBox = `<div class="recipient-box">
-        <p class="recipient-title">Kepada Yth :</p>
-        <p class="recipient-name">${formData.kepadaNama || ""}</p>
-        <p class="recipient-name">${formData.kepadaPerusahaan || ""}</p>
-        <p class="recipient-address">${(formData.kepadaAlamat || "").split("\n").join("<br>")}</p>
-      </div>`;
+      recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">${formData.kepadaNama || ""}</p><p class="recipient-name">${formData.kepadaPerusahaan || ""}</p><p class="recipient-address">${(formData.kepadaAlamat || "").split("\n").join("<br>")}</p></div>`;
     }
 
-    const html = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Surat Pengangkutan ${nomorSeri}</title>
-        <style>
-          @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-          * { box-sizing: border-box; margin: 0; padding: 0; }
-          body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
-          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; }
-          .header-img { width: 100%; display: block; margin-bottom: 0; }
-          .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; }
-          .info-section { margin-bottom: 12px; }
-          .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
-          .info-label { font-weight: 600; }
-          .recipient-box { border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px; }
-          .recipient-title { font-size: 9px; color: #333; margin-bottom: 2px; }
-          .recipient-name { font-size: 11px; font-weight: 700; }
-          .recipient-address { font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px; }
-          .salutation { font-size: 10px; margin-bottom: 8px; }
-          .salutation p { margin-bottom: 2px; }
-          .table-section { margin-bottom: 10px; }
-          .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; }
-          .data-table { width: 100%; border-collapse: collapse; }
-          .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; }
-          .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
-          .notes-section { margin-top: 10px; font-size: 9px; }
-          .notes-section p { margin-bottom: 2px; }
-          .signature-row { display: flex; justify-content: space-between; margin-top: 20px; }
-          .signature-box { width: 45%; text-align: center; }
-          .signature-title { font-size: 9px; margin-bottom: 30px; }
-          .signature-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
-          .signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
-          .footer-img { width: 100%; display: block; margin-top: 10px; }
-          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } }
-        </style>
-      </head>
-      <body>
-        <div class="print-bar no-print">
-          <button class="print-btn" onclick="window.print()">Print / Save as PDF</button>
-        </div>
-        <div class="page">
-          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
-          <div class="title-bar">SURAT PENGANGKUTAN</div>
-          <div class="info-section">
-            <div class="info-row">
-              <span>${formData.namaKabupaten}, ${new Date(formData.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
-            </div>
-            <div class="info-row">
-              <span class="info-label">Nomor Seri : ${nomorSeri}</span>
-            </div>
-            ${piNumbers ? `<div class="info-row"><span class="info-label">Nomor PI : ${piNumbers}</span></div>` : ""}
-          </div>
-          ${recipientBox}
-          <div class="salutation">
-            <p>Dengan Hormat,</p>
-            <p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p>
-          </div>
-          <div class="table-section">
-            <div class="table-title">DASAR PENGANGKUTAN</div>
-            <table class="data-table">
-              <thead>
-                <tr>
-                  <th style="width: 30px;">NO</th>
-                  ${!isGI && !isDikuasakan ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}
-                  <th style="width: 100px;">${isGI || isDikuasakan ? "NOMOR PI" : "NOMOR PO"}</th>
-                  <th>JENIS PUPUK</th>
-                  ${!isDikuasakan ? `<th style="width: 60px;">PARTY</th>` : ""}
-                  <th style="width: 100px;">PENGAMBILAN<br>ZAK</th>
-                  <th style="width: 60px;">SISA</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${itemsHtml}
-              </tbody>
-            </table>
-          </div>
-          ${isGI || isMandiri ? `
-          <div class="table-section">
-            <div class="table-title">DATA UNIT ANGKUTAN</div>
-            <table class="data-table">
-              <tbody>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${formData.nomorPolisi}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${formData.driverUnit}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td>
-                  <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${formData.nomorSIM || "-"}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          ` : ""}
-          <div class="notes-section">
-            <p style="font-weight: 700;">Notes :</p>
-            <p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
-            <p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
-            <p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
-          </div>
-          <div class="signature-row">
-            <div class="signature-box">
-              <p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-              <img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display=\'none\'" />
-              <p class="signature-name">HENDRA PRAMASYANTO</p>
-            </div>
-            <div class="signature-box">
-              <p class="signature-title">Diangkut oleh,<br>Driver</p>
-              <div style="height: 50px;"></div>
-              <p class="signature-name">${formData.driverUnit || ""}</p>
-            </div>
-          </div>
-          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
-        </div>
-      </body>
-      </html>
-    `;
+    const unitAngkutanHtml = isGI || isMandiri
+      ? `<div class="table-section"><div class="table-title">DATA UNIT ANGKUTAN</div><table class="data-table"><tbody>` +
+        `<tr><td style="padding:6px 8px;font-size:10px;border:1px solid #000;font-weight:600;width:120px;">NO. POLISI :</td><td style="padding:6px 8px;font-size:10px;border:1px solid #000;">${formData.nomorPolisi}</td></tr>` +
+        `<tr><td style="padding:6px 8px;font-size:10px;border:1px solid #000;font-weight:600;">DRIVER UNIT :</td><td style="padding:6px 8px;font-size:10px;border:1px solid #000;">${formData.driverUnit}</td></tr>` +
+        `<tr><td style="padding:6px 8px;font-size:10px;border:1px solid #000;font-weight:600;">NOMOR SIM :</td><td style="padding:6px 8px;font-size:10px;border:1px solid #000;">${formData.nomorSIM || "-"}</td></tr>` +
+        `</tbody></table></div>`
+      : "";
+
+    const html =
+      `<!DOCTYPE html><html><head><title>Surat Pengangkutan ${nomorSeri}</title>` +
+      `<style>` +
+      `@page { size: A4; margin: 10mm 12mm 10mm 12mm; }` +
+      `@media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }` +
+      `* { box-sizing: border-box; margin: 0; padding: 0; }` +
+      `body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }` +
+      `.page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; }` +
+      `.header-img { width: 100%; display: block; margin-bottom: 0; }` +
+      `.title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; }` +
+      `.info-section { margin-bottom: 12px; }` +
+      `.info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }` +
+      `.info-label { font-weight: 600; }` +
+      `.recipient-box { border: 1px solid #000; padding: 8px 10px; margin-bottom: 10px; }` +
+      `.recipient-title { font-size: 9px; color: #333; margin-bottom: 2px; }` +
+      `.recipient-name { font-size: 11px; font-weight: 700; }` +
+      `.recipient-address { font-size: 9px; color: #333; line-height: 1.5; margin-top: 2px; }` +
+      `.salutation { font-size: 10px; margin-bottom: 8px; }` +
+      `.salutation p { margin-bottom: 2px; }` +
+      `.table-section { margin-bottom: 10px; }` +
+      `.table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; }` +
+      `.data-table { width: 100%; border-collapse: collapse; }` +
+      `.data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; }` +
+      `.data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }` +
+      `.notes-section { margin-top: 10px; font-size: 9px; }` +
+      `.notes-section p { margin-bottom: 2px; }` +
+      `.signature-row { display: flex; justify-content: space-between; margin-top: 20px; }` +
+      `.signature-box { width: 45%; text-align: center; }` +
+      `.signature-title { font-size: 9px; margin-bottom: 30px; }` +
+      `.signature-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }` +
+      `.signature-name { font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }` +
+      `.footer-img { width: 100%; display: block; margin-top: 10px; }` +
+      `.print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }` +
+      `.print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }` +
+      `@media print { .print-bar { display: none !important; } }` +
+      `</style></head><body>` +
+      `<div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>` +
+      `<div class="page">` +
+      `<img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />` +
+      `<div class="title-bar">SURAT PENGANGKUTAN</div>` +
+      `<div class="info-section">` +
+      `<div class="info-row"><span>${formData.namaKabupaten}, ${new Date(formData.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>` +
+      `<div class="info-row"><span class="info-label">Nomor Seri : ${nomorSeri}</span></div>` +
+      (piNumbers ? `<div class="info-row"><span class="info-label">Nomor PI : ${piNumbers}</span></div>` : "") +
+      `</div>` +
+      recipientBox +
+      `<div class="salutation"><p>Dengan Hormat,</p><p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p></div>` +
+      `<div class="table-section"><div class="table-title">DASAR PENGANGKUTAN</div>` +
+      `<table class="data-table"><thead><tr>` +
+      `<th style="width:30px;">NO</th>` +
+      (!isGI && !isDikuasakan ? `<th style="width:100px;">NOMOR SUB DO</th>` : "") +
+      `<th style="width:100px;">${isGI || isDikuasakan ? "NOMOR PI" : "NOMOR PO"}</th>` +
+      `<th>JENIS PUPUK</th>` +
+      (!isDikuasakan ? `<th style="width:60px;">PARTY</th>` : "") +
+      `<th style="width:100px;">PENGAMBILAN<br>ZAK</th>` +
+      `<th style="width:60px;">SISA</th>` +
+      `</tr></thead><tbody>${itemsHtml}</tbody></table></div>` +
+      unitAngkutanHtml +
+      `<div class="notes-section"><p style="font-weight:700;">Notes :</p><p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p><p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p><p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p></div>` +
+      `<div class="signature-row">` +
+      `<div class="signature-box"><p class="signature-title">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p><img src="/Picture2.png" alt="TTD" class="signature-img" onerror="this.style.display='none'" /><p class="signature-name">HENDRA PRAMASYANTO</p></div>` +
+      `<div class="signature-box"><p class="signature-title">Diangkut oleh,<br>Driver</p><div style="height:50px;"></div><p class="signature-name">${formData.driverUnit || ""}</p></div>` +
+      `</div>` +
+      `<img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />` +
+      `</div></body></html>`;
+
     printWindow.document.write(html);
     printWindow.document.close();
   };
