@@ -149,6 +149,7 @@ interface BeritaAcaraItem {
 interface RiwayatPembayaran {
   tanggal: string;
   jumlah: number;
+  fotoBukti?: string[];
 }
 
 type SuratMuatMap = Record<string, SuratMuatInfo[]>;
@@ -170,13 +171,13 @@ const parseNomorSeri = (nomorSeri: string) => {
 };
 
 const validateNomorSeriFormat = (value: string) => {
-  const giRegex = new RegExp("^BAGB-SP/\\d{4}/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)/\\d{4}$");
-  const doRegex = new RegExp("^BAGB-SP-DO.+-\\d{4}$");
+  const giRegex = new RegExp("^BAGB-SP/\d{4}/(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII)/\d{4}$");
+  const doRegex = new RegExp("^BAGB-SP-DO.+-\d{4}$");
   return giRegex.test(value.trim()) || doRegex.test(value.trim());
 };
 
 const parseInvoiceNumber = (nomor: string) => {
-  const match = nomor.match(new RegExp("^BAGB-INV(?:-S(\\d+))?-(\\d{4})$"));
+  const match = nomor.match(new RegExp("^BAGB-INV(?:-S(\d+))?-(\d{4})$"));
   if (!match) return null;
   return {
     isPartial: !!match[1],
@@ -234,6 +235,46 @@ const numberToWords = (num: number): string => {
   return result.trim() + " RUPIAH";
 };
 
+const compressImage = async (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1200;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas context not available"));
+        ctx.drawImage(img, 0, 0, width, height);
+        let quality = 0.7;
+        let result = canvas.toDataURL("image/jpeg", quality);
+        while (result.length > 2 * 1024 * 1024 * 1.37 && quality > 0.1) {
+          quality -= 0.1;
+          result = canvas.toDataURL("image/jpeg", quality);
+        }
+        resolve(result);
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+};
+
 export default function RekapProformaInvoicePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -267,6 +308,7 @@ export default function RekapProformaInvoicePage() {
     jumlahUangDibayar: "",
     tanggalPembayaran: "",
     statusPelunasan: "",
+    fotoBukti: [] as string[],
   });
   const [bastExists, setBastExists] = useState(false);
   const [invoiceExists, setInvoiceExists] = useState(false);
@@ -716,7 +758,7 @@ export default function RekapProformaInvoicePage() {
       snap.docs.forEach((d) => {
         const ni = d.data().nomorInvoice;
         if (ni && ni.includes("-S") && ni.endsWith(`-${baseNumber}`)) {
-          const match = ni.match(new RegExp("-S(\\d+)-"));
+          const match = ni.match(new RegExp("-S(\d+)-"));
           if (match) usedPartials.add(parseInt(match[1]));
         }
       });
@@ -1459,8 +1501,27 @@ export default function RekapProformaInvoicePage() {
       jumlahUangDibayar: "",
       tanggalPembayaran: new Date().toISOString().split("T")[0],
       statusPelunasan: item.statusPelunasan || getPaymentStatus(item),
+      fotoBukti: [],
     });
     setIsPaymentModalOpen(true);
+  };
+
+  const handleFotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newPhotos: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const compressed = await compressImage(files[i]);
+      newPhotos.push(compressed);
+    }
+    setPaymentForm((prev) => ({ ...prev, fotoBukti: [...prev.fotoBukti, ...newPhotos] }));
+  };
+
+  const removeFoto = (index: number) => {
+    setPaymentForm((prev) => ({
+      ...prev,
+      fotoBukti: prev.fotoBukti.filter((_, i) => i !== index),
+    }));
   };
 
   const handleUpdatePayment = async (e: React.FormEvent) => {
@@ -1471,7 +1532,7 @@ export default function RekapProformaInvoicePage() {
       const newJumlah = parseFloat(paymentForm.jumlahUangDibayar) || 0;
       const newTanggal = paymentForm.tanggalPembayaran.trim();
       const existingRiwayat = selectedItem.riwayatPembayaran || [];
-      const updatedRiwayat = [...existingRiwayat, { tanggal: newTanggal, jumlah: newJumlah }];
+      const updatedRiwayat = [...existingRiwayat, { tanggal: newTanggal, jumlah: newJumlah, fotoBukti: paymentForm.fotoBukti || [] }];
       const totalPaid = updatedRiwayat.reduce((sum, r) => sum + r.jumlah, 0);
       const total = selectedItem.jumlahTertagih || 0;
       let status = "Belum Lunas";
@@ -1971,13 +2032,28 @@ export default function RekapProformaInvoicePage() {
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nopol}</td>
       </tr>
     `).join("");
+    const riwayatBayar = item.riwayatPembayaran || [];
+    const paymentRowsHtml = riwayatBayar.map((r, idx) => `
+      <tr>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${r.tanggal}</td>
+        <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${formatRupiah(r.jumlah)}</td>
+        <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${(r.fotoBukti || []).length > 0 ? (r.fotoBukti || []).length + " foto" : "-"}</td>
+      </tr>
+    `).join("");
+    let fotoBuktiHtml = "";
+    riwayatBayar.forEach((r) => {
+      (r.fotoBukti || []).forEach((foto, fidx) => {
+        fotoBuktiHtml += `<img src="${foto}" style="max-height: 140px; max-width: 45%; object-fit: contain; border: 1px solid #ccc; margin: 4px;" />`;
+      });
+    });
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const html = `
       <!DOCTYPE html><html><head><title>Berita Acara ${baData.nomorSeri}</title>
       <style>
         @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } .page { page-break-after: always; } .page:last-child { page-break-after: auto; } }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
         .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
@@ -1999,6 +2075,12 @@ export default function RekapProformaInvoicePage() {
         .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
         .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
         @media print { .print-bar { display: none !important; } }
+        .foto-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 12px; }
+        .foto-grid img { max-height: 140px; max-width: 45%; object-fit: contain; border: 1px solid #ccc; }
+        .payment-title { text-align: center; margin: 8px 0 12px 0; }
+        .payment-title h1 { font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline; }
+        .payment-info { margin-bottom: 10px; font-size: 10px; }
+        .payment-info p { margin-bottom: 2px; }
       </style></head><body>
         <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
         <div class="page">
@@ -2014,7 +2096,25 @@ export default function RekapProformaInvoicePage() {
             <div style="display: flex; justify-content: space-between; margin-top: 40px; align-items: flex-end;">
               <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"><p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK KEDUA</p><div style="width: 100%; min-height: 80px; margin-bottom: 8px;"></div><p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">${item.namaCustomer || "_________________"}</p></div>
               <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;"><p style="font-size: 10px; font-weight: 700; margin-bottom: 8px;">PIHAK PERTAMA</p><div style="position: relative; width: 100%; min-height: 80px; margin-bottom: 8px; display: flex; align-items: flex-end; justify-content: center;"><img src="/LogoAGRO.png" alt="Stempel" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); max-height: 80px; max-width: 100px; opacity: 0.25; object-fit: contain; z-index: 1;" onerror="this.style.display='none'" /><div style="position: relative; z-index: 2; min-height: 70px;"></div></div><p style="font-size: 10px; font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto;">_________________</p><p style="font-size: 9px; color: #333; margin-top: 3px;">PT Bukit Agrochemical Baru</p></div>
-            </div></div></div></body></html>`;
+            </div></div>
+          <img src="/Picture1.png" alt="Footer" class="header-img" onerror="this.style.display='none'" />
+        </div>
+        <div class="page">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <div class="payment-title"><h1>BUKTI PEMBAYARAN</h1><p>Nomor Proforma Invoice ${item.nomorPI}</p></div>
+          <div class="content">
+            <div class="payment-info">
+              <p><strong>Customer:</strong> ${item.namaCustomer}</p>
+              <p><strong>Alamat:</strong> ${(item.alamatCustomer || "").replace(/\n/g, " ")}</p>
+              <p><strong>Jumlah Tertagih:</strong> ${formatRupiah(item.jumlahTertagih)}</p>
+              <p><strong>Status Pelunasan:</strong> ${item.statusPelunasan || getPaymentStatus(item)}</p>
+            </div>
+            <table class="data-table"><thead><tr><th style="width: 30px;">No</th><th style="width: 120px;">Tanggal</th><th style="width: 150px;">Jumlah</th><th>Foto Bukti</th></tr></thead><tbody>${paymentRowsHtml.length > 0 ? paymentRowsHtml : `<tr><td colspan="4" style="text-align: center; padding: 10px;">Belum ada riwayat pembayaran</td></tr>`}</tbody></table>
+            ${fotoBuktiHtml ? `<div style="margin-top: 12px;"><p style="font-weight: 700; margin-bottom: 8px;">Lampiran Foto Bukti Pembayaran:</p><div class="foto-grid">${fotoBuktiHtml}</div></div>` : ""}
+          </div>
+          <img src="/Picture1.png" alt="Footer" class="header-img" onerror="this.style.display='none'" style="margin-top: auto;" />
+        </div>
+      </body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
   };
@@ -2456,14 +2556,21 @@ export default function RekapProformaInvoicePage() {
               <div className="mb-3">
                 <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Riwayat Pembayaran</p>
                 <table className="w-full text-sm">
-                  <thead><tr className="border-b border-amber-200"><th className="text-left py-1 px-2 text-xs font-semibold text-amber-700">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-amber-700">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-amber-700">Jumlah</th></tr></thead>
+                  <thead><tr className="border-b border-amber-200"><th className="text-left py-1 px-2 text-xs font-semibold text-amber-700">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-amber-700">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-amber-700">Jumlah</th><th className="text-center py-1 px-2 text-xs font-semibold text-amber-700">Foto</th></tr></thead>
                   <tbody>
-                    {(selectedItem.riwayatPembayaran || []).length === 0 && (<tr><td colSpan={3} className="py-2 text-center text-gray-500 text-xs">Belum ada pembayaran</td></tr>)}
+                    {(selectedItem.riwayatPembayaran || []).length === 0 && (<tr><td colSpan={4} className="py-2 text-center text-gray-500 text-xs">Belum ada pembayaran</td></tr>)}
                     {(selectedItem.riwayatPembayaran || []).map((r, i) => (
-                      <tr key={i} className="border-b border-amber-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td></tr>
+                      <tr key={i} className="border-b border-amber-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td><td className="py-1 px-2 text-center text-gray-700">{(r.fotoBukti || []).length > 0 ? (r.fotoBukti || []).length + " foto" : "-"}</td></tr>
                     ))}
                   </tbody>
                 </table>
+                {(selectedItem.riwayatPembayaran || []).some((r) => (r.fotoBukti || []).length > 0) && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(selectedItem.riwayatPembayaran || []).flatMap((r) => r.fotoBukti || []).map((foto, idx) => (
+                      <img key={idx} src={foto} alt={`Bukti ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border border-amber-200 cursor-pointer hover:scale-110 transition-transform" onClick={() => window.open(foto, "_blank")} />
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="space-y-2 border-t border-amber-200 pt-2">
                 <div className="flex justify-between items-center text-sm"><span className="font-medium text-gray-700">Total Dibayar</span><span className="font-mono text-gray-900">{formatRupiah(selectedItem.jumlahUangDibayar || 0)}</span></div>
@@ -2755,7 +2862,7 @@ export default function RekapProformaInvoicePage() {
           {(selectedItem?.riwayatPembayaran || []).length > 0 && (
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Riwayat Pembayaran</p>
-              <table className="w-full text-sm"><thead><tr className="border-b border-gray-200"><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-gray-600">Jumlah</th></tr></thead><tbody>{selectedItem?.riwayatPembayaran?.map((r, i) => (<tr key={i} className="border-b border-gray-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td></tr>))}</tbody><tfoot><tr className="border-t border-gray-300"><td colSpan={2} className="py-1 px-2 text-xs font-bold text-gray-700">Total Dibayar</td><td className="py-1 px-2 text-right font-mono font-bold text-gray-900">{formatRupiah(selectedItem?.jumlahUangDibayar || 0)}</td></tr></tfoot></table>
+              <table className="w-full text-sm"><thead><tr className="border-b border-gray-200"><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-gray-600">Jumlah</th><th className="text-center py-1 px-2 text-xs font-semibold text-gray-600">Foto</th></tr></thead><tbody>{selectedItem?.riwayatPembayaran?.map((r, i) => (<tr key={i} className="border-b border-gray-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td><td className="py-1 px-2 text-center text-gray-700">{(r.fotoBukti || []).length > 0 ? (r.fotoBukti || []).length + " foto" : "-"}</td></tr>))}</tbody><tfoot><tr className="border-t border-gray-300"><td colSpan={2} className="py-1 px-2 text-xs font-bold text-gray-700">Total Dibayar</td><td className="py-1 px-2 text-right font-mono font-bold text-gray-900">{formatRupiah(selectedItem?.jumlahUangDibayar || 0)}</td><td></td></tr></tfoot></table>
             </div>
           )}
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
@@ -2764,6 +2871,21 @@ export default function RekapProformaInvoicePage() {
               <div><label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Pembayaran</label><input type="text" inputMode="decimal" value={paymentForm.jumlahUangDibayar} onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-3 focus:px-4 focus:text-base focus:shadow-2xl focus:z-50 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200" /></div>
               <Input label="Tanggal Pembayaran" type="date" value={paymentForm.tanggalPembayaran} onChange={(e) => setPaymentForm((prev) => ({ ...prev, tanggalPembayaran: e.target.value }))} />
             </div>
+          </div>
+          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">Foto Bukti Pembayaran (Opsional)</label>
+            <input type="file" accept="image/*" multiple onChange={handleFotoChange} className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" />
+            <p className="text-xs text-gray-500 mt-1">Maksimal per foto akan otomatis dikompres kurang dari 2MB</p>
+            {paymentForm.fotoBukti.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {paymentForm.fotoBukti.map((foto, idx) => (
+                  <div key={idx} className="relative">
+                    <img src={foto} alt={`Preview ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border border-gray-200" />
+                    <button type="button" onClick={() => removeFoto(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600">&times;</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
           <div className="p-3 bg-amber-50 rounded-lg border border-amber-100"><p className="text-sm text-amber-700"><span className="font-semibold">Status Otomatis: </span>{selectedItem && (() => { const currentPaid = selectedItem.jumlahUangDibayar || 0; const newPaid = parseFloat(paymentForm.jumlahUangDibayar) || 0; const totalPaid = currentPaid + newPaid; const total = selectedItem.jumlahTertagih || 0; if (totalPaid >= total && total > 0) return "Lunas"; if (totalPaid > 0) return "Cicilan"; return "Belum Lunas"; })()}</p></div>
           {selectedItem && parseFloat(paymentForm.jumlahUangDibayar || "0") > 0 && (

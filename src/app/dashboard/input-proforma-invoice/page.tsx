@@ -67,11 +67,52 @@ interface FormDataState {
   keterangan: string;
   cc: string;
   selectedTTD: string;
+  fotoBukti: string[];
 }
 
 const getRomanMonth = (month: number) => {
   const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
   return romans[month - 1] || "I";
+};
+
+const compressImage = async (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1200;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Canvas context not available"));
+        ctx.drawImage(img, 0, 0, width, height);
+        let quality = 0.7;
+        let result = canvas.toDataURL("image/jpeg", quality);
+        while (result.length > 2 * 1024 * 1024 * 1.37 && quality > 0.1) {
+          quality -= 0.1;
+          result = canvas.toDataURL("image/jpeg", quality);
+        }
+        resolve(result);
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 };
 
 export default function InputProformaInvoicePage() {
@@ -111,6 +152,7 @@ export default function InputProformaInvoicePage() {
     keterangan: "",
     cc: "",
     selectedTTD: "",
+    fotoBukti: [],
   });
 
   const [produkItems, setProdukItems] = useState<ProdukItem[]>([
@@ -438,6 +480,24 @@ export default function InputProformaInvoicePage() {
     }
   };
 
+  const handleFotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newPhotos: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const compressed = await compressImage(files[i]);
+      newPhotos.push(compressed);
+    }
+    setFormData((prev) => ({ ...prev, fotoBukti: [...prev.fotoBukti, ...newPhotos] }));
+  };
+
+  const removeFoto = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      fotoBukti: prev.fotoBukti.filter((_, i) => i !== index),
+    }));
+  };
+
   const calculateHargaPerZakDus = (item: ProdukItem): string => {
     const price = parseFloat(item.hargaSatuan) || 0;
     return String(price * (item.bobotPerUnit || 1));
@@ -535,6 +595,10 @@ export default function InputProformaInvoicePage() {
       await ensureCustomerExists(formData.namaCustomer, formData.alamatCustomer, formData.npwp);
       const selectedTTD = ttdList.find((t) => t.id === formData.selectedTTD);
       const finalNomorPI = await getUniquePINumber();
+      const jumlahBayar = parseFloat(formData.jumlahUangDibayar) || 0;
+      const riwayatPembayaran = jumlahBayar > 0
+        ? [{ tanggal: formData.tanggalPembayaran || formData.tanggal, jumlah: jumlahBayar, fotoBukti: formData.fotoBukti }]
+        : [];
       await addDoc(collection(db, "proformaInvoice"), {
         tanggal: formData.tanggal,
         nomorPI: finalNomorPI,
@@ -560,15 +624,15 @@ export default function InputProformaInvoicePage() {
         includePPN: produkItems.some((p) => p.includePPN),
         ppnNominal: formData.ppnNominal,
         ongkosKirim: parseFloat(formData.ongkosKirim) || 0,
-        jumlahUangDibayar: parseFloat(formData.jumlahUangDibayar) || 0,
+        jumlahUangDibayar: jumlahBayar,
         tanggalPembayaran: formData.tanggalPembayaran || "",
         statusPelunasan: (() => {
-          const jd = parseFloat(formData.jumlahUangDibayar) || 0;
+          const jd = jumlahBayar;
           if (jd >= formData.jumlahTertagih && formData.jumlahTertagih > 0) return "Lunas";
           if (jd > 0) return "Cicilan";
           return "Belum Lunas";
         })(),
-        riwayatPembayaran: (parseFloat(formData.jumlahUangDibayar) || 0) > 0 ? [{ tanggal: formData.tanggalPembayaran || formData.tanggal, jumlah: parseFloat(formData.jumlahUangDibayar) || 0 }] : [],
+        riwayatPembayaran: riwayatPembayaran,
         cc: formData.cc.trim(),
         subtotal: formData.subtotal,
         jumlahTertagih: formData.jumlahTertagih,
@@ -586,22 +650,13 @@ export default function InputProformaInvoicePage() {
       setFormData({
         tanggal: new Date().toISOString().split("T")[0],
         nomorPI: "",
-        namaCustomer: "",
-        alamatCustomer: "",
-        npwp: "",
-        metodePembayaran: "Transfer",
-        uangMuka: "",
-        ppnNominal: 0,
-        ongkosKirim: "",
-        jumlahUangDibayar: "",
-        tanggalPembayaran: new Date().toISOString().split("T")[0],
+        namaCustomer: "", alamatCustomer: "", npwp: "",
+        metodePembayaran: "Transfer", uangMuka: "", ppnNominal: 0,
+        ongkosKirim: "", jumlahUangDibayar: "", tanggalPembayaran: new Date().toISOString().split("T")[0],
         subtotal: 0,
-        jumlahTertagih: 0,
-        terbilang: "",
-        tanggalJatuhTempo: "",
-        keterangan: "",
-        cc: "",
-        selectedTTD: "",
+        jumlahTertagih: 0, terbilang: "", tanggalJatuhTempo: "",
+        keterangan: "", cc: "", selectedTTD: "",
+        fotoBukti: [],
       });
       setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
       generateTanggalJatuhTempo();
@@ -842,6 +897,21 @@ export default function InputProformaInvoicePage() {
                   <input type="date" name="tanggalPembayaran" value={formData.tanggalPembayaran} onChange={handleChange} className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white" />
                 </div>
               </div>
+              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Foto Bukti Pembayaran (Opsional)</label>
+                <input type="file" accept="image/*" multiple onChange={handleFotoChange} className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" />
+                <p className="text-xs text-gray-500 mt-1">Maksimal per foto akan otomatis dikompres kurang dari 2MB</p>
+                {formData.fotoBukti.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {formData.fotoBukti.map((foto, idx) => (
+                      <div key={idx} className="relative">
+                        <img src={foto} alt={`Preview ${idx + 1}`} className="h-20 w-20 object-cover rounded-lg border border-gray-200" />
+                        <button type="button" onClick={() => removeFoto(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600">&times;</button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
               {parseFloat(formData.jumlahUangDibayar) > 0 && (
                 <div className="flex items-center justify-between p-3 bg-teal-50 rounded-lg border border-teal-100">
                   <span className="text-sm font-medium text-teal-700">Uang Dibayar</span>
@@ -886,6 +956,7 @@ export default function InputProformaInvoicePage() {
               subtotal: 0,
               jumlahTertagih: 0, terbilang: "", tanggalJatuhTempo: "",
               keterangan: "", cc: "", selectedTTD: "",
+              fotoBukti: [],
             });
             setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
             generateTanggalJatuhTempo();
