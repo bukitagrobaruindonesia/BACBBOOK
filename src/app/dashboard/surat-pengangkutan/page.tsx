@@ -13,7 +13,7 @@ import {
   updateDoc,
   where,
   getDoc,
-  runTransaction, Timestamp, setDoc,
+  runTransaction, Timestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -117,17 +117,6 @@ const getRomanMonth = (month: number) => {
 
 const isGudangIndukFOT = (fot: string) => {
   return fot.trim().toUpperCase().includes("GUDANG INDUK");
-};
-
-const parseNomorSeriGI = (nomorSeri: string) => {
-  const parts = nomorSeri.split("/");
-  if (parts.length !== 4) return null;
-  const prefix = parts[0];
-  const year = parseInt(parts[1]);
-  const roman = parts[2];
-  const urut = parseInt(parts[3]);
-  if (prefix !== "BAGB-SP" || isNaN(year) || isNaN(urut)) return null;
-  return { prefix, year, roman, urut };
 };
 
 const formatParty = (kg: number) => {
@@ -341,10 +330,9 @@ export default function SuratPengangkutanPage() {
       if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
         const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
         if (pi) {
-          const validProducts = getValidProductsForPI(pi, doItem.fot);
-          const matchProd = validProducts.find((p) => p.namaProduk === currentItem.jenisPupuk);
-          const piFOT = (matchProd?.fot || getStockFotForProduct(currentItem.jenisPupuk) || "").trim();
-          if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) return false;
+          const matchProd = pi.produkItems.find((p) => p.namaProduk === currentItem.jenisPupuk);
+          const piFOT = (matchProd?.fot || "").trim();
+          if (piFOT && piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) return false;
         }
       }
       return true;
@@ -371,10 +359,9 @@ export default function SuratPengangkutanPage() {
     if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
       const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
       if (pi) {
-        const validProducts = getValidProductsForPI(pi, doItem.fot);
-        const matchProd = validProducts.find((p) => p.namaProduk === currentItem.jenisPupuk);
-        const piFOT = (matchProd?.fot || getStockFotForProduct(currentItem.jenisPupuk) || "").trim();
-        if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
+        const matchProd = pi.produkItems.find((p) => p.namaProduk === currentItem.jenisPupuk);
+        const piFOT = (matchProd?.fot || "").trim();
+        if (piFOT && piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
           setFieldError(`nomorSubDO_${itemId}`, `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`);
           return;
         }
@@ -384,7 +371,7 @@ export default function SuratPengangkutanPage() {
     if (currentItem && currentItem.nomorPI.trim()) {
       const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
       if (pi) {
-        const validProducts = getValidProductsForPI(pi);
+        const validProducts = getValidProductsForPI(pi, doItem.fot);
         const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
         if (!matchProd) {
           setFieldError(`nomorSubDO_${itemId}`, `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${pi.nomorPI}`);
@@ -440,7 +427,14 @@ export default function SuratPengangkutanPage() {
     const roman = getRomanMonth(now.getMonth() + 1);
     const prefix = `BAGB-SP/${year}/${roman}`;
     const counterRef = doc(db, "counters", `suratPengangkutanGI_${year}_${roman}`);
-    await setDoc(counterRef, { count: 0, updatedAt: Timestamp.now() }, { merge: true });
+    try {
+      await runTransaction(db, async (transaction) => {
+        const counterSnap = await transaction.get(counterRef);
+        if (!counterSnap.exists()) {
+          transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
+        }
+      });
+    } catch {}
     return await runTransaction(db, async (transaction) => {
       const counterSnap = await transaction.get(counterRef);
       const currentCount = counterSnap.data()?.count || 0;
@@ -457,7 +451,14 @@ export default function SuratPengangkutanPage() {
       const roman = getRomanMonth(now.getMonth() + 1);
       const prefix = `BAGB-SP-DO/${year}/${roman}`;
       const counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
-      await setDoc(counterRef, { count: 0, updatedAt: Timestamp.now() }, { merge: true });
+      try {
+        await runTransaction(db, async (transaction) => {
+          const counterSnap = await transaction.get(counterRef);
+          if (!counterSnap.exists()) {
+            transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
+          }
+        });
+      } catch {}
       return await runTransaction(db, async (transaction) => {
         const counterSnap = await transaction.get(counterRef);
         const currentCount = counterSnap.data()?.count || 0;
@@ -471,7 +472,14 @@ export default function SuratPengangkutanPage() {
     const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
     const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
     const counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
-    await setDoc(counterRef, { count: 0, updatedAt: Timestamp.now() }, { merge: true });
+    try {
+      await runTransaction(db, async (transaction) => {
+        const counterSnap = await transaction.get(counterRef);
+        if (!counterSnap.exists()) {
+          transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
+        }
+      });
+    } catch {}
     return await runTransaction(db, async (transaction) => {
       const counterSnap = await transaction.get(counterRef);
       const currentCount = counterSnap.data()?.count || 0;
@@ -545,11 +553,6 @@ export default function SuratPengangkutanPage() {
     return stock ? stock.bobotPerUnit : 50;
   };
 
-  const getStockFotForProduct = (namaProduk: string) => {
-    const stock = getStockForProduct(namaProduk);
-    return stock ? stock.fot : "";
-  };
-
   const getLoadedKGForPIProduct = async (nomorPI: string, namaProduk: string, fotFilter?: string) => {
     let totalLoaded = 0;
     try {
@@ -591,10 +594,13 @@ export default function SuratPengangkutanPage() {
   const piHasValidProductForJenisSurat = (pi: ProformaInvoice) => {
     if (!jenisSurat) return true;
     return pi.produkItems.some((prod) => {
-      const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+      const fot = (prod.fot || "").trim();
       const isGI = isGudangIndukFOT(fot);
       if (jenisSurat === "gudangInduk") return isGI;
-      if (jenisSurat === "do") return !isGI;
+      if (jenisSurat === "do") {
+        if (fot) return !isGI;
+        return true;
+      }
       return true;
     });
   };
@@ -620,7 +626,7 @@ export default function SuratPengangkutanPage() {
           const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
           if (doItem) {
             const hasMatchingFOT = pi.produkItems.some((prod) => {
-              const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim().toUpperCase();
+              const prodFOT = (prod.fot || "").trim().toUpperCase();
               return prodFOT === doItem.fot.trim().toUpperCase();
             });
             if (!hasMatchingFOT) return false;
@@ -633,11 +639,14 @@ export default function SuratPengangkutanPage() {
 
   const getValidProductsForPI = (pi: ProformaInvoice, doFOT?: string) => {
     return pi.produkItems.filter((prod) => {
-      const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+      const fot = (prod.fot || "").trim();
       const isGI = isGudangIndukFOT(fot);
       if (jenisSurat === "gudangInduk") return isGI;
-      if (jenisSurat === "do") return !isGI;
-      if (doFOT && doFOT.trim().toUpperCase() !== fot.toUpperCase()) return false;
+      if (jenisSurat === "do") {
+        if (fot) return !isGI;
+        return true;
+      }
+      if (doFOT && fot && doFOT.trim().toUpperCase() !== fot.toUpperCase()) return false;
       return true;
     });
   };
@@ -655,7 +664,7 @@ export default function SuratPengangkutanPage() {
     const statusMap: Record<string, { loaded: number; ordered: number; status: string }> = {};
     await Promise.all(
       validProducts.map(async (prod) => {
-        const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+        const prodFOT = (prod.fot || "").trim();
         const loaded = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk, prodFOT);
         const ordered = prod.kuantitas || 0;
         let status = "pending";
@@ -683,7 +692,7 @@ export default function SuratPengangkutanPage() {
       if (doItem) {
         const validProducts = getValidProductsForPI(pi, doItem.fot);
         const hasMatchingFOT = validProducts.some((prod) => {
-          const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim().toUpperCase();
+          const prodFOT = (prod.fot || "").trim().toUpperCase();
           return prodFOT === doItem.fot.trim().toUpperCase();
         });
         if (!hasMatchingFOT) {
@@ -722,10 +731,10 @@ export default function SuratPengangkutanPage() {
 
     if (firstProd) {
       bobot = getBobotPerUnit(firstProd.namaProduk);
-      fot = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
+      fot = (firstProd.fot || "").trim();
       jenisPupuk = firstProd.namaProduk;
       piKuantitas = firstProd.kuantitas || 0;
-      const firstProdFOT = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
+      const firstProdFOT = (firstProd.fot || "").trim();
       piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk, firstProdFOT);
     }
 
@@ -773,8 +782,8 @@ export default function SuratPengangkutanPage() {
     if (currentItem && currentItem.nomorSubDO.trim()) {
       const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
       if (doItem) {
-        const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim().toUpperCase();
-        if (prodFOT !== doItem.fot.trim().toUpperCase()) {
+        const prodFOT = (prod.fot || "").trim().toUpperCase();
+        if (prodFOT && prodFOT !== doItem.fot.trim().toUpperCase()) {
           setFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`, `FOT Produk (${prodFOT}) tidak sesuai dengan FOT DO (${doItem.fot})`);
           return;
         }
@@ -786,8 +795,8 @@ export default function SuratPengangkutanPage() {
     }
 
     const bobot = getBobotPerUnit(prod.namaProduk);
-    const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
-    const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+    const fot = (prod.fot || "").trim();
+    const prodFOT = (prod.fot || "").trim();
     const piLoadedKG = statusMap[prod.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk, prodFOT);
     const piKuantitas = prod.kuantitas || 0;
 
@@ -848,14 +857,14 @@ export default function SuratPengangkutanPage() {
     const firstProd = availableProducts[0];
     const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
     const bobot = firstProd ? getBobotPerUnit(firstProd.namaProduk) : 50;
-    const fot = firstProd ? (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim() : "";
+    const fot = firstProd ? (firstProd.fot || "").trim() : "";
 
     let piKuantitas = 0;
     let piLoadedKG = 0;
 
     if (firstProd) {
       piKuantitas = firstProd.kuantitas || 0;
-      const firstProdFOT = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
+      const firstProdFOT = (firstProd.fot || "").trim();
       piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk, firstProdFOT);
       const piSisa = Math.max(0, piKuantitas - piLoadedKG);
       const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
@@ -1033,10 +1042,9 @@ export default function SuratPengangkutanPage() {
             if (item.nomorPI.trim() && item.jenisPupuk.trim()) {
               const pi = piList.find((p) => p.nomorPI === item.nomorPI);
               if (pi) {
-                const validProducts = getValidProductsForPI(pi, doItem.fot);
-                const matchProd = validProducts.find((p) => p.namaProduk === item.jenisPupuk);
-                const piFOT = (matchProd?.fot || getStockFotForProduct(item.jenisPupuk) || "").trim();
-                if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
+                const matchProd = pi.produkItems.find((p) => p.namaProduk === item.jenisPupuk);
+                const piFOT = (matchProd?.fot || "").trim();
+                if (piFOT && piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
                   newErrors[`nomorSubDO_${idx}`] = `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`;
                 }
               }
@@ -1102,8 +1110,8 @@ export default function SuratPengangkutanPage() {
           const pi = piList.find((p) => p.nomorPI === item.nomorPI);
           if (pi) {
             const prod = pi.produkItems.find((p) => p.namaProduk === item.jenisPupuk);
-            const piFOT = (prod?.fot || getStockFotForProduct(item.jenisPupuk) || "").trim();
-            if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
+            const piFOT = (prod?.fot || "").trim();
+            if (piFOT && piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
               newErrors[`jenisPupuk_${idx}`] = `FOT Produk (${piFOT}) tidak sesuai dengan FOT DO (${doItem.fot})`;
             }
           }
