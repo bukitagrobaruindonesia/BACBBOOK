@@ -943,9 +943,9 @@ export default function SuratPengangkutanPage() {
           const maxZAKPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
           const maxZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
           const finalMaxZAK = hasDO ? Math.min(maxZAKPI, maxZAKDO) : maxZAKPI;
+          updated.maxZAK = finalMaxZAK;
           if (finalMaxZAK > 0 && zak > finalMaxZAK) {
             updated.pengambilanZAK = String(finalMaxZAK);
-            updated.maxZAK = finalMaxZAK;
             const zakFinal = finalMaxZAK;
             if (hasDO) {
               const doSisaAfter = Math.max(0, doSisa - (zakFinal * item.bobotPerUnit));
@@ -954,8 +954,10 @@ export default function SuratPengangkutanPage() {
               const piSisaAfter = Math.max(0, piSisa - (zakFinal * item.bobotPerUnit));
               updated.sisa = formatSisaKG(piSisaAfter);
             }
+          } else if (finalMaxZAK === 0) {
+            updated.pengambilanZAK = "";
+            updated.sisa = hasDO ? formatParty(doSisa) : formatSisaKG(piSisa);
           } else {
-            updated.maxZAK = finalMaxZAK;
             if (hasDO) {
               const doSisaAfter = Math.max(0, doSisa - (zak * item.bobotPerUnit));
               updated.sisa = formatParty(doSisaAfter);
@@ -1832,8 +1834,10 @@ export default function SuratPengangkutanPage() {
                         value={item.pengambilanZAK}
                         onChange={(e) => handleItemChange(item.id, "pengambilanZAK", e.target.value)}
                         placeholder={item.maxZAK > 0 ? `Max ${item.maxZAK} ZAK` : "Contoh: 100"}
+                        max={item.maxZAK > 0 ? item.maxZAK : undefined}
+                        disabled={item.maxZAK <= 0}
                         onWheel={(e) => { e.currentTarget.blur(); }}
-                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
+                        className={`w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white ${item.maxZAK <= 0 ? "bg-gray-100 cursor-not-allowed" : ""}`}
                       />
                       {item.bobotPerUnit > 0 && item.pengambilanZAK && (
                         <p className="mt-1 text-xs text-gray-500">
