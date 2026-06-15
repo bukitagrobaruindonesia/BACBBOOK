@@ -978,7 +978,7 @@ export default function InputProformaInvoicePage() {
                 <tr className="bg-green-50">
                   <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Customer ID</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Nama Customer</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Alamat</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">Alamat Lengkap</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase">NPWP</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase w-32">Aksi</th>
                 </tr>
