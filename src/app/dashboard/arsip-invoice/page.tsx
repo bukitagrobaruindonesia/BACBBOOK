@@ -39,6 +39,7 @@ interface ArsipInvoice {
   namaCustomer: string;
   alamatCustomer: string;
   npwp: string;
+  customerId: string;
   produkItems: any[];
   invoiceItems: InvoiceItem[];
   subtotal: number;
@@ -168,6 +169,7 @@ export default function ArsipInvoicePage() {
           namaCustomer: d.namaCustomer || "",
           alamatCustomer: d.alamatCustomer || "",
           npwp: d.npwp || "",
+          customerId: d.customerId || "",
           produkItems: d.produkItems || [],
           invoiceItems: d.invoiceItems || [],
           subtotal: d.subtotal || 0,
@@ -407,7 +409,6 @@ export default function ArsipInvoicePage() {
           .sig-img { height: 50px; object-fit: contain; margin: 0 auto; display: block; }
           .sig-name { font-weight: 700; margin-top: 4px; border-top: 1px solid #000; padding-top: 3px; display: inline-block; }
           .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 8px; }
-          .riwayat-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; font-size: 9px; }
           .riwayat-table th { background: #f0fdf4; font-size: 8px; padding: 4px 3px; border: 1px solid #000; font-weight: 700; text-align: center; }
           .riwayat-table td { border: 1px solid #000; padding: 4px 3px; vertical-align: top; }
           .print-btn { background: #16a34a; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600; margin: 8px; }
@@ -432,7 +433,8 @@ export default function ArsipInvoicePage() {
             <div class="meta-box">
               <p><span style="font-weight: 600;">INVOICE NO. :</span> ${item.nomorInvoice}</p>
               <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(item.tanggalInvoice).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
-              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${item.nomorPI || ""}</p>
+              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${item.customerId || "-"}</p>
+              <p><span style="font-weight: 600;">NOMOR PI :</span> ${item.nomorPI || ""}</p>
             </div>
           </div>
           <table class="data-table">
@@ -466,21 +468,6 @@ export default function ArsipInvoicePage() {
             <div>${item.terbilang || numberToWords(Math.round(totalPembayaran))}</div>
           </div>
           <div style="margin-top: 8px;">
-            <p style="font-size: 9px; font-weight: 700; margin-bottom: 4px;">RIWAYAT PENGANGKUTAN:</p>
-            <table class="riwayat-table">
-              <thead>
-                <tr>
-                  <th style="width: 24px;">NO</th>
-                  <th>NOMOR SERI</th>
-                  <th>TANGGAL</th>
-                  <th>DRIVER</th>
-                  <th>NO POLISI</th>
-                  <th>TOTAL KG</th>
-                </tr>
-              </thead>
-              <tbody>${riwayatHtml}</tbody>
-            </table>
-          </div>
           <div class="bottom-section">
             <div class="left-boxes">
               <div class="pay-box">

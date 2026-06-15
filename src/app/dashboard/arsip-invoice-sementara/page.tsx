@@ -40,6 +40,7 @@ interface ArsipInvoiceSementara {
   namaCustomer: string;
   alamatCustomer: string;
   npwp: string;
+  customerId: string;
   produkItems: any[];
   invoiceItems: InvoiceItem[];
   suratPengangkutan: SuratPengangkutan;
@@ -170,6 +171,7 @@ export default function ArsipInvoiceSementaraPage() {
           namaCustomer: d.namaCustomer || "",
           alamatCustomer: d.alamatCustomer || "",
           npwp: d.npwp || "",
+          customerId: d.customerId || "",
           produkItems: d.produkItems || [],
           invoiceItems: d.invoiceItems || [],
           suratPengangkutan: d.suratPengangkutan || {},
@@ -434,7 +436,8 @@ export default function ArsipInvoiceSementaraPage() {
             <div class="meta-box">
               <p><span style="font-weight: 600;">INVOICE NO. :</span> ${item.nomorInvoice}</p>
               <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(item.tanggalInvoice).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
-              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${item.nomorPI || ""}</p>
+              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${item.customerId || "-"}</p>
+              <p><span style="font-weight: 600;">NOMOR PI :</span> ${item.nomorPI || ""}</p>
               <p><span style="font-weight: 600;">NO. SP :</span> ${sp.nomorSeri || ""}</p>
             </div>
           </div>
