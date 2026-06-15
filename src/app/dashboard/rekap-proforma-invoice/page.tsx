@@ -445,7 +445,6 @@ export default function RekapProformaInvoicePage() {
     } catch (error) { console.error(error); }
   };
 
-
   const fetchCustomerByName = async (namaCustomer: string) => {
     try {
       const q = query(collection(db, "customers"), where("namaCustomer", "==", namaCustomer.trim()));
@@ -914,11 +913,12 @@ export default function RekapProformaInvoicePage() {
               gaps.push(baseNum);
               gaps.sort((a, b) => a - b);
             }
-            if (baseNum === lastNumber && gaps.length > 0) {
-              const maxGap = Math.max(...gaps);
-              if (maxGap < lastNumber) {
-                lastNumber = maxGap;
+            if (baseNum === lastNumber) {
+              let newLast = lastNumber - 1;
+              while (newLast > 0 && gaps.includes(newLast)) {
+                newLast--;
               }
+              lastNumber = Math.max(0, newLast);
             }
             transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
           });
@@ -962,11 +962,12 @@ export default function RekapProformaInvoicePage() {
             gaps.push(baseNum);
             gaps.sort((a, b) => a - b);
           }
-          if (baseNum === lastNumber && gaps.length > 0) {
-            const maxGap = Math.max(...gaps);
-            if (maxGap < lastNumber) {
-              lastNumber = maxGap;
+          if (baseNum === lastNumber) {
+            let newLast = lastNumber - 1;
+            while (newLast > 0 && gaps.includes(newLast)) {
+              newLast--;
             }
+            lastNumber = Math.max(0, newLast);
           }
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
@@ -1493,11 +1494,12 @@ export default function RekapProformaInvoicePage() {
             gaps.push(baseNum);
             gaps.sort((a, b) => a - b);
           }
-          if (baseNum === lastNumber && gaps.length > 0) {
-            const maxGap = Math.max(...gaps);
-            if (maxGap < lastNumber) {
-              lastNumber = maxGap;
+          if (baseNum === lastNumber) {
+            let newLast = lastNumber - 1;
+            while (newLast > 0 && gaps.includes(newLast)) {
+              newLast--;
             }
+            lastNumber = Math.max(0, newLast);
           }
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
