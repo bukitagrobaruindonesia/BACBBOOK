@@ -610,13 +610,20 @@ export default function RekapProformaInvoicePage() {
     return results;
   };
 
-  const getTotalOrdered = (item: ProformaInvoice) => {
-    return item.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+  const getTotalOrdered = (item: ProformaInvoice, filterGI?: boolean) => {
+    return item.produkItems.reduce((sum, p) => {
+      const fot = (p.fot || getStockFotForProduct(p.namaProduk) || "").trim();
+      const isGI = isGudangIndukFOT(fot);
+      if (filterGI !== undefined && filterGI !== isGI) return sum;
+      return sum + (p.kuantitas || 0);
+    }, 0);
   };
 
-  const getTotalLoaded = (nomorPI: string) => {
+  const getTotalLoaded = (nomorPI: string, filterGI?: boolean) => {
     const suratList = getSuratMuatForPI(nomorPI);
     return suratList.reduce((sum: number, s: SuratMuatInfo) => {
+      const suratIsGI = !s.jenisSurat || s.jenisSurat === "gudangInduk";
+      if (filterGI !== undefined && filterGI !== suratIsGI) return sum;
       return sum + (s.items || []).reduce((itemSum: number, it: SuratMuatItem) => {
         const itemPI = it.nomorPI || "";
         if (itemPI && itemPI !== nomorPI) return itemSum;
@@ -626,10 +633,15 @@ export default function RekapProformaInvoicePage() {
   };
 
   const getStatusPengangkutan = (item: ProformaInvoice) => {
-    const totalOrdered = getTotalOrdered(item);
-    const totalLoaded = getTotalLoaded(item.nomorPI);
-    if (totalLoaded >= totalOrdered) return "complete";
-    if (totalLoaded > 0) return "partial";
+    const produkStatus = getProdukLoadStatus(item);
+    const giProduk = produkStatus.filter((p) => p.isGI);
+    const doProduk = produkStatus.filter((p) => !p.isGI);
+    const giComplete = giProduk.length === 0 || giProduk.every((p) => p.status === "complete");
+    const doComplete = doProduk.length === 0 || doProduk.every((p) => p.status === "complete");
+    if (giComplete && doComplete) return "complete";
+    const giPartial = giProduk.some((p) => p.status === "partial" || p.status === "complete");
+    const doPartial = doProduk.some((p) => p.status === "partial" || p.status === "complete");
+    if (giPartial || doPartial) return "partial";
     return item.statusPengangkutan || "pending";
   };
 
@@ -663,7 +675,12 @@ export default function RekapProformaInvoicePage() {
     return item.produkItems.map((prod) => {
       const ordered = prod.kuantitas || 0;
       let loaded = 0;
+      const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+      const isGI = isGudangIndukFOT(fot);
       suratList.forEach((surat: SuratMuatInfo) => {
+        const suratIsGI = !surat.jenisSurat || surat.jenisSurat === "gudangInduk";
+        if (isGI && !suratIsGI) return;
+        if (!isGI && suratIsGI) return;
         (surat.items || []).forEach((it: SuratMuatItem) => {
           const itemPI = it.nomorPI || "";
           if (itemPI && itemPI !== item.nomorPI) return;
@@ -679,8 +696,6 @@ export default function RekapProformaInvoicePage() {
       let status = "pending";
       if (loaded >= ordered) status = "complete";
       else if (loaded > 0) status = "partial";
-      const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
-      const isGI = isGudangIndukFOT(fot);
       return { namaProduk: prod.namaProduk, ordered, loaded, remaining, status, isGI, fot };
     });
   };
