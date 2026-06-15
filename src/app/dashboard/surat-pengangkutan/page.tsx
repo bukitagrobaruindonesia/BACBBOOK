@@ -341,8 +341,9 @@ export default function SuratPengangkutanPage() {
       if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
         const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
         if (pi) {
-          const prod = pi.produkItems.find((p) => p.namaProduk === currentItem.jenisPupuk);
-          const piFOT = (prod?.fot || getStockFotForProduct(currentItem.jenisPupuk) || "").trim();
+          const validProducts = getValidProductsForPI(pi, doItem.fot);
+          const matchProd = validProducts.find((p) => p.namaProduk === currentItem.jenisPupuk);
+          const piFOT = (matchProd?.fot || getStockFotForProduct(currentItem.jenisPupuk) || "").trim();
           if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) return false;
         }
       }
@@ -370,8 +371,9 @@ export default function SuratPengangkutanPage() {
     if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
       const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
       if (pi) {
-        const prod = pi.produkItems.find((p) => p.namaProduk === currentItem.jenisPupuk);
-        const piFOT = (prod?.fot || getStockFotForProduct(currentItem.jenisPupuk) || "").trim();
+        const validProducts = getValidProductsForPI(pi, doItem.fot);
+        const matchProd = validProducts.find((p) => p.namaProduk === currentItem.jenisPupuk);
+        const piFOT = (matchProd?.fot || getStockFotForProduct(currentItem.jenisPupuk) || "").trim();
         if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
           setFieldError(`nomorSubDO_${itemId}`, `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`);
           return;
@@ -671,7 +673,8 @@ export default function SuratPengangkutanPage() {
     if (currentItem && currentItem.nomorSubDO.trim()) {
       const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
       if (doItem) {
-        const hasMatchingFOT = pi.produkItems.some((prod) => {
+        const validProducts = getValidProductsForPI(pi, doItem.fot);
+        const hasMatchingFOT = validProducts.some((prod) => {
           const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim().toUpperCase();
           return prodFOT === doItem.fot.trim().toUpperCase();
         });
@@ -685,7 +688,7 @@ export default function SuratPengangkutanPage() {
     if (currentItem && currentItem.nomorSubDO.trim()) {
       const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
       if (doItem) {
-        const validProducts = getValidProductsForPI(pi);
+        const validProducts = getValidProductsForPI(pi, doItem.fot);
         const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
         if (!matchProd) {
           setFieldError(`nomorPI_${itemId}`, `Proforma Invoice ${pi.nomorPI} tidak memiliki produk ${doItem.namaProduk} yang sesuai dengan DO yang dipilih`);
@@ -997,8 +1000,9 @@ export default function SuratPengangkutanPage() {
             if (item.nomorPI.trim() && item.jenisPupuk.trim()) {
               const pi = piList.find((p) => p.nomorPI === item.nomorPI);
               if (pi) {
-                const prod = pi.produkItems.find((p) => p.namaProduk === item.jenisPupuk);
-                const piFOT = (prod?.fot || getStockFotForProduct(item.jenisPupuk) || "").trim();
+                const validProducts = getValidProductsForPI(pi, doItem.fot);
+                const matchProd = validProducts.find((p) => p.namaProduk === item.jenisPupuk);
+                const piFOT = (matchProd?.fot || getStockFotForProduct(item.jenisPupuk) || "").trim();
                 if (piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
                   newErrors[`nomorSubDO_${idx}`] = `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`;
                 }
@@ -1007,7 +1011,8 @@ export default function SuratPengangkutanPage() {
             if (doItem.namaProduk !== item.jenisPupuk) {
               newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak sesuai dengan produk yang dipesan (${item.jenisPupuk})`;
             }
-            const validProducts = item.nomorPI.trim() ? getValidProductsForPI(piList.find((p) => p.nomorPI === item.nomorPI)!) : [];
+            const pi = item.nomorPI.trim() ? piList.find((p) => p.nomorPI === item.nomorPI) : null;
+            const validProducts = pi ? getValidProductsForPI(pi, doItem.fot) : [];
             const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
             if (!matchProd && item.nomorPI.trim()) {
               newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${item.nomorPI}`;
