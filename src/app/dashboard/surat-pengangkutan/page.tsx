@@ -938,31 +938,40 @@ export default function SuratPengangkutanPage() {
         if (field === "pengambilanZAK") {
           const zak = parseFloat(value) || 0;
           const hasDO = item.nomorSubDO.trim() !== "";
-          if (item.maxZAK > 0 && zak > item.maxZAK) {
-            updated.pengambilanZAK = String(item.maxZAK);
-            const zakFinal = item.maxZAK;
+          const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
+          const doSisa = hasDO ? Math.max(0, item.doPartyKG - item.doLoadedKG) : 0;
+          const maxZAKPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
+          const maxZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
+          const finalMaxZAK = hasDO ? Math.min(maxZAKPI, maxZAKDO) : maxZAKPI;
+          if (finalMaxZAK > 0 && zak > finalMaxZAK) {
+            updated.pengambilanZAK = String(finalMaxZAK);
+            updated.maxZAK = finalMaxZAK;
+            const zakFinal = finalMaxZAK;
             if (hasDO) {
-              const doSisa = Math.max(0, item.doPartyKG - item.doLoadedKG - (zakFinal * item.bobotPerUnit));
-              updated.sisa = formatParty(doSisa);
+              const doSisaAfter = Math.max(0, doSisa - (zakFinal * item.bobotPerUnit));
+              updated.sisa = formatParty(doSisaAfter);
             } else {
-              const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG - (zakFinal * item.bobotPerUnit));
-              updated.sisa = formatSisaKG(piSisa);
+              const piSisaAfter = Math.max(0, piSisa - (zakFinal * item.bobotPerUnit));
+              updated.sisa = formatSisaKG(piSisaAfter);
             }
           } else {
+            updated.maxZAK = finalMaxZAK;
             if (hasDO) {
-              const doSisa = Math.max(0, item.doPartyKG - item.doLoadedKG - (zak * item.bobotPerUnit));
-              updated.sisa = formatParty(doSisa);
+              const doSisaAfter = Math.max(0, doSisa - (zak * item.bobotPerUnit));
+              updated.sisa = formatParty(doSisaAfter);
             } else {
-              const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG - (zak * item.bobotPerUnit));
-              updated.sisa = formatSisaKG(piSisa);
+              const piSisaAfter = Math.max(0, piSisa - (zak * item.bobotPerUnit));
+              updated.sisa = formatSisaKG(piSisaAfter);
             }
           }
           const idx = items.findIndex((it) => it.id === id);
           clearFieldError(`pengambilan_${idx}`);
-          if (zak <= 0 && value.trim() !== "") {
+          if (value.trim() !== "" && zak <= 0) {
             setFieldError(`pengambilan_${idx}`, "Pengambilan harus lebih dari 0");
-          } else if (item.maxZAK > 0 && zak > item.maxZAK) {
-            setFieldError(`pengambilan_${idx}`, `Maksimal ${item.maxZAK} ZAK (${item.maxZAK * item.bobotPerUnit} KG)`);
+          } else if (finalMaxZAK > 0 && zak > finalMaxZAK) {
+            setFieldError(`pengambilan_${idx}`, `Maksimal ${finalMaxZAK} ZAK (${finalMaxZAK * item.bobotPerUnit} KG)`);
+          } else if (finalMaxZAK === 0) {
+            setFieldError(`pengambilan_${idx}`, "Sisa PI atau DO sudah habis");
           }
         }
         return updated;
