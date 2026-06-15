@@ -302,6 +302,7 @@ export default function RekapProformaInvoicePage() {
   const [selectedOrderTTD, setSelectedOrderTTD] = useState("");
   const [invoiceNomor, setInvoiceNomor] = useState("");
   const [invoiceDate, setInvoiceDate] = useState("");
+  const [customerId, setCustomerId] = useState("");
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [editingPaymentIndex, setEditingPaymentIndex] = useState<number | null>(null);
@@ -442,6 +443,32 @@ export default function RekapProformaInvoicePage() {
       const data = snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() } as TTDData));
       setTtdList(data);
     } catch (error) { console.error(error); }
+  };
+
+
+  const fetchCustomerByName = async (namaCustomer: string) => {
+    try {
+      const q = query(collection(db, "customers"), where("namaCustomer", "==", namaCustomer.trim()));
+      const snapshot = await getDocs(q);
+      if (!snapshot.empty) {
+        const customerData = snapshot.docs[0].data();
+        setCustomerId(customerData.customerId || "");
+      } else {
+        const q2 = query(collection(db, "customers"));
+        const snapshot2 = await getDocs(q2);
+        const found = snapshot2.docs.find((d) =>
+          d.data().namaCustomer?.trim().toLowerCase() === namaCustomer.trim().toLowerCase()
+        );
+        if (found) {
+          setCustomerId(found.data().customerId || "");
+        } else {
+          setCustomerId("");
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      setCustomerId("");
+    }
   };
 
   const checkBastExists = async (nomorPI: string) => {
@@ -810,6 +837,7 @@ export default function RekapProformaInvoicePage() {
     setSelectedOrderTTD("");
     setInvoiceNomor("");
     setInvoiceDate("");
+    setCustomerId("");
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
@@ -826,6 +854,7 @@ export default function RekapProformaInvoicePage() {
       const sortedSurat = [...allSurat].sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       const tanggal = sortedSurat[0] ? sortedSurat[0].tanggal : row.tanggal;
       setInvoiceDate(tanggal);
+      await fetchCustomerByName(row.namaCustomer);
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
   };
 
@@ -834,11 +863,15 @@ export default function RekapProformaInvoicePage() {
     setSelectedOrderTTD("");
     setInvoiceNomor("");
     setInvoiceDate(surat.tanggal);
+    setCustomerId("");
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
       const nomor = await generateInvoiceNumber(surat);
       setInvoiceNomor(nomor);
+      if (selectedItem) {
+        await fetchCustomerByName(selectedItem.namaCustomer);
+      }
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
   };
 
@@ -1035,30 +1068,28 @@ export default function RekapProformaInvoicePage() {
     try {
       const pi = selectedItem;
       const surat = invoiceSurat;
-      const invoiceItems = pi.produkItems.map((produk, idx) => {
-        let loadedQty = 0;
-        (surat.items || []).forEach((it) => {
-          const itemPI = it.nomorPI || "";
-          if (itemPI && itemPI !== pi.nomorPI) return;
-          const match = it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) || produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
-          if (match) {
-            const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
-            loadedQty += (it.pengambilanZAK || 0) * bobot;
-          }
-        });
+      const suratItems = surat.items || [];
+      const invoiceItems = suratItems.map((it, idx) => {
+        const produk = pi.produkItems.find((p) =>
+          p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
+          it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
+        ) || pi.produkItems[0];
+        const bobot = it.bobotPerUnit || produk?.bobotPerUnit || 50;
+        const loadedQty = (it.pengambilanZAK || 0) * bobot;
+        const hargaSatuan = produk?.hargaSatuan || 0;
         return {
           no: idx + 1,
-          namaProduk: produk.namaProduk,
-          produsen: produk.produsen || "",
-          kemasan: produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
-          fot: produk.fot || "",
+          namaProduk: it.jenisPupuk || produk?.namaProduk || "",
+          produsen: produk?.produsen || "",
+          kemasan: produk?.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
+          fot: it.fot || produk?.fot || "",
           kuantitas: loadedQty,
           satuan: "KG",
-          hargaSatuan: produk.hargaSatuan || 0,
-          hargaPerZakDus: produk.hargaPerZakDus || 0,
-          subTotal: loadedQty * (produk.hargaSatuan || 0),
+          hargaSatuan,
+          hargaPerZakDus: produk?.hargaPerZakDus || 0,
+          subTotal: loadedQty * hargaSatuan,
         };
-      }).filter((it) => it.kuantitas > 0).map((it, idx) => ({ ...it, no: idx + 1 }));
+      });
       const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
       const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
       const totalPembayaran = totalSubTotal + ppn + (pi.ongkosKirim || 0);
@@ -1913,20 +1944,36 @@ export default function RekapProformaInvoicePage() {
     const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
     const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
     const tanggalInvoice = invoiceDate || pi.tanggal;
-    const invoiceItems = pi.produkItems
-      .map((produk, idx) => {
-        let loadedQty = 0;
-        if (invoiceSurat) {
-          (invoiceSurat.items || []).forEach((it: SuratMuatItem) => {
-            const itemPI = it.nomorPI || "";
-            if (itemPI && itemPI !== pi.nomorPI) return;
-            const match = it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) || produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
-            if (match) {
-              const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
-              loadedQty += (it.pengambilanZAK || 0) * bobot;
-            }
-          });
-        } else {
+    let invoiceItems: any[];
+    if (invoiceSurat) {
+      const suratItems = invoiceSurat.items || [];
+      invoiceItems = suratItems.map((it, idx) => {
+        const produk = pi.produkItems.find((p) =>
+          p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
+          it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
+        ) || pi.produkItems[0];
+        const bobot = it.bobotPerUnit || produk?.bobotPerUnit || 50;
+        const loadedQty = (it.pengambilanZAK || 0) * bobot;
+        const hargaSatuan = produk?.hargaSatuan || 0;
+        const hargaPerZakDus = produk?.hargaPerZakDus || 0;
+        const subTotal = loadedQty * hargaSatuan;
+        return {
+          no: idx + 1,
+          namaProduk: it.jenisPupuk || produk?.namaProduk || "",
+          produsen: produk?.produsen || "",
+          kemasan: produk?.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
+          fot: it.fot || produk?.fot || "",
+          kuantitas: loadedQty,
+          satuan: "KG",
+          hargaSatuan,
+          hargaPerZakDus,
+          subTotal,
+        };
+      });
+    } else {
+      invoiceItems = pi.produkItems
+        .map((produk, idx) => {
+          let loadedQty = 0;
           allSuratForPI.forEach((surat: SuratMuatInfo) => {
             (surat.items || []).forEach((it: SuratMuatItem) => {
               const itemPI = it.nomorPI || "";
@@ -1938,26 +1985,26 @@ export default function RekapProformaInvoicePage() {
               }
             });
           });
-        }
-        const hargaSatuan = produk.hargaSatuan || 0;
-        const hargaPerZakDus = produk.hargaPerZakDus || 0;
-        const kemasan = produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-";
-        const subTotal = loadedQty * hargaSatuan;
-        return {
-          no: idx + 1,
-          namaProduk: produk.namaProduk,
-          produsen: produk.produsen || "",
-          kemasan,
-          fot: produk.fot || "",
-          kuantitas: loadedQty,
-          satuan: "KG",
-          hargaSatuan,
-          hargaPerZakDus,
-          subTotal,
-        };
-      })
-      .filter((it) => !invoiceSurat || it.kuantitas > 0)
-      .map((it, idx) => ({ ...it, no: idx + 1 }));
+          const hargaSatuan = produk.hargaSatuan || 0;
+          const hargaPerZakDus = produk.hargaPerZakDus || 0;
+          const kemasan = produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-";
+          const subTotal = loadedQty * hargaSatuan;
+          return {
+            no: idx + 1,
+            namaProduk: produk.namaProduk,
+            produsen: produk.produsen || "",
+            kemasan,
+            fot: produk.fot || "",
+            kuantitas: loadedQty,
+            satuan: "KG",
+            hargaSatuan,
+            hargaPerZakDus,
+            subTotal,
+          };
+        })
+        .filter((it) => it.kuantitas > 0)
+        .map((it, idx) => ({ ...it, no: idx + 1 }));
+    }
     const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
     const dppNilaiLain = 0;
     const ongkosKirim = pi.ongkosKirim || 0;
@@ -2051,7 +2098,8 @@ export default function RekapProformaInvoicePage() {
             <div class="meta-box">
               <p><span style="font-weight: 600;">INVOICE NO. :</span> ${invoiceNomor}</p>
               <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(tanggalInvoice).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
-              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${pi.nomorPI || ""}</p>
+              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${customerId || "-"}</p>
+              <p><span style="font-weight: 600;">NOMOR PI :</span> ${pi.nomorPI || ""}</p>
             </div></div>
           <table class="data-table"><thead><tr><th style="width: 24px;">NO</th><th style="text-align: left; padding-left: 4px;">NAMA PRODUK</th><th style="text-align: left; padding-left: 4px;">PRODUSEN</th><th style="width: 50px;">KEMASAN</th><th style="width: 40px;">FOT</th><th style="width: 60px;">KUANTITAS</th><th style="width: 80px;">HARGA SATUAN<br>PER KG</th><th style="width: 80px;">PER ZAK</th><th style="width: 90px;">SUB TOTAL</th></tr></thead><tbody>${itemsHtml}${emptyRows}</tbody></table>
           <div class="summary-section">
