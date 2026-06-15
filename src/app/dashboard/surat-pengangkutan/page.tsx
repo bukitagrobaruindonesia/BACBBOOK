@@ -405,6 +405,8 @@ export default function SuratPengangkutanPage() {
         const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
         const maxZAKPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
         const doSisa = Math.max(0, doItem.partyKG - loadedDO);
+        const maxZAKDO = item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
+        const finalMaxZAK = Math.min(maxZAKPI, maxZAKDO);
         return {
           ...item,
           nomorSubDO: doItem.nomorSubDO,
@@ -414,10 +416,10 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: bobot,
           doPartyKG: doItem.partyKG,
           doLoadedKG: loadedDO,
-          maxZAK: maxZAKPI,
+          maxZAK: finalMaxZAK,
           party: formatParty(doItem.partyKG),
           sisa: formatParty(doSisa),
-          pengambilanZAK: maxZAKPI > 0 ? String(maxZAKPI) : "",
+          pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
           namaCustomer: doItem.namaPerusahaan,
         };
       })
@@ -725,8 +727,10 @@ export default function SuratPengangkutanPage() {
         if (item.id !== itemId) return item;
         const hasDO = item.nomorSubDO.trim() !== "";
         const doSisa = hasDO ? Math.max(0, item.doPartyKG - item.doLoadedKG) : 0;
+        const maxZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
         const piSisa = Math.max(0, piKuantitas - piLoadedKG);
         const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
+        const finalMaxZAK = hasDO ? Math.min(maxZAKPI, maxZAKDO) : maxZAKPI;
         return {
           ...item,
           nomorPI: pi.nomorPI,
@@ -736,7 +740,7 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: hasDO ? item.bobotPerUnit : bobot,
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
-          maxZAK: maxZAKPI,
+          maxZAK: finalMaxZAK,
           party: hasDO ? item.party : formatParty(piKuantitas),
           sisa: hasDO ? formatParty(doSisa) : formatSisaKG(maxZAKPI * bobot),
           pengambilanZAK: "",
@@ -784,8 +788,10 @@ export default function SuratPengangkutanPage() {
         if (item.id !== itemId) return item;
         const hasDO = item.nomorSubDO.trim() !== "";
         const doSisa = hasDO ? Math.max(0, item.doPartyKG - item.doLoadedKG) : 0;
+        const maxZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
         const piSisa = Math.max(0, piKuantitas - piLoadedKG);
         const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
+        const finalMaxZAK = hasDO ? Math.min(maxZAKPI, maxZAKDO) : maxZAKPI;
         return {
           ...item,
           jenisPupuk: hasDO ? item.jenisPupuk : prod.namaProduk,
@@ -793,7 +799,7 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: hasDO ? item.bobotPerUnit : bobot,
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
-          maxZAK: maxZAKPI,
+          maxZAK: finalMaxZAK,
           party: hasDO ? item.party : formatParty(piKuantitas),
           sisa: hasDO ? formatParty(doSisa) : formatSisaKG(maxZAKPI * bobot),
           pengambilanZAK: "",
@@ -1036,6 +1042,16 @@ export default function SuratPengangkutanPage() {
         if (zak <= 0) newErrors[`pengambilan_${idx}`] = "Pengambilan harus lebih dari 0";
         if (zak > item.maxZAK && item.maxZAK > 0) {
           newErrors[`pengambilan_${idx}`] = `Maksimal ${item.maxZAK} ZAK (${item.maxZAK * item.bobotPerUnit} KG)`;
+        }
+        if (isMandiri && item.nomorSubDO.trim()) {
+          const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+          if (doItem) {
+            const doSisa = Math.max(0, doItem.partyKG - getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk));
+            const maxZAKDO = item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
+            if (zak > maxZAKDO && maxZAKDO > 0) {
+              newErrors[`pengambilan_${idx}`] = `Melebihi sisa DO: maksimal ${maxZAKDO} ZAK (${doSisa} KG)`;
+            }
+          }
         }
       }
       const fot = (item.fot || "").trim();
