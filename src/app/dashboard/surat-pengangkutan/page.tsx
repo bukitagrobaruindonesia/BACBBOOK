@@ -13,6 +13,7 @@ import {
   updateDoc,
   where,
   getDoc,
+  deleteDoc,
   runTransaction,
   Timestamp,
 } from "firebase/firestore";
@@ -154,8 +155,174 @@ const formatParty = (kg: number) => {
   return `${kg.toLocaleString()} KG`;
 };
 
+
 const formatSisaKG = (kg: number) => {
   return `${kg.toLocaleString()} KG`;
+};
+
+const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<string> => {
+  const prefix = `BAGB-SP-DO/${year}/${roman}`;
+  const poolRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+  const maxRetries = 10;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        let lastNumber = 0;
+        let gaps: number[] = [];
+        if (poolSnap.exists()) {
+          lastNumber = poolSnap.data().lastNumber || 0;
+          gaps = poolSnap.data().gaps || [];
+        }
+        let candidateNum: number;
+        if (gaps.length > 0) {
+          gaps.sort((a, b) => a - b);
+          candidateNum = gaps[0];
+          gaps = gaps.filter((g) => g !== candidateNum);
+        } else {
+          candidateNum = lastNumber + 1;
+          lastNumber = candidateNum;
+        }
+        const candidateSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
+        const lockRef = doc(db, "suratPengangkutanLocks", candidateSeri);
+        const lockDoc = await transaction.get(lockRef);
+        if (lockDoc.exists()) {
+          let searchNum = 1;
+          let found = false;
+          while (searchNum <= lastNumber + 1000 && !found) {
+            const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
+            const testRef = doc(db, "suratPengangkutanLocks", testSeri);
+            const testDoc = await transaction.get(testRef);
+            if (!testDoc.exists()) {
+              if (gaps.includes(searchNum)) {
+                gaps = gaps.filter((g) => g !== searchNum);
+              } else if (searchNum > lastNumber) {
+                lastNumber = searchNum;
+              }
+              candidateNum = searchNum;
+              found = true;
+            }
+            searchNum++;
+          }
+          if (!found) throw new Error("No available DO Dikuasakan number found");
+        }
+        transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
+        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
+        return candidateSeri;
+      });
+      return result;
+    } catch (error: any) {
+      if (attempt === maxRetries - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
+  throw new Error("Failed to generate unique DO Dikuasakan number after retries");
+};
+
+const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): Promise<string> => {
+  const prefix = `BAGB-DO-${nomorSubDO}-${perusahaan}-SP`;
+  const poolRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
+  const maxRetries = 10;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        let lastNumber = 0;
+        let gaps: number[] = [];
+        if (poolSnap.exists()) {
+          lastNumber = poolSnap.data().lastNumber || 0;
+          gaps = poolSnap.data().gaps || [];
+        }
+        let candidateNum: number;
+        if (gaps.length > 0) {
+          gaps.sort((a, b) => a - b);
+          candidateNum = gaps[0];
+          gaps = gaps.filter((g) => g !== candidateNum);
+        } else {
+          candidateNum = lastNumber + 1;
+          lastNumber = candidateNum;
+        }
+        const candidateSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
+        const lockRef = doc(db, "suratPengangkutanLocks", candidateSeri);
+        const lockDoc = await transaction.get(lockRef);
+        if (lockDoc.exists()) {
+          let searchNum = 1;
+          let found = false;
+          while (searchNum <= lastNumber + 1000 && !found) {
+            const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
+            const testRef = doc(db, "suratPengangkutanLocks", testSeri);
+            const testDoc = await transaction.get(testRef);
+            if (!testDoc.exists()) {
+              if (gaps.includes(searchNum)) {
+                gaps = gaps.filter((g) => g !== searchNum);
+              } else if (searchNum > lastNumber) {
+                lastNumber = searchNum;
+              }
+              candidateNum = searchNum;
+              found = true;
+            }
+            searchNum++;
+          }
+          if (!found) throw new Error("No available DO Mandiri number found");
+        }
+        transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
+        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
+        return candidateSeri;
+      });
+      return result;
+    } catch (error: any) {
+      if (attempt === maxRetries - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+    }
+  }
+  throw new Error("Failed to generate unique DO Mandiri number after retries");
+};
+
+const releaseSeriDO = async (nomorSeri: string) => {
+  try {
+    const lockRef = doc(db, "suratPengangkutanLocks", nomorSeri);
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists()) {
+      await deleteDoc(lockRef);
+    }
+    const parts = nomorSeri.split("/");
+    if (parts.length === 4 && parts[0] === "BAGB-SP-DO") {
+      const year = parseInt(parts[1]);
+      const roman = parts[2];
+      const num = parseInt(parts[3]);
+      const poolRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+      await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        if (!poolSnap.exists()) return;
+        let gaps = (poolSnap.data().gaps || []) as number[];
+        if (!gaps.includes(num)) {
+          gaps.push(num);
+          gaps.sort((a, b) => a - b);
+        }
+        transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+      });
+    } else if (nomorSeri.startsWith("BAGB-DO-")) {
+      const match = nomorSeri.match(/^BAGB-DO-(.+?)-(.+?)-SP-(\d{4})$/);
+      if (match) {
+        const nsub = match[1];
+        const perusahaan = match[2];
+        const num = parseInt(match[3]);
+        const poolRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nsub}`);
+        await runTransaction(db, async (transaction) => {
+          const poolSnap = await transaction.get(poolRef);
+          if (!poolSnap.exists()) return;
+          let gaps = (poolSnap.data().gaps || []) as number[];
+          if (!gaps.includes(num)) {
+            gaps.push(num);
+            gaps.sort((a, b) => a - b);
+          }
+          transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+        });
+      }
+    }
+  } catch (error) {
+    console.error(error);
+  }
 };
 
 const isDOExpired = (tanggalKadaluarsa: string) => {
@@ -1008,8 +1175,7 @@ export default function SuratPengangkutanPage() {
       const piRefs = piItemsWithId.map((it) => doc(db, "proformaInvoice", it.piId!));
       const stockRefs = stockItemsForGI.map((s) => doc(db, "stockGudang", s.id));
 
-      let counterRef: any;
-      let counterPrefix = "";
+      let nomorSeri = "";
       let isMandiriCounter = false;
       let mandiriNomorSubDO = "";
       let mandiriPerusahaan = "";
@@ -1017,14 +1183,18 @@ export default function SuratPengangkutanPage() {
       if (jenisSurat === "gudangInduk") {
         const year = now.getFullYear();
         const roman = getRomanMonth(now.getMonth() + 1);
-        counterPrefix = `BAGB-SP/${year}/${roman}`;
-        counterRef = doc(db, "counters", `suratPengangkutanGI_${year}_${roman}`);
+        const counterRef = doc(db, "counters", `suratPengangkutanGI_${year}_${roman}`);
+        const counterSnap = await getDoc(counterRef);
+        let currentCount = 0;
+        if (counterSnap.exists()) {
+          currentCount = counterSnap.data().count || 0;
+        }
+        const nextCount = currentCount + 1;
+        await updateDoc(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
+        nomorSeri = `BAGB-SP/${year}/${roman}/${String(nextCount).padStart(4, "0")}`;
       } else if (jenisSurat === "do") {
         if (subJenisDO === "dikuasakan") {
-          const year = now.getFullYear();
-          const roman = getRomanMonth(now.getMonth() + 1);
-          counterPrefix = `BAGB-SP-DO/${year}/${roman}`;
-          counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+          nomorSeri = await getUniqueSeriDODikuasakan(now.getFullYear(), getRomanMonth(now.getMonth() + 1));
         } else {
           const perusahaan = formData.kepadaPerusahaan.trim();
           const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
@@ -1033,43 +1203,21 @@ export default function SuratPengangkutanPage() {
           mandiriNomorSubDO = nomorSubDO;
           mandiriPerusahaan = perusahaan;
           isMandiriCounter = true;
-          counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
+          nomorSeri = await getUniqueSeriDOMandiri(perusahaan, nomorSubDO);
         }
       }
 
       await runTransaction(db, async (transaction) => {
-        const allReads = [transaction.get(counterRef)];
+        const allReads: Promise<any>[] = [];
         doRefs.forEach((ref) => allReads.push(transaction.get(ref)));
         piRefs.forEach((ref) => allReads.push(transaction.get(ref)));
         stockRefs.forEach((ref) => allReads.push(transaction.get(ref)));
 
         const allSnaps = await Promise.all(allReads);
 
-        const counterSnap = allSnaps[0];
-        const doSnaps = allSnaps.slice(1, 1 + doRefs.length);
-        const piSnaps = allSnaps.slice(1 + doRefs.length, 1 + doRefs.length + piRefs.length);
-        const stockSnaps = allSnaps.slice(1 + doRefs.length + piRefs.length);
-
-        const counterData = counterSnap.data() as CounterDoc | undefined;
-        let currentCount = 0;
-        if (counterData) {
-          currentCount = counterData.count || 0;
-        } else {
-          transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
-        }
-        const nextCount = currentCount + 1;
-        transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
-
-        let nomorSeri = "";
-        if (jenisSurat === "gudangInduk") {
-          nomorSeri = `${counterPrefix}/${String(nextCount).padStart(4, "0")}`;
-        } else if (jenisSurat === "do") {
-          if (subJenisDO === "dikuasakan") {
-            nomorSeri = `${counterPrefix}/${String(nextCount).padStart(4, "0")}`;
-          } else {
-            nomorSeri = `BAGB-DO-${mandiriNomorSubDO}-${mandiriPerusahaan}-SP-${String(nextCount).padStart(4, "0")}`;
-          }
-        }
+        const doSnaps = allSnaps.slice(0, doRefs.length);
+        const piSnaps = allSnaps.slice(doRefs.length, doRefs.length + piRefs.length);
+        const stockSnaps = allSnaps.slice(doRefs.length + piRefs.length);
 
         if (!nomorSeri) throw new Error("Gagal generate nomor seri");
 

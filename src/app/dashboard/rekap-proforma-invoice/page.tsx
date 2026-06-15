@@ -177,7 +177,7 @@ const validateNomorSeriFormat = (value: string) => {
 };
 
 const parseInvoiceNumber = (nomor: string) => {
-  const match = nomor.match(new RegExp("^BAGB-INV(?:-S(\d+))?-(\d{4})$"));
+  const match = nomor.match(/^BAGB-INV(?:-S(\d+))?-(\d{3})$/);
   if (!match) return null;
   return {
     isPartial: !!match[1],
@@ -722,14 +722,14 @@ export default function RekapProformaInvoicePage() {
             candidateNum = lastNumber + 1;
             lastNumber = candidateNum;
           }
-          const candidateBase = String(candidateNum).padStart(4, "0");
+          const candidateBase = String(candidateNum).padStart(3, "0");
           const lockRef = doc(db, "invoiceBaseLocks", candidateBase);
           const lockDoc = await transaction.get(lockRef);
           if (lockDoc.exists()) {
             let searchNum = 1;
             let found = false;
             while (searchNum <= lastNumber + 1000 && !found) {
-              const testBase = String(searchNum).padStart(4, "0");
+              const testBase = String(searchNum).padStart(3, "0");
               const testRef = doc(db, "invoiceBaseLocks", testBase);
               const testDoc = await transaction.get(testRef);
               if (!testDoc.exists()) {
@@ -749,7 +749,7 @@ export default function RekapProformaInvoicePage() {
           }
           transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
-          return String(candidateNum).padStart(4, "0");
+          return String(candidateNum).padStart(3, "0");
         });
         return result;
       } catch (error: any) {
@@ -785,13 +785,20 @@ export default function RekapProformaInvoicePage() {
       snap.docs.forEach((d) => {
         const ni = d.data().nomorInvoice;
         if (ni && ni.includes("-S") && ni.endsWith(`-${baseNumber}`)) {
-          const match = ni.match(new RegExp("-S(\d+)-"));
+          const match = ni.match(/^BAGB-INV-S(\d+)-\d{3}$/);
           if (match) usedPartials.add(parseInt(match[1]));
         }
       });
     });
+    const allPartialNums = Array.from(usedPartials).sort((a, b) => a - b);
     let nextPartial = 1;
-    while (usedPartials.has(nextPartial)) nextPartial++;
+    for (const num of allPartialNums) {
+      if (num === nextPartial) {
+        nextPartial++;
+      } else if (num > nextPartial) {
+        break;
+      }
+    }
     const nomor = `BAGB-INV-S${nextPartial}-${baseNumber}`;
     await updateDoc(suratRef, { nomorInvoice: nomor });
     return nomor;
