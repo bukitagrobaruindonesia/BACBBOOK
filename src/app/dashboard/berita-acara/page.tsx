@@ -61,6 +61,12 @@ interface SuratMuatInfo {
   namaCustomer?: string | string[];
 }
 
+interface RiwayatPembayaran {
+  tanggal: string;
+  jumlah: number;
+  fotoBukti?: string[];
+}
+
 interface ProformaInvoice {
   id: string;
   tanggal: string;
@@ -86,6 +92,9 @@ interface ProformaInvoice {
   createdAt: Date;
   updatedAt: Date;
   cc?: string;
+  riwayatPembayaran?: RiwayatPembayaran[];
+  jumlahUangDibayar?: number;
+  statusPelunasan?: string;
 }
 
 interface BeritaAcaraItem {
@@ -826,7 +835,62 @@ export default function BeritaAcaraPage() {
           </div>
         </div>
 
+
         ${spHtml}
+
+        ${(() => {
+          const riwayat = pi.riwayatPembayaran || [];
+          if (riwayat.length === 0) return "";
+          const paymentRows = riwayat.map((r, idx) => `
+            <tr>
+              <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
+              <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${r.tanggal}</td>
+              <td style="text-align: right; padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${formatRupiah(r.jumlah)}</td>
+              <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${(r.fotoBukti || []).length > 0 ? (r.fotoBukti || []).length + " foto" : "-"}</td>
+            </tr>
+          `).join("");
+          let fotoHtml = "";
+          riwayat.forEach((r) => {
+            (r.fotoBukti || []).forEach((foto) => {
+              fotoHtml += `<img src="${foto}" style="max-height: 160px; max-width: 30%; object-fit: contain; border: 1px solid #ccc; margin: 4px; border-radius: 4px;" />`;
+            });
+          });
+          const totalPaid = riwayat.reduce((sum, r) => sum + (r.jumlah || 0), 0) || pi.jumlahUangDibayar || 0;
+          const status = pi.statusPelunasan || (totalPaid >= pi.jumlahTertagih && pi.jumlahTertagih > 0 ? "Lunas" : totalPaid > 0 ? "Cicilan" : "Belum Lunas");
+          return `
+            <div style="page-break-before: always;">
+              <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
+              <div style="text-align: center; margin: 8px 0 12px 0;">
+                <h1 style="font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline;">BUKTI PEMBAYARAN</h1>
+                <p style="font-size: 11px; font-weight: 600;">Nomor Proforma Invoice ${pi.nomorPI}</p>
+              </div>
+              <div style="padding: 0 4px; flex: 1;">
+                <div style="margin-bottom: 10px; font-size: 10px;">
+                  <p style="margin-bottom: 2px;"><strong>Customer:</strong> ${pi.namaCustomer}</p>
+                  <p style="margin-bottom: 2px;"><strong>Alamat:</strong> ${(pi.alamatCustomer || "").replace(/\n/g, " ")}</p>
+                  <p style="margin-bottom: 2px;"><strong>Jumlah Tertagih:</strong> ${formatRupiah(pi.jumlahTertagih)}</p>
+                  <p style="margin-bottom: 2px;"><strong>Status Pelunasan:</strong> ${status}</p>
+                  <p style="margin-bottom: 2px;"><strong>Total Dibayar:</strong> ${formatRupiah(totalPaid)}</p>
+                  <p style="margin-bottom: 2px;"><strong>Sisa:</strong> ${formatRupiah(Math.max(0, pi.jumlahTertagih - totalPaid))}</p>
+                </div>
+                <table style="width: 100%; border-collapse: collapse; margin-bottom: 12px; font-size: 10px;">
+                  <thead>
+                    <tr>
+                      <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 30px;">No</th>
+                      <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 120px;">Tanggal</th>
+                      <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 150px;">Jumlah</th>
+                      <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact;">Foto Bukti</th>
+                    </tr>
+                  </thead>
+                  <tbody>${paymentRows}</tbody>
+                </table>
+                ${fotoHtml ? `<div style="margin-top: 12px;"><p style="font-weight: 700; margin-bottom: 8px; font-size: 10px;">Lampiran Foto Bukti Pembayaran:</p><div style="display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;">${fotoHtml}</div></div>` : ""}
+              </div>
+              <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: auto; padding-top: 10px;" onerror="this.style.display='none'" />
+            </div>
+          `;
+        })()}
+
       </body>
       </html>
     `;
