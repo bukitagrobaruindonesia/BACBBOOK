@@ -2096,11 +2096,10 @@ export default function RekapProformaInvoicePage() {
               ${pi.npwp ? `<p style="margin-top: 3px;">NP/WP: ${pi.npwp}</p>` : ""}
             </div>
             <div class="meta-box">
-              <p style="background: #e8f5e9; padding: 3px 6px; border-radius: 3px; margin-bottom: 4px; font-size: 10px;"><span style="font-weight: 600;">NO PROFORMA INVOICE :</span> <span style="font-weight: 700; color: #15803d;">${pi.nomorPI || ""}</span></p>
-              ${invoiceSurat ? `<p style="background: #dbeafe; padding: 3px 6px; border-radius: 3px; margin-bottom: 4px; font-size: 10px;"><span style="font-weight: 600;">NO SP :</span> <span style="font-weight: 700; color: #1d4ed8;">${invoiceSurat.nomorSeri || ""}</span></p>` : ""}
               <p><span style="font-weight: 600;">INVOICE NO. :</span> ${invoiceNomor}</p>
               <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(tanggalInvoice).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
               <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${customerId || "-"}</p>
+              <p><span style="font-weight: 600;">NOMOR PI :</span> ${pi.nomorPI || ""}</p>
             </div></div>
           <table class="data-table"><thead><tr><th style="width: 24px;">NO</th><th style="text-align: left; padding-left: 4px;">NAMA PRODUK</th><th style="text-align: left; padding-left: 4px;">PRODUSEN</th><th style="width: 50px;">KEMASAN</th><th style="width: 40px;">FOT</th><th style="width: 60px;">KUANTITAS</th><th style="width: 80px;">HARGA SATUAN<br>PER KG</th><th style="width: 80px;">PER ZAK</th><th style="width: 90px;">SUB TOTAL</th></tr></thead><tbody>${itemsHtml}${emptyRows}</tbody></table>
           <div class="summary-section">
