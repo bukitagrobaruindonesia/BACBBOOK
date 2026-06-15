@@ -2167,6 +2167,34 @@ export default function RekapProformaInvoicePage() {
     printWindow.document.close();
   };
 
+  
+  const handlePrintFoto = (fotoSrc: string, index: number) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    const html = `
+      <!DOCTYPE html><html><head><title>Foto Bukti Pembayaran ${index + 1}</title>
+      <style>
+        @page { size: A4; margin: 10mm; }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; background: #f3f4f6; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        .img-container { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); max-width: 90vw; max-height: 80vh; display: flex; flex-direction: column; align-items: center; }
+        .img-container img { max-width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; }
+        .img-label { margin-top: 12px; font-size: 14px; color: #666; text-align: center; }
+        .print-bar { margin-top: 20px; text-align: center; }
+        .print-btn { background: #16a34a; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 600; }
+        @media print { .print-bar { display: none !important; } body { background: white; } .img-container { box-shadow: none; padding: 0; } }
+      </style></head><body>
+        <div class="img-container">
+          <img src="${fotoSrc}" alt="Foto Bukti ${index + 1}" onerror="this.parentElement.innerHTML='<p style=padding:40px;color:#999;>Gambar tidak dapat dimuat</p>';" />
+          <p class="img-label">Foto Bukti Pembayaran #${index + 1}</p>
+        </div>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
+      </body></html>`;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   const handleSuratItemChange = (idx: number, field: string, value: string) => {
     setEditSuratForm((prev) => {
       const newItems = [...prev.items];
@@ -2613,8 +2641,12 @@ export default function RekapProformaInvoicePage() {
                   </tbody>
                 </table>
                 {(selectedItem.riwayatPembayaran || []).some((r) => (r.fotoBukti || []).length > 0) && (
-                  <div className="mt-2 text-xs text-gray-500">
-                    {(selectedItem.riwayatPembayaran || []).reduce((sum, r) => sum + (r.fotoBukti || []).length, 0)} foto bukti tersedia (tampil di print)
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(selectedItem.riwayatPembayaran || []).flatMap((r) => r.fotoBukti || []).map((foto, idx) => (
+                      <div key={idx} onClick={() => handlePrintFoto(foto, idx)} className="h-20 w-20 rounded-lg border border-amber-200 bg-gray-100 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform overflow-hidden">
+                        <img src={foto} alt={`Bukti ${idx + 1}`} className="h-full w-full object-cover" />
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -2910,8 +2942,12 @@ export default function RekapProformaInvoicePage() {
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Riwayat Pembayaran</p>
               <table className="w-full text-sm"><thead><tr className="border-b border-gray-200"><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-gray-600">Jumlah</th><th className="text-center py-1 px-2 text-xs font-semibold text-gray-600">Foto</th><th className="text-center py-1 px-2 text-xs font-semibold text-gray-600">Aksi</th></tr></thead><tbody>{selectedItem?.riwayatPembayaran?.map((r, i) => (<tr key={i} className="border-b border-gray-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td><td className="py-1 px-2 text-center text-gray-700">{(r.fotoBukti || []).length > 0 ? (r.fotoBukti || []).length + " foto" : "-"}</td><td className="py-1 px-2 text-center"><div className="flex items-center justify-center gap-1"><button type="button" onClick={() => handleEditPaymentEntry(i)} className="p-1 text-amber-600 hover:bg-amber-50 rounded transition-colors" title="Edit"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button><button type="button" onClick={() => handleDeletePaymentEntry(i)} className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors" title="Hapus"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></td></tr>))}</tbody><tfoot><tr className="border-t border-gray-300"><td colSpan={2} className="py-1 px-2 text-xs font-bold text-gray-700">Total Dibayar</td><td className="py-1 px-2 text-right font-mono font-bold text-gray-900">{formatRupiah(selectedItem?.jumlahUangDibayar || 0)}</td><td colSpan={2}></td></tr></tfoot></table>
               {(selectedItem?.riwayatPembayaran || []).some((r) => (r.fotoBukti || []).length > 0) && (
-                <div className="mt-2 text-xs text-gray-500">
-                  {(selectedItem?.riwayatPembayaran || []).reduce((sum, r) => sum + (r.fotoBukti || []).length, 0)} foto bukti tersedia (tampil di print)
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(selectedItem?.riwayatPembayaran || []).flatMap((r) => r.fotoBukti || []).map((foto, idx) => (
+                    <div key={idx} onClick={() => handlePrintFoto(foto, idx)} className="h-16 w-16 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform overflow-hidden">
+                      <img src={foto} alt={`Bukti ${idx + 1}`} className="h-full w-full object-cover" />
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -2928,11 +2964,13 @@ export default function RekapProformaInvoicePage() {
             <input type="file" accept="image/*" multiple onChange={handleFotoChange} className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100" />
             <p className="text-xs text-gray-500 mt-1">Maksimal per foto akan otomatis dikompres kurang dari 2MB</p>
             {paymentForm.fotoBukti.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {paymentForm.fotoBukti.map((_, idx) => (
-                  <div key={idx} className="flex items-center gap-1 px-2 py-1 bg-gray-100 rounded-md text-xs text-gray-700">
-                    <span>Foto {idx + 1}</span>
-                    <button type="button" onClick={() => removeFoto(idx)} className="text-red-500 hover:text-red-700 font-bold">&times;</button>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {paymentForm.fotoBukti.map((foto, idx) => (
+                  <div key={idx} className="relative group">
+                    <div onClick={() => handlePrintFoto(foto, idx)} className="h-20 w-20 rounded-lg border border-gray-200 bg-gray-100 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform overflow-hidden">
+                      <img src={foto} alt={`Preview ${idx + 1}`} className="h-full w-full object-cover" />
+                    </div>
+                    <button type="button" onClick={() => removeFoto(idx)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 z-10">&times;</button>
                   </div>
                 ))}
               </div>
