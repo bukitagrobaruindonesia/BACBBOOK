@@ -431,9 +431,9 @@ export default function BapispFinalPage() {
       }
 
       spHtml += `
-        <div style="page-break-before: always;">
-          <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
-          <div style="text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">SURAT PENGANGKUTAN</div>
+        <div style="page-break-before: always; width: 186mm; margin: 0 auto; position: relative; min-height: 277mm; box-sizing: border-box; padding-bottom: 35mm;">
+          <img src="/Picture3.png" alt="Header" style="width: 100%; max-height: 45mm; object-fit: contain; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
+          <div style="text-align: center; background: #15803d; color: white; padding: 6px 0; margin: 6px 0 10px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact;">SURAT PENGANGKUTAN</div>
           <div style="margin-bottom: 12px;">
             <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px;">
               <span>Lamandau, ${new Date(surat.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span>
@@ -483,13 +483,13 @@ export default function BapispFinalPage() {
               </tbody>
             </table>
           </div>
-          <div style="margin-top: 10px; font-size: 9px;">
+          <div style="margin-top: 8px; font-size: 9px;">
             <p style="font-weight: 700;">Notes :</p>
             <p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p>
             <p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p>
             <p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-top: 30px; align-items: flex-end;">
+          <div style="display: flex; justify-content: space-between; margin-top: 20px; align-items: flex-end;">
             <div style="width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;">
               <p style="font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4;">Hormat Kami,<br>PT. BUKIT AGROCHEMICAL BARU</p>
               <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
@@ -503,7 +503,7 @@ export default function BapispFinalPage() {
               <p style="font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto;">${surat.driverUnit || ""}</p>
             </div>
           </div>
-          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: auto; padding-top: 10px;" onerror="this.style.display='none'" />
+          <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; position: absolute; bottom: 0; left: 0;" onerror="this.style.display='none'" />
         </div>
       `;
     });
@@ -733,7 +733,7 @@ export default function BapispFinalPage() {
                 <p style="font-size: 11px; font-weight: 700; margin-bottom: 10px; color: #000;">Detail Riwayat Pembayaran:</p>
                 ${paymentSections}
               </div>
-              <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: auto; padding-top: 10px;" onerror="this.style.display='none'" />
+              <img src="/Picture1.png" alt="Footer" style="width: 100%; display: block; margin-top: 10px; padding-top: 0;" onerror="this.style.display='none'" />
             </div>
           `;
         })()}
