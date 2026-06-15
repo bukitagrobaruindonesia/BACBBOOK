@@ -323,17 +323,12 @@ export default function SuratPengangkutanPage() {
     return doList.filter((doItem) => {
       if (isDOExpired(doItem.tanggalKadaluarsa)) return false;
       const sisa = getSisaDO(doItem);
+      if (sisa <= 0) return false;
       const usedInOtherItem = items.find((it) => it.id !== currentItemId && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO && it.jenisPupuk === doItem.namaProduk);
       if (usedInOtherItem) return false;
-      if (sisa <= 0) return false;
       const currentItem = items.find((it) => it.id === currentItemId);
-      if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
-        const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
-        if (pi) {
-          const matchProd = pi.produkItems.find((p) => p.namaProduk === currentItem.jenisPupuk);
-          const piFOT = (matchProd?.fot || "").trim();
-          if (piFOT && piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) return false;
-        }
+      if (currentItem && currentItem.jenisPupuk.trim()) {
+        if (doItem.namaProduk !== currentItem.jenisPupuk) return false;
       }
       return true;
     });
@@ -365,15 +360,9 @@ export default function SuratPengangkutanPage() {
           setFieldError(`nomorSubDO_${itemId}`, `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`);
           return;
         }
-      }
-    }
-
-    if (currentItem && currentItem.nomorPI.trim()) {
-      const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
-      if (pi) {
         const validProducts = getValidProductsForPI(pi, doItem.fot);
-        const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
-        if (!matchProd) {
+        const matchProdInPI = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
+        if (!matchProdInPI) {
           setFieldError(`nomorSubDO_${itemId}`, `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${pi.nomorPI}`);
           return;
         }
@@ -1736,7 +1725,7 @@ export default function SuratPengangkutanPage() {
                           {getAvailableDO(item.id).length === 0 && (
                             <p className="mt-1 text-xs text-amber-600">
                               {item.nomorPI && item.jenisPupuk
-                                ? "Tidak ada DO yang tersedia dengan FOT dan produk yang sesuai, atau DO sudah kadaluarsa."
+                                ? "Tidak ada DO yang tersedia dengan produk yang sesuai, atau DO sudah kadaluarsa."
                                 : "Tidak ada DO yang tersedia (sudah habis, kadaluarsa, atau tidak ada sisa)."}
                             </p>
                           )}
