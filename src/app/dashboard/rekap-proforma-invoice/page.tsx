@@ -741,8 +741,8 @@ export default function RekapProformaInvoicePage() {
             gaps = poolSnap.data().gaps || [];
           }
           let candidateNum: number;
+          gaps.sort((a, b) => a - b);
           if (gaps.length > 0) {
-            gaps.sort((a, b) => a - b);
             candidateNum = gaps[0];
             gaps = gaps.filter((g) => g !== candidateNum);
           } else {
@@ -910,12 +910,19 @@ export default function RekapProformaInvoicePage() {
           const poolRef = doc(db, "counters", "invoiceBasePool");
           await runTransaction(db, async (transaction) => {
             const poolSnap = await transaction.get(poolRef);
+            let lastNumber = poolSnap.data()?.lastNumber || 0;
             let gaps = (poolSnap.data()?.gaps || []) as number[];
             if (!gaps.includes(baseNum)) {
               gaps.push(baseNum);
               gaps.sort((a, b) => a - b);
             }
-            transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+            if (baseNum === lastNumber && gaps.length > 0) {
+              const maxGap = Math.max(...gaps);
+              if (maxGap < lastNumber) {
+                lastNumber = maxGap;
+              }
+            }
+            transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
           });
           try { await deleteDoc(doc(db, "invoiceBaseLocks", piRow.invoiceBaseNumber)); } catch {}
         }
@@ -951,12 +958,19 @@ export default function RekapProformaInvoicePage() {
         const poolRef = doc(db, "counters", "invoiceBasePool");
         await runTransaction(db, async (transaction) => {
           const poolSnap = await transaction.get(poolRef);
+          let lastNumber = poolSnap.data()?.lastNumber || 0;
           let gaps = (poolSnap.data()?.gaps || []) as number[];
           if (!gaps.includes(baseNum)) {
             gaps.push(baseNum);
             gaps.sort((a, b) => a - b);
           }
-          transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+          if (baseNum === lastNumber && gaps.length > 0) {
+            const maxGap = Math.max(...gaps);
+            if (maxGap < lastNumber) {
+              lastNumber = maxGap;
+            }
+          }
+          transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
         try { await deleteDoc(doc(db, "invoiceBaseLocks", oldBase)); } catch {}
       }
@@ -1440,6 +1454,27 @@ export default function RekapProformaInvoicePage() {
       const piDoc = data.find((d) => d.id === id);
       if (!piDoc) { setIsLoading(false); return; }
       const nomorPI = piDoc.nomorPI;
+      if (piDoc.invoiceBaseNumber) {
+        const baseNum = parseInt(piDoc.invoiceBaseNumber);
+        const poolRef = doc(db, "counters", "invoiceBasePool");
+        await runTransaction(db, async (transaction) => {
+          const poolSnap = await transaction.get(poolRef);
+          let lastNumber = poolSnap.data()?.lastNumber || 0;
+          let gaps = (poolSnap.data()?.gaps || []) as number[];
+          if (!gaps.includes(baseNum)) {
+            gaps.push(baseNum);
+            gaps.sort((a, b) => a - b);
+          }
+          if (baseNum === lastNumber && gaps.length > 0) {
+            const maxGap = Math.max(...gaps);
+            if (maxGap < lastNumber) {
+              lastNumber = maxGap;
+            }
+          }
+          transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
+        });
+        try { await deleteDoc(doc(db, "invoiceBaseLocks", piDoc.invoiceBaseNumber)); } catch {}
+      }
       const suratDocsMap = new Map<string, any>();
       const suratQuery1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
       const suratSnap1 = await getDocs(suratQuery1);
