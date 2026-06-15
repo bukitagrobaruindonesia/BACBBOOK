@@ -803,30 +803,28 @@ export default function RekapProformaInvoicePage() {
       baseNumber = await getUniqueInvoiceBaseNumber();
       await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
     }
-    const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", selectedItem.nomorPI));
-    const suratSnap1 = await getDocs(suratQ1);
-    const suratQ2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", selectedItem.nomorPI));
-    const suratSnap2 = await getDocs(suratQ2);
-    const usedPartials = new Set<number>();
-    [suratSnap1, suratSnap2].forEach((snap) => {
-      snap.docs.forEach((d) => {
-        const ni = d.data().nomorInvoice;
-        if (ni && ni.includes("-S") && ni.endsWith(`-${baseNumber}`)) {
-          const match = ni.match(/^BAGB-INV-S(\d+)-\d{3}$/);
-          if (match) usedPartials.add(parseInt(match[1]));
-        }
-      });
-    });
-    const allPartialNums = Array.from(usedPartials).sort((a, b) => a - b);
-    let nextPartial = 1;
-    for (const num of allPartialNums) {
-      if (num === nextPartial) {
-        nextPartial++;
-      } else if (num > nextPartial) {
-        break;
+    const partialPoolRef = doc(db, "counters", `invoicePartialPool_${baseNumber}`);
+    const partialResult = await runTransaction(db, async (transaction) => {
+      const poolSnap = await transaction.get(partialPoolRef);
+      let lastPartial = 0;
+      let gaps: number[] = [];
+      if (poolSnap.exists()) {
+        lastPartial = poolSnap.data().lastPartial || 0;
+        gaps = poolSnap.data().gaps || [];
       }
-    }
-    const nomor = `BAGB-INV-S${nextPartial}-${baseNumber}`;
+      gaps.sort((a, b) => a - b);
+      let candidateNum: number;
+      if (gaps.length > 0) {
+        candidateNum = gaps[0];
+        gaps = gaps.filter((g) => g !== candidateNum);
+      } else {
+        candidateNum = lastPartial + 1;
+        lastPartial = candidateNum;
+      }
+      transaction.set(partialPoolRef, { lastPartial, gaps, updatedAt: Timestamp.now() }, { merge: true });
+      return candidateNum;
+    });
+    const nomor = `BAGB-INV-S${partialResult}-${baseNumber}`;
     await updateDoc(suratRef, { nomorInvoice: nomor });
     return nomor;
   };
@@ -988,6 +986,36 @@ export default function RekapProformaInvoicePage() {
     setIsGeneratingInvoice(true);
     try {
       const suratRef = doc(db, "suratPengangkutan", invoiceSurat.id);
+      const suratSnap = await getDoc(suratRef);
+      const oldNomor = suratSnap.data()?.nomorInvoice;
+      if (oldNomor) {
+        const parsed = parseInvoiceNumber(oldNomor);
+        if (parsed && parsed.isPartial) {
+          const baseNum = String(parsed.baseNum).padStart(3, "0");
+          const partialNum = parsed.partialNum;
+          const partialPoolRef = doc(db, "counters", `invoicePartialPool_${baseNum}`);
+          await runTransaction(db, async (transaction) => {
+            const poolSnap = await transaction.get(partialPoolRef);
+            let lastPartial = 0;
+            let gaps: number[] = [];
+            if (poolSnap.exists()) {
+              lastPartial = poolSnap.data().lastPartial || 0;
+              gaps = poolSnap.data().gaps || [];
+            }
+            if (!gaps.includes(partialNum)) {
+              gaps.push(partialNum);
+              gaps.sort((a, b) => a - b);
+            }
+            if (partialNum === lastPartial && gaps.length > 0) {
+              const maxGap = Math.max(...gaps);
+              if (maxGap < lastPartial) {
+                lastPartial = maxGap;
+              }
+            }
+            transaction.set(partialPoolRef, { lastPartial, gaps, updatedAt: Timestamp.now() }, { merge: true });
+          });
+        }
+      }
       await updateDoc(suratRef, { nomorInvoice: null, updatedAt: serverTimestamp() });
       const nomor = await generateInvoiceNumber(invoiceSurat);
       setInvoiceNomor(nomor);
