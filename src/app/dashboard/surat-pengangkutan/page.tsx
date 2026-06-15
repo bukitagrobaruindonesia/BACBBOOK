@@ -342,7 +342,7 @@ export default function SuratPengangkutanPage() {
   };
 
   const getSisaDO = (doItem: DOItem) => {
-    const loaded = doItem.loadedKG !== undefined ? doItem.loadedKG : getLoadedKGForDOFromSurat(doItem);
+    const loaded = getLoadedKGForDOFromSurat(doItem);
     return Math.max(0, (doItem.partyKG || 0) - loaded);
   };
 
@@ -388,7 +388,7 @@ export default function SuratPengangkutanPage() {
 
     const stock = getStockForProduct(doItem.namaProduk);
     const bobot = stock ? stock.bobotPerUnit : 50;
-    const loadedDO = doItem.loadedKG !== undefined ? doItem.loadedKG : getLoadedKGForDOFromSurat(doItem);
+    const loadedDO = getLoadedKGForDOFromSurat(doItem);
     const sisaDO = Math.max(0, (doItem.partyKG || 0) - loadedDO);
 
     setItems((prev) =>
@@ -946,7 +946,7 @@ export default function SuratPengangkutanPage() {
         if (isMandiri && item.nomorSubDO.trim()) {
           const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
           if (doItem) {
-            const doSisa = Math.max(0, doItem.partyKG - (doItem.loadedKG || getLoadedKGForDOFromSurat(doItem)));
+            const doSisa = Math.max(0, doItem.partyKG - getLoadedKGForDOFromSurat(doItem));
             const maxZAKDO = item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
             if (zak > maxZAKDO && maxZAKDO > 0) {
               newErrors[`pengambilan_${idx}`] = `Melebihi sisa DO: maksimal ${maxZAKDO} ZAK (${doSisa} KG)`;
