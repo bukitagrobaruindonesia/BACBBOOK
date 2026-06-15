@@ -2170,10 +2170,35 @@ export default function RekapProformaInvoicePage() {
         <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${(r.fotoBukti || []).length > 0 ? (r.fotoBukti || []).length + " foto" : "-"}</td>
       </tr>
     `).join("");
-    let fotoBuktiHtml = "";
+    let fotoPagesHtml = "";
+    let totalFotos = 0;
+    riwayatBayar.forEach((r) => {
+      totalFotos += (r.fotoBukti || []).length;
+    });
+    let fotoIndex = 0;
     riwayatBayar.forEach((r) => {
       (r.fotoBukti || []).forEach((foto, fidx) => {
-        fotoBuktiHtml += `<img src="${foto}" style="max-height: 140px; max-width: 45%; object-fit: contain; border: 1px solid #ccc; margin: 4px;" />`;
+        fotoIndex++;
+        const isLast = fotoIndex === totalFotos;
+        fotoPagesHtml += `
+        <div class="page" style="${isLast ? 'page-break-after: auto;' : 'page-break-after: always;'}">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+          <div class="payment-title"><h1>BUKTI PEMBAYARAN</h1><p>Nomor Proforma Invoice ${item.nomorPI}</p></div>
+          <div class="content">
+            <div class="payment-info">
+              <p><strong>Customer:</strong> ${item.namaCustomer}</p>
+              <p><strong>Alamat:</strong> ${(item.alamatCustomer || "").replace(/\n/g, " ")}</p>
+              <p><strong>Jumlah Tertagih:</strong> ${formatRupiah(item.jumlahTertagih)}</p>
+              <p><strong>Status Pelunasan:</strong> ${item.statusPelunasan || getPaymentStatus(item)}</p>
+            </div>
+            <div style="margin-top: 20px; text-align: center;">
+              <p style="font-weight: 700; margin-bottom: 16px; font-size: 12px;">Foto Bukti Pembayaran #${fotoIndex} dari ${totalFotos}</p>
+              <p style="font-size: 10px; color: #666; margin-bottom: 8px;">Tanggal: ${r.tanggal} | Nominal: ${formatRupiah(r.jumlah)}</p>
+              <img src="${foto}" style="max-height: 65vh; max-width: 90%; object-fit: contain; border: 1px solid #ccc; border-radius: 8px;" onerror="this.style.display='none'; this.parentElement.innerHTML='<p style=padding:40px;color:#999;>Gambar tidak dapat dimuat</p>';" />
+            </div>
+          </div>
+          <img src="/Picture1.png" alt="Footer" class="header-img" onerror="this.style.display='none'" style="margin-top: auto;" />
+        </div>`;
       });
     });
     const printWindow = window.open("", "_blank");
@@ -2182,7 +2207,7 @@ export default function RekapProformaInvoicePage() {
       <!DOCTYPE html><html><head><title>Berita Acara ${baData.nomorSeri}</title>
       <style>
         @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } .page { page-break-after: always; } .page:last-child { page-break-after: auto; } }
+        @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
         .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
@@ -2239,10 +2264,11 @@ export default function RekapProformaInvoicePage() {
               <p><strong>Status Pelunasan:</strong> ${item.statusPelunasan || getPaymentStatus(item)}</p>
             </div>
             <table class="data-table"><thead><tr><th style="width: 30px;">No</th><th style="width: 120px;">Tanggal</th><th style="width: 150px;">Jumlah</th><th>Foto Bukti</th></tr></thead><tbody>${paymentRowsHtml.length > 0 ? paymentRowsHtml : `<tr><td colspan="4" style="text-align: center; padding: 10px;">Belum ada riwayat pembayaran</td></tr>`}</tbody></table>
-            ${fotoBuktiHtml ? `<div style="margin-top: 12px;"><p style="font-weight: 700; margin-bottom: 8px;">Lampiran Foto Bukti Pembayaran:</p><div class="foto-grid">${fotoBuktiHtml}</div></div>` : ""}
+            ${fotoPagesHtml ? `<p style="font-size: 10px; color: #666; margin-top: 12px;">Lampiran foto bukti pembayaran tersedia di halaman berikutnya (${totalFotos} foto).</p>` : ""}
           </div>
           <img src="/Picture1.png" alt="Footer" class="header-img" onerror="this.style.display='none'" style="margin-top: auto;" />
         </div>
+        ${fotoPagesHtml}
       </body></html>`;
     printWindow.document.write(html);
     printWindow.document.close();
