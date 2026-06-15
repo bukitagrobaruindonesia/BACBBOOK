@@ -13,7 +13,8 @@ import {
   updateDoc,
   where,
   getDoc,
-  runTransaction, Timestamp,
+  runTransaction,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -70,6 +71,8 @@ interface SuratPengangkutanItem {
   doLoadedKG: number;
   piKuantitas: number;
   piLoadedKG: number;
+  doId?: string;
+  piId?: string;
 }
 
 interface ExistingSurat {
@@ -93,6 +96,7 @@ interface DOItem {
   tanggalPembuatan: string;
   tanggalKadaluarsa: string;
   partyKG: number;
+  loadedKG?: number;
   createdBy: string;
   createdAt: any;
 }
@@ -298,14 +302,14 @@ export default function SuratPengangkutanPage() {
     }
   };
 
-  const getLoadedKGForDO = (nomorSubDO: string, nomorPO: string, namaProduk: string) => {
+  const getLoadedKGForDOFromSurat = (doItem: DOItem) => {
     let total = 0;
     suratDOList.forEach((surat) => {
       surat.items.forEach((item) => {
         if (
-          item.nomorSubDO === nomorSubDO &&
-          item.nomorPO === nomorPO &&
-          item.jenisPupuk === namaProduk
+          item.nomorSubDO === doItem.nomorSubDO &&
+          item.nomorPO === doItem.nomorPO &&
+          item.jenisPupuk === doItem.namaProduk
         ) {
           total += (item.pengambilanZAK || 0) * (item.bobotPerUnit || 50);
         }
@@ -315,7 +319,7 @@ export default function SuratPengangkutanPage() {
   };
 
   const getSisaDO = (doItem: DOItem) => {
-    const loaded = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk);
+    const loaded = doItem.loadedKG !== undefined ? doItem.loadedKG : getLoadedKGForDOFromSurat(doItem);
     return Math.max(0, (doItem.partyKG || 0) - loaded);
   };
 
@@ -350,28 +354,9 @@ export default function SuratPengangkutanPage() {
       return;
     }
 
-    const currentItem = items.find((it) => it.id === itemId);
-    if (currentItem && currentItem.nomorPI.trim() && currentItem.jenisPupuk.trim()) {
-      const pi = piList.find((p) => p.nomorPI === currentItem.nomorPI);
-      if (pi) {
-        const matchProd = pi.produkItems.find((p) => p.namaProduk === currentItem.jenisPupuk);
-        const piFOT = (matchProd?.fot || "").trim();
-        if (piFOT && piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
-          setFieldError(`nomorSubDO_${itemId}`, `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`);
-          return;
-        }
-        const validProducts = getValidProductsForPI(pi, doItem.fot);
-        const matchProdInPI = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
-        if (!matchProdInPI) {
-          setFieldError(`nomorSubDO_${itemId}`, `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${pi.nomorPI}`);
-          return;
-        }
-      }
-    }
-
     const stock = getStockForProduct(doItem.namaProduk);
     const bobot = stock ? stock.bobotPerUnit : 50;
-    const loadedDO = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk);
+    const loadedDO = doItem.loadedKG !== undefined ? doItem.loadedKG : getLoadedKGForDOFromSurat(doItem);
     const sisaDO = Math.max(0, (doItem.partyKG || 0) - loadedDO);
 
     setItems((prev) =>
@@ -379,8 +364,7 @@ export default function SuratPengangkutanPage() {
         if (item.id !== itemId) return item;
         const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
         const maxZAKPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
-        const doSisa = Math.max(0, doItem.partyKG - loadedDO);
-        const maxZAKDO = item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
+        const maxZAKDO = bobot > 0 ? Math.floor(sisaDO / bobot) : 0;
         const finalMaxZAK = Math.min(maxZAKPI, maxZAKDO);
         return {
           ...item,
@@ -391,11 +375,11 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: bobot,
           doPartyKG: doItem.partyKG,
           doLoadedKG: loadedDO,
+          doId: doItem.id,
           maxZAK: finalMaxZAK,
           party: formatParty(doItem.partyKG),
-          sisa: formatParty(doSisa),
+          sisa: formatParty(sisaDO),
           pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
-          namaCustomer: doItem.namaPerusahaan,
         };
       })
     );
@@ -410,81 +394,27 @@ export default function SuratPengangkutanPage() {
     }
   };
 
-  const getNextNomorSeriGI = async () => {
-    const now = new Date();
+  const generateNomorSeriGI = (transaction: any, now: Date) => {
     const year = now.getFullYear();
     const roman = getRomanMonth(now.getMonth() + 1);
     const prefix = `BAGB-SP/${year}/${roman}`;
     const counterRef = doc(db, "counters", `suratPengangkutanGI_${year}_${roman}`);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const counterSnap = await transaction.get(counterRef);
-        if (!counterSnap.exists()) {
-          transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
-        }
-      });
-    } catch {}
-    return await runTransaction(db, async (transaction) => {
-      const counterSnap = await transaction.get(counterRef);
-      const currentCount = counterSnap.data()?.count || 0;
-      const nextCount = currentCount + 1;
-      transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
-      return `${prefix}/${String(nextCount).padStart(4, "0")}`;
-    });
+    return { counterRef, prefix };
   };
 
-  const generateNomorSeriDO = async () => {
+  const generateNomorSeriDO = (transaction: any, now: Date) => {
     if (subJenisDO === "dikuasakan") {
-      const now = new Date();
       const year = now.getFullYear();
       const roman = getRomanMonth(now.getMonth() + 1);
       const prefix = `BAGB-SP-DO/${year}/${roman}`;
       const counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
-      try {
-        await runTransaction(db, async (transaction) => {
-          const counterSnap = await transaction.get(counterRef);
-          if (!counterSnap.exists()) {
-            transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
-          }
-        });
-      } catch {}
-      return await runTransaction(db, async (transaction) => {
-        const counterSnap = await transaction.get(counterRef);
-        const currentCount = counterSnap.data()?.count || 0;
-        const nextCount = currentCount + 1;
-        transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
-        return `${prefix}/${String(nextCount).padStart(4, "0")}`;
-      });
+      return { counterRef, prefix, isMandiri: false };
     }
     const perusahaan = formData.kepadaPerusahaan.trim();
-    if (!perusahaan) return "";
     const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
     const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
     const counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
-    try {
-      await runTransaction(db, async (transaction) => {
-        const counterSnap = await transaction.get(counterRef);
-        if (!counterSnap.exists()) {
-          transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
-        }
-      });
-    } catch {}
-    return await runTransaction(db, async (transaction) => {
-      const counterSnap = await transaction.get(counterRef);
-      const currentCount = counterSnap.data()?.count || 0;
-      const nextCount = currentCount + 1;
-      transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
-      return `BAGB-DO-${nomorSubDO}-${perusahaan}-SP-${String(nextCount).padStart(4, "0")}`;
-    });
-  };
-
-  const generateNomorSeri = async () => {
-    if (jenisSurat === "gudangInduk") {
-      return await getNextNomorSeriGI();
-    } else if (jenisSurat === "do") {
-      return await generateNomorSeriDO();
-    }
-    return "";
+    return { counterRef, prefix: "", isMandiri: true, nomorSubDO, perusahaan };
   };
 
   const fetchProformaInvoice = async () => {
@@ -675,34 +605,6 @@ export default function SuratPengangkutanPage() {
     clearFieldError(`nomorPI_${items.findIndex((it) => it.id === itemId)}`);
     clearFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`);
 
-    const currentItem = items.find((it) => it.id === itemId);
-    if (currentItem && currentItem.nomorSubDO.trim()) {
-      const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
-      if (doItem) {
-        const validProducts = getValidProductsForPI(pi, doItem.fot);
-        const hasMatchingFOT = validProducts.some((prod) => {
-          const prodFOT = (prod.fot || "").trim().toUpperCase();
-          return prodFOT === doItem.fot.trim().toUpperCase();
-        });
-        if (!hasMatchingFOT) {
-          setFieldError(`nomorPI_${itemId}`, `FOT Produk pada PI ${pi.nomorPI} tidak sesuai dengan FOT DO (${doItem.fot})`);
-          return;
-        }
-      }
-    }
-
-    if (currentItem && currentItem.nomorSubDO.trim()) {
-      const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
-      if (doItem) {
-        const validProducts = getValidProductsForPI(pi, doItem.fot);
-        const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
-        if (!matchProd) {
-          setFieldError(`nomorPI_${itemId}`, `Proforma Invoice ${pi.nomorPI} tidak memiliki produk ${doItem.namaProduk} yang sesuai dengan DO yang dipilih`);
-          return;
-        }
-      }
-    }
-
     const statusMap = await loadProductStatusForPI(pi);
     const fullyLoaded = piFullyLoadedMap[pi.nomorPI] !== undefined ? piFullyLoadedMap[pi.nomorPI] : (getValidProductsForPI(pi).every((prod) => statusMap[prod.namaProduk]?.status === "complete"));
     if (fullyLoaded) {
@@ -745,9 +647,10 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: hasDO ? item.bobotPerUnit : bobot,
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
+          piId: pi.id,
           maxZAK: finalMaxZAK,
           party: hasDO ? item.party : formatParty(piKuantitas),
-          sisa: hasDO ? formatParty(doSisa) : formatSisaKG(maxZAKPI * bobot),
+          sisa: hasDO ? formatParty(doSisa) : formatSisaKG(piSisa),
           pengambilanZAK: "",
         };
       })
@@ -765,22 +668,6 @@ export default function SuratPengangkutanPage() {
     if (statusMap[prod.namaProduk]?.status === "complete") {
       setFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`, `Produk ${prod.namaProduk} pada PI ${pi.nomorPI} sudah dimuat semua`);
       return;
-    }
-
-    const currentItem = items.find((it) => it.id === itemId);
-    if (currentItem && currentItem.nomorSubDO.trim()) {
-      const doItem = doList.find((d) => d.nomorSubDO === currentItem.nomorSubDO);
-      if (doItem) {
-        const prodFOT = (prod.fot || "").trim().toUpperCase();
-        if (prodFOT && prodFOT !== doItem.fot.trim().toUpperCase()) {
-          setFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`, `FOT Produk (${prodFOT}) tidak sesuai dengan FOT DO (${doItem.fot})`);
-          return;
-        }
-        if (doItem.namaProduk !== prod.namaProduk) {
-          setFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`, `Produk ${prod.namaProduk} tidak cocok dengan DO ${currentItem.nomorSubDO} (produk: ${doItem.namaProduk})`);
-          return;
-        }
-      }
     }
 
     const bobot = getBobotPerUnit(prod.namaProduk);
@@ -805,9 +692,10 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: hasDO ? item.bobotPerUnit : bobot,
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
+          piId: pi.id,
           maxZAK: finalMaxZAK,
           party: hasDO ? item.party : formatParty(piKuantitas),
-          sisa: hasDO ? formatParty(doSisa) : formatSisaKG(maxZAKPI * bobot),
+          sisa: hasDO ? formatParty(doSisa) : formatSisaKG(piSisa),
           pengambilanZAK: "",
         };
       })
@@ -877,6 +765,7 @@ export default function SuratPengangkutanPage() {
           doLoadedKG: 0,
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
+          piId: pi.id,
         },
       ]);
     } else {
@@ -899,6 +788,7 @@ export default function SuratPengangkutanPage() {
           doLoadedKG: 0,
           piKuantitas: 0,
           piLoadedKG: 0,
+          piId: pi.id,
         },
       ]);
     }
@@ -1028,25 +918,6 @@ export default function SuratPengangkutanPage() {
             if (isDOExpired(doItem.tanggalKadaluarsa)) {
               newErrors[`nomorSubDO_${idx}`] = `DO ${doItem.nomorSubDO} sudah kadaluarsa (${doItem.tanggalKadaluarsa}). Silakan perpanjang masa kadaluarsa di Input DO.`;
             }
-            if (item.nomorPI.trim() && item.jenisPupuk.trim()) {
-              const pi = piList.find((p) => p.nomorPI === item.nomorPI);
-              if (pi) {
-                const matchProd = pi.produkItems.find((p) => p.namaProduk === item.jenisPupuk);
-                const piFOT = (matchProd?.fot || "").trim();
-                if (piFOT && piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
-                  newErrors[`nomorSubDO_${idx}`] = `FOT DO (${doItem.fot}) tidak sesuai dengan FOT Produk PI (${piFOT})`;
-                }
-              }
-            }
-            if (doItem.namaProduk !== item.jenisPupuk) {
-              newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak sesuai dengan produk yang dipesan (${item.jenisPupuk})`;
-            }
-            const pi = item.nomorPI.trim() ? piList.find((p) => p.nomorPI === item.nomorPI) : null;
-            const validProducts = pi ? getValidProductsForPI(pi, doItem.fot) : [];
-            const matchProd = validProducts.find((p) => p.namaProduk === doItem.namaProduk);
-            if (!matchProd && item.nomorPI.trim()) {
-              newErrors[`nomorSubDO_${idx}`] = `Produk DO (${doItem.namaProduk}) tidak terdapat dalam Proforma Invoice ${item.nomorPI}`;
-            }
           }
         }
         if (!item.nomorPO.trim()) newErrors[`nomorPO_${idx}`] = "Nomor PO wajib diisi";
@@ -1063,7 +934,7 @@ export default function SuratPengangkutanPage() {
         if (isMandiri && item.nomorSubDO.trim()) {
           const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
           if (doItem) {
-            const doSisa = Math.max(0, doItem.partyKG - getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk));
+            const doSisa = Math.max(0, doItem.partyKG - (doItem.loadedKG || getLoadedKGForDOFromSurat(doItem)));
             const maxZAKDO = item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
             if (zak > maxZAKDO && maxZAKDO > 0) {
               newErrors[`pengambilan_${idx}`] = `Melebihi sisa DO: maksimal ${maxZAKDO} ZAK (${doSisa} KG)`;
@@ -1085,25 +956,6 @@ export default function SuratPengangkutanPage() {
           newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} dari PI ${item.nomorPI} sudah dipilih di Item ${productKeys[key] + 1}`;
         } else {
           productKeys[key] = idx;
-        }
-      }
-      if (isMandiri && item.nomorSubDO.trim()) {
-        const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
-        if (doItem && item.jenisPupuk !== doItem.namaProduk) {
-          newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} tidak cocok dengan DO ${item.nomorSubDO} (produk: ${doItem.namaProduk})`;
-        }
-      }
-      if (isMandiri && item.nomorSubDO.trim() && item.nomorPI.trim() && item.jenisPupuk.trim()) {
-        const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
-        if (doItem) {
-          const pi = piList.find((p) => p.nomorPI === item.nomorPI);
-          if (pi) {
-            const prod = pi.produkItems.find((p) => p.namaProduk === item.jenisPupuk);
-            const piFOT = (prod?.fot || "").trim();
-            if (piFOT && piFOT.toUpperCase() !== doItem.fot.trim().toUpperCase()) {
-              newErrors[`jenisPupuk_${idx}`] = `FOT Produk (${piFOT}) tidak sesuai dengan FOT DO (${doItem.fot})`;
-            }
-          }
         }
       }
     });
@@ -1132,154 +984,226 @@ export default function SuratPengangkutanPage() {
       const isGI = jenisSurat === "gudangInduk";
       const isMandiri = subJenisDO === "mandiri";
       const isDikuasakan = subJenisDO === "dikuasakan";
+      const now = new Date();
+      let nomorSeri = "";
 
-      const nomorSeri = await generateNomorSeri();
-      if (!nomorSeri) {
-        setFieldError("submit", "Gagal generate nomor seri. Silakan cek kembali data.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      const totalPengambilanKG = items.reduce((sum, item) => {
-        const zak = parseFloat(item.pengambilanZAK) || 0;
-        return sum + zak * item.bobotPerUnit;
-      }, 0);
-
-      const suratData: Record<string, unknown> = {
-        jenisSurat,
-        subJenisDO: subJenisDO || null,
-        tanggal: formData.tanggal,
-        namaKabupaten: formData.namaKabupaten,
-        items: items.map((item) => ({
-          nomorSubDO: item.nomorSubDO,
-          nomorPO: item.nomorPO,
-          jenisPupuk: item.jenisPupuk,
-          party: item.party,
-          pengambilanZAK: parseFloat(item.pengambilanZAK) || 0,
-          bobotPerUnit: item.bobotPerUnit,
-          totalKG: (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit,
-          sisa: item.sisa,
-          fot: item.fot,
-          nomorPI: item.nomorPI || null,
-          namaCustomer: item.namaCustomer || null,
-        })),
-        totalPengambilanKG: totalPengambilanKG,
-        nomorSeri: nomorSeri,
-        createdBy: user?.nama || "",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      if (isGI || isMandiri) {
-        suratData.nomorPolisi = formData.nomorPolisi.trim();
-        suratData.driverUnit = formData.driverUnit.trim();
-        suratData.nomorSIM = formData.nomorSIM.trim() || null;
-      }
-
-      if (isMandiri) {
-        suratData.kepadaNama = formData.kepadaNama.trim();
-        suratData.kepadaPerusahaan = formData.kepadaPerusahaan.trim();
-        suratData.kepadaAlamat = formData.kepadaAlamat.trim();
-      }
-
-      const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
-      const allCustomers = items.map((it) => it.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
-      if (allPIs.length > 0) {
-        suratData.nomorPI = allPIs;
-        suratData.namaCustomer = allCustomers;
-      }
-      if (isDikuasakan) {
-        const firstItem = items.find((it) => it.nomorPI.trim() !== "");
-        if (firstItem) {
-          suratData.kepadaNama = firstItem.namaCustomer || "";
-          suratData.kepadaPerusahaan = firstItem.namaCustomer || "";
+      await runTransaction(db, async (transaction) => {
+        if (jenisSurat === "gudangInduk") {
+          const year = now.getFullYear();
+          const roman = getRomanMonth(now.getMonth() + 1);
+          const prefix = `BAGB-SP/${year}/${roman}`;
+          const counterRef = doc(db, "counters", `suratPengangkutanGI_${year}_${roman}`);
+          const counterSnap = await transaction.get(counterRef);
+          let currentCount = 0;
+          if (counterSnap.exists()) {
+            currentCount = counterSnap.data().count || 0;
+          } else {
+            transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
+          }
+          const nextCount = currentCount + 1;
+          transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
+          nomorSeri = `${prefix}/${String(nextCount).padStart(4, "0")}`;
+        } else if (jenisSurat === "do") {
+          if (subJenisDO === "dikuasakan") {
+            const year = now.getFullYear();
+            const roman = getRomanMonth(now.getMonth() + 1);
+            const prefix = `BAGB-SP-DO/${year}/${roman}`;
+            const counterRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+            const counterSnap = await transaction.get(counterRef);
+            let currentCount = 0;
+            if (counterSnap.exists()) {
+              currentCount = counterSnap.data().count || 0;
+            } else {
+              transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
+            }
+            const nextCount = currentCount + 1;
+            transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
+            nomorSeri = `${prefix}/${String(nextCount).padStart(4, "0")}`;
+          } else {
+            const perusahaan = formData.kepadaPerusahaan.trim();
+            const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
+            const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
+            if (!perusahaan || !nomorSubDO) throw new Error("Data tidak lengkap untuk generate nomor seri");
+            const counterRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
+            const counterSnap = await transaction.get(counterRef);
+            let currentCount = 0;
+            if (counterSnap.exists()) {
+              currentCount = counterSnap.data().count || 0;
+            } else {
+              transaction.set(counterRef, { count: 0, updatedAt: Timestamp.now() });
+            }
+            const nextCount = currentCount + 1;
+            transaction.update(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
+            nomorSeri = `BAGB-DO-${nomorSubDO}-${perusahaan}-SP-${String(nextCount).padStart(4, "0")}`;
+          }
         }
-      }
 
-      const piDeductions: Record<string, number> = {};
-      for (const item of items) {
-        const zak = parseFloat(item.pengambilanZAK) || 0;
-        const kg = zak * item.bobotPerUnit;
-        if (kg <= 0 || !item.nomorPI) continue;
-        piDeductions[item.nomorPI] = (piDeductions[item.nomorPI] || 0) + kg;
-      }
+        if (!nomorSeri) throw new Error("Gagal generate nomor seri");
 
-      for (const nomorPI of Object.keys(piDeductions)) {
-        const pi = piList.find((p) => p.nomorPI === nomorPI);
-        if (!pi) continue;
-        const piRef = doc(db, "proformaInvoice", pi.id);
-        const piSnap = await getDoc(piRef);
-        const piData = piSnap.exists() ? piSnap.data() : null;
-        const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
-        const currentSisa = piData?.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : totalOrdered;
-        const piTotalLoaded = piDeductions[nomorPI] || 0;
-        const newSisa = Math.max(0, currentSisa - piTotalLoaded);
-        await updateDoc(piRef, {
-          sisaPengambilanKG: newSisa,
-          statusPengangkutan: newSisa <= 0 ? "complete" : "partial",
-          updatedAt: serverTimestamp(),
-        });
-      }
-
-      if (isGI) {
-        for (const item of items) {
-          const stockMatch = getStockForProduct(item.jenisPupuk);
-          if (stockMatch) {
-            const stockRef = doc(db, "stockGudang", stockMatch.id);
-            const stockSnap = await getDoc(stockRef);
-            if (stockSnap.exists()) {
-              const currentData = stockSnap.data();
-              const currentStokUnit = currentData.stokAkhirUnit || 0;
-              const currentStokKG = currentData.stokAkhirKG || 0;
-              const minusUnit = parseFloat(item.pengambilanZAK) || 0;
-              const minusKG = minusUnit * item.bobotPerUnit;
-              await updateDoc(stockRef, {
-                barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
-                barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
-                stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
-                stokAkhirKG: Math.max(0, currentStokKG - minusKG),
-                updatedAt: serverTimestamp(),
-              });
+        if (isMandiri) {
+          for (const item of items) {
+            if (item.doId) {
+              const doRef = doc(db, "do", item.doId);
+              const doSnap = await transaction.get(doRef);
+              if (!doSnap.exists()) throw new Error(`DO ${item.nomorSubDO} tidak ditemukan`);
+              const currentLoaded = doSnap.data().loadedKG || 0;
+              const addKG = (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
+              const party = doSnap.data().partyKG || 0;
+              if (currentLoaded + addKG > party) {
+                throw new Error(`Pengambilan melebihi party DO ${item.nomorSubDO}`);
+              }
+              transaction.update(doRef, { loadedKG: currentLoaded + addKG, updatedAt: serverTimestamp() });
             }
           }
         }
-      }
 
-      await addDoc(collection(db, "suratPengangkutan"), suratData);
+        const piDeductions: Record<string, { piId: string; kg: number }> = {};
+        for (const item of items) {
+          if (item.piId && item.nomorPI) {
+            if (!piDeductions[item.nomorPI]) {
+              piDeductions[item.nomorPI] = { piId: item.piId, kg: 0 };
+            }
+            piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
+          }
+        }
+        for (const [nomorPI, { piId, kg }] of Object.entries(piDeductions)) {
+          const piRef = doc(db, "proformaInvoice", piId);
+          const piSnap = await transaction.get(piRef);
+          if (!piSnap.exists()) throw new Error(`PI ${nomorPI} tidak ditemukan`);
+          const totalOrdered = (piSnap.data().produkItems || []).reduce((sum: number, p: any) => sum + (p.kuantitas || 0), 0);
+          const currentSisa = piSnap.data().sisaPengambilanKG !== undefined ? piSnap.data().sisaPengambilanKG : totalOrdered;
+          if (currentSisa - kg < 0) {
+            throw new Error(`Pengambilan melebihi sisa PI ${nomorPI}`);
+          }
+          const newSisa = currentSisa - kg;
+          transaction.update(piRef, {
+            sisaPengambilanKG: newSisa,
+            statusPengangkutan: newSisa <= 0 ? "complete" : "partial",
+            updatedAt: serverTimestamp(),
+          });
+        }
 
-      const transaksiData: Record<string, unknown> = {
-        tanggal: formData.tanggal,
-        jenis: isGI ? "suratPengangkutanGudangInduk" : "suratPengangkutanDO",
-        nomorSeri: nomorSeri,
-        items: suratData.items,
-        totalPengambilanKG: totalPengambilanKG,
-        createdBy: user?.nama || "",
-        createdAt: serverTimestamp(),
-      };
+        if (isGI) {
+          for (const item of items) {
+            const stockMatch = getStockForProduct(item.jenisPupuk);
+            if (stockMatch) {
+              const stockRef = doc(db, "stockGudang", stockMatch.id);
+              const stockSnap = await transaction.get(stockRef);
+              if (stockSnap.exists()) {
+                const currentData = stockSnap.data();
+                const currentStokUnit = currentData.stokAkhirUnit || 0;
+                const currentStokKG = currentData.stokAkhirKG || 0;
+                const minusUnit = parseFloat(item.pengambilanZAK) || 0;
+                const minusKG = minusUnit * item.bobotPerUnit;
+                if (currentStokUnit - minusUnit < 0 || currentStokKG - minusKG < 0) {
+                  throw new Error(`Stok gudang untuk ${item.jenisPupuk} tidak mencukupi`);
+                }
+                transaction.update(stockRef, {
+                  barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
+                  barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
+                  stokAkhirUnit: currentStokUnit - minusUnit,
+                  stokAkhirKG: currentStokKG - minusKG,
+                  updatedAt: serverTimestamp(),
+                });
+              }
+            }
+          }
+        }
 
-      if (isGI || isMandiri) {
-        transaksiData.nomorPolisi = formData.nomorPolisi;
-        transaksiData.driverUnit = formData.driverUnit;
-        transaksiData.nomorSIM = formData.nomorSIM || null;
-      }
+        const totalPengambilanKG = items.reduce((sum, item) => {
+          const zak = parseFloat(item.pengambilanZAK) || 0;
+          return sum + zak * item.bobotPerUnit;
+        }, 0);
 
-      const transaksiPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
-      const transaksiCustomers = items.map((it) => it.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
-      if (transaksiPIs.length > 0) {
-        transaksiData.nomorPI = transaksiPIs;
-        transaksiData.namaCustomer = transaksiCustomers;
-      }
+        const suratData: any = {
+          jenisSurat,
+          subJenisDO: subJenisDO || null,
+          tanggal: formData.tanggal,
+          namaKabupaten: formData.namaKabupaten,
+          items: items.map((item) => ({
+            nomorSubDO: item.nomorSubDO,
+            nomorPO: item.nomorPO,
+            jenisPupuk: item.jenisPupuk,
+            party: item.party,
+            pengambilanZAK: parseFloat(item.pengambilanZAK) || 0,
+            bobotPerUnit: item.bobotPerUnit,
+            totalKG: (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit,
+            sisa: item.sisa,
+            fot: item.fot,
+            nomorPI: item.nomorPI || null,
+            namaCustomer: item.namaCustomer || null,
+          })),
+          totalPengambilanKG: totalPengambilanKG,
+          nomorSeri: nomorSeri,
+          createdBy: user?.nama || "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        };
 
-      await addDoc(collection(db, "transaksiBarangKeluar"), transaksiData);
+        if (isGI || isMandiri) {
+          suratData.nomorPolisi = formData.nomorPolisi.trim();
+          suratData.driverUnit = formData.driverUnit.trim();
+          suratData.nomorSIM = formData.nomorSIM.trim() || null;
+        }
+
+        if (isMandiri) {
+          suratData.kepadaNama = formData.kepadaNama.trim();
+          suratData.kepadaPerusahaan = formData.kepadaPerusahaan.trim();
+          suratData.kepadaAlamat = formData.kepadaAlamat.trim();
+        }
+
+        const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+        const allCustomers = items.map((it) => it.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
+        if (allPIs.length > 0) {
+          suratData.nomorPI = allPIs;
+          suratData.namaCustomer = allCustomers;
+        }
+        if (isDikuasakan) {
+          const firstItem = items.find((it) => it.nomorPI.trim() !== "");
+          if (firstItem) {
+            suratData.kepadaNama = firstItem.namaCustomer || "";
+            suratData.kepadaPerusahaan = firstItem.namaCustomer || "";
+          }
+        }
+
+        const suratRef = doc(collection(db, "suratPengangkutan"));
+        transaction.set(suratRef, suratData);
+
+        const transaksiData: any = {
+          tanggal: formData.tanggal,
+          jenis: isGI ? "suratPengangkutanGudangInduk" : "suratPengangkutanDO",
+          nomorSeri: nomorSeri,
+          items: suratData.items,
+          totalPengambilanKG: totalPengambilanKG,
+          createdBy: user?.nama || "",
+          createdAt: serverTimestamp(),
+        };
+
+        if (isGI || isMandiri) {
+          transaksiData.nomorPolisi = formData.nomorPolisi;
+          transaksiData.driverUnit = formData.driverUnit;
+          transaksiData.nomorSIM = formData.nomorSIM || null;
+        }
+
+        if (allPIs.length > 0) {
+          transaksiData.nomorPI = allPIs;
+          transaksiData.namaCustomer = allCustomers;
+        }
+
+        const transaksiRef = doc(collection(db, "transaksiBarangKeluar"));
+        transaction.set(transaksiRef, transaksiData);
+      });
+
       setSuccessMessage(`Surat pengangkutan berhasil dibuat! Nomor Seri: ${nomorSeri}`);
       resetForm();
       fetchExistingSurat();
       fetchStockGudang();
+      fetchDO();
       fetchSuratDO();
       setTimeout(() => setSuccessMessage(""), 5000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setFieldError("submit", "Gagal menyimpan surat pengangkutan. Nomor seri mungkin sedang digunakan akun lain. Silakan coba lagi.");
+      setFieldError("submit", error.message || "Gagal menyimpan surat pengangkutan. Silakan coba lagi.");
     } finally {
       setIsSubmitting(false);
     }
