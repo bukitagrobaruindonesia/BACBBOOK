@@ -397,7 +397,6 @@ export default function SuratPengangkutanPage() {
     const bobot = stock ? stock.bobotPerUnit : 50;
     const loadedDO = getLoadedKGForDO(doItem.nomorSubDO, doItem.nomorPO, doItem.namaProduk);
     const sisaDO = Math.max(0, (doItem.partyKG || 0) - loadedDO);
-    const maxZAKDO = Math.floor(sisaDO / bobot);
 
     setItems((prev) =>
       prev.map((item) => {
@@ -551,7 +550,7 @@ export default function SuratPengangkutanPage() {
     return stock ? stock.fot : "";
   };
 
-  const getLoadedKGForPIProduct = async (nomorPI: string, namaProduk: string) => {
+  const getLoadedKGForPIProduct = async (nomorPI: string, namaProduk: string, fotFilter?: string) => {
     let totalLoaded = 0;
     try {
       const q1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
@@ -575,6 +574,12 @@ export default function SuratPengangkutanPage() {
               namaProduk.toUpperCase().includes(item.jenisPupuk.toUpperCase())
             )
           ) {
+            if (fotFilter) {
+              const itemFOT = (item.fot || "").trim().toUpperCase();
+              const filterIsGI = isGudangIndukFOT(fotFilter);
+              const itemIsGI = isGudangIndukFOT(itemFOT);
+              if (filterIsGI !== itemIsGI) return;
+            }
             totalLoaded += (item.pengambilanZAK || 0) * (item.bobotPerUnit || 50);
           }
         });
@@ -650,7 +655,8 @@ export default function SuratPengangkutanPage() {
     const statusMap: Record<string, { loaded: number; ordered: number; status: string }> = {};
     await Promise.all(
       validProducts.map(async (prod) => {
-        const loaded = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
+        const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+        const loaded = await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk, prodFOT);
         const ordered = prod.kuantitas || 0;
         let status = "pending";
         if (loaded >= ordered) status = "complete";
@@ -719,7 +725,8 @@ export default function SuratPengangkutanPage() {
       fot = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
       jenisPupuk = firstProd.namaProduk;
       piKuantitas = firstProd.kuantitas || 0;
-      piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || 0;
+      const firstProdFOT = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
+      piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk, firstProdFOT);
     }
 
     setItems((prev) =>
@@ -780,7 +787,8 @@ export default function SuratPengangkutanPage() {
 
     const bobot = getBobotPerUnit(prod.namaProduk);
     const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
-    const piLoadedKG = statusMap[prod.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk);
+    const prodFOT = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
+    const piLoadedKG = statusMap[prod.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, prod.namaProduk, prodFOT);
     const piKuantitas = prod.kuantitas || 0;
 
     setItems((prev) =>
@@ -847,7 +855,8 @@ export default function SuratPengangkutanPage() {
 
     if (firstProd) {
       piKuantitas = firstProd.kuantitas || 0;
-      piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || 0;
+      const firstProdFOT = (firstProd.fot || getStockFotForProduct(firstProd.namaProduk) || "").trim();
+      piLoadedKG = statusMap[firstProd.namaProduk]?.loaded || await getLoadedKGForPIProduct(pi.nomorPI, firstProd.namaProduk, firstProdFOT);
       const piSisa = Math.max(0, piKuantitas - piLoadedKG);
       const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
 
@@ -1833,11 +1842,10 @@ export default function SuratPengangkutanPage() {
                         type="number"
                         value={item.pengambilanZAK}
                         onChange={(e) => handleItemChange(item.id, "pengambilanZAK", e.target.value)}
-                        placeholder={item.maxZAK > 0 ? `Max ${item.maxZAK} ZAK` : "Contoh: 100"}
+                        placeholder={item.maxZAK > 0 ? `Max ${item.maxZAK} ZAK` : "Sisa habis"}
                         max={item.maxZAK > 0 ? item.maxZAK : undefined}
-                        disabled={item.maxZAK <= 0}
                         onWheel={(e) => { e.currentTarget.blur(); }}
-                        className={`w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white ${item.maxZAK <= 0 ? "bg-gray-100 cursor-not-allowed" : ""}`}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
                       />
                       {item.bobotPerUnit > 0 && item.pengambilanZAK && (
                         <p className="mt-1 text-xs text-gray-500">
