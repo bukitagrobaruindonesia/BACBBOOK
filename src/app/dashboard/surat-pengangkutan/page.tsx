@@ -404,7 +404,7 @@ export default function SuratPengangkutanPage() {
         if (item.id !== itemId) return item;
         const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
         const maxZAKPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
-        const finalMaxZAK = item.piKuantitas > 0 ? Math.min(maxZAKDO, maxZAKPI) : maxZAKDO;
+        const doSisa = Math.max(0, doItem.partyKG - loadedDO);
         return {
           ...item,
           nomorSubDO: doItem.nomorSubDO,
@@ -414,10 +414,10 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: bobot,
           doPartyKG: doItem.partyKG,
           doLoadedKG: loadedDO,
-          maxZAK: finalMaxZAK,
-          sisa: formatParty(finalMaxZAK * bobot),
+          maxZAK: maxZAKPI,
           party: formatParty(doItem.partyKG),
-          pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
+          sisa: formatParty(doSisa),
+          pengambilanZAK: maxZAKPI > 0 ? String(maxZAKPI) : "",
           namaCustomer: doItem.namaPerusahaan,
         };
       })
@@ -725,10 +725,8 @@ export default function SuratPengangkutanPage() {
         if (item.id !== itemId) return item;
         const hasDO = item.nomorSubDO.trim() !== "";
         const doSisa = hasDO ? Math.max(0, item.doPartyKG - item.doLoadedKG) : 0;
-        const partyZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
         const piSisa = Math.max(0, piKuantitas - piLoadedKG);
         const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
-        const finalMaxZAK = hasDO ? Math.min(partyZAKDO, maxZAKPI) : maxZAKPI;
         return {
           ...item,
           nomorPI: pi.nomorPI,
@@ -738,9 +736,9 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: hasDO ? item.bobotPerUnit : bobot,
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
-          maxZAK: finalMaxZAK,
+          maxZAK: maxZAKPI,
           party: hasDO ? item.party : formatParty(piKuantitas),
-          sisa: hasDO ? formatParty(partyZAKDO * item.bobotPerUnit) : formatSisaKG(maxZAKPI * bobot),
+          sisa: hasDO ? formatParty(doSisa) : formatSisaKG(maxZAKPI * bobot),
           pengambilanZAK: "",
         };
       })
@@ -786,10 +784,8 @@ export default function SuratPengangkutanPage() {
         if (item.id !== itemId) return item;
         const hasDO = item.nomorSubDO.trim() !== "";
         const doSisa = hasDO ? Math.max(0, item.doPartyKG - item.doLoadedKG) : 0;
-        const partyZAKDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
         const piSisa = Math.max(0, piKuantitas - piLoadedKG);
         const maxZAKPI = bobot > 0 ? Math.floor(piSisa / bobot) : 0;
-        const finalMaxZAK = hasDO ? Math.min(partyZAKDO, maxZAKPI) : maxZAKPI;
         return {
           ...item,
           jenisPupuk: hasDO ? item.jenisPupuk : prod.namaProduk,
@@ -797,9 +793,9 @@ export default function SuratPengangkutanPage() {
           bobotPerUnit: hasDO ? item.bobotPerUnit : bobot,
           piKuantitas: piKuantitas,
           piLoadedKG: piLoadedKG,
-          maxZAK: finalMaxZAK,
+          maxZAK: maxZAKPI,
           party: hasDO ? item.party : formatParty(piKuantitas),
-          sisa: hasDO ? formatParty(partyZAKDO * item.bobotPerUnit) : formatSisaKG(maxZAKPI * bobot),
+          sisa: hasDO ? formatParty(doSisa) : formatSisaKG(maxZAKPI * bobot),
           pengambilanZAK: "",
         };
       })
@@ -858,7 +854,7 @@ export default function SuratPengangkutanPage() {
           jenisPupuk: firstProd.namaProduk,
           party: formatParty(piKuantitas),
           pengambilanZAK: "",
-          sisa: formatSisaKG(maxZAKPI * bobot),
+          sisa: formatSisaKG(piSisa),
           bobotPerUnit: bobot,
           maxZAK: maxZAKPI,
           fot: fot,
@@ -935,14 +931,25 @@ export default function SuratPengangkutanPage() {
         const updated = { ...item, [field]: value };
         if (field === "pengambilanZAK") {
           const zak = parseFloat(value) || 0;
-          const partyZAK = item.bobotPerUnit > 0 ? Math.floor(item.doPartyKG / item.bobotPerUnit) : 0;
+          const hasDO = item.nomorSubDO.trim() !== "";
           if (item.maxZAK > 0 && zak > item.maxZAK) {
             updated.pengambilanZAK = String(item.maxZAK);
-            updated.sisa = formatParty(Math.max(0, partyZAK - item.maxZAK) * item.bobotPerUnit);
-          } else if (partyZAK > 0 || item.maxZAK > 0) {
-            const baseZAK = partyZAK > 0 ? partyZAK : item.maxZAK;
-            const sisaZAK = Math.max(0, baseZAK - zak);
-            updated.sisa = formatParty(sisaZAK * item.bobotPerUnit);
+            const zakFinal = item.maxZAK;
+            if (hasDO) {
+              const doSisa = Math.max(0, item.doPartyKG - item.doLoadedKG - (zakFinal * item.bobotPerUnit));
+              updated.sisa = formatParty(doSisa);
+            } else {
+              const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG - (zakFinal * item.bobotPerUnit));
+              updated.sisa = formatSisaKG(piSisa);
+            }
+          } else {
+            if (hasDO) {
+              const doSisa = Math.max(0, item.doPartyKG - item.doLoadedKG - (zak * item.bobotPerUnit));
+              updated.sisa = formatParty(doSisa);
+            } else {
+              const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG - (zak * item.bobotPerUnit));
+              updated.sisa = formatSisaKG(piSisa);
+            }
           }
           const idx = items.findIndex((it) => it.id === id);
           clearFieldError(`pengambilan_${idx}`);
