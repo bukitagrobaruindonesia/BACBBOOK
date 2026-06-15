@@ -828,6 +828,38 @@ export default function RekapProformaInvoicePage() {
     return nomor;
   };
 
+  const fixInvoiceSNumbers = async (nomorPI: string) => {
+    if (!confirm("Perbaiki nomor S invoice? Semua nomor S akan di-reset dan di-generate ulang berdasarkan tanggal surat.")) return;
+    setIsLoading(true);
+    try {
+      const piRow = data.find((d) => d.nomorPI === nomorPI);
+      if (!piRow || !piRow.invoiceBaseNumber) return;
+      const baseNumber = piRow.invoiceBaseNumber;
+      const suratList = getSortedSuratForPI(nomorPI);
+      const partialPoolRef = doc(db, "counters", `invoicePartialPool_${baseNumber}`);
+      await runTransaction(db, async (transaction) => {
+        transaction.set(partialPoolRef, { lastPartial: 0, gaps: [], updatedAt: Timestamp.now() });
+      });
+      for (let i = 0; i < suratList.length; i++) {
+        const surat = suratList[i];
+        const suratRef = doc(db, "suratPengangkutan", surat.id);
+        const newSNum = i + 1;
+        const nomor = `BAGB-INV-S${newSNum}-${baseNumber}`;
+        await updateDoc(suratRef, { nomorInvoice: nomor, updatedAt: serverTimestamp() });
+      }
+      const newLastPartial = suratList.length;
+      await setDoc(partialPoolRef, { lastPartial: newLastPartial, gaps: [], updatedAt: Timestamp.now() }, { merge: true });
+      fetchData();
+      fetchSuratMuat();
+      alert("Nomor S invoice berhasil diperbaiki!");
+    } catch (error) {
+      console.error(error);
+      alert("Gagal memperbaiki nomor S invoice.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleOpenFullInvoice = async (row: ProformaInvoice) => {
     setSelectedItem(row);
     setInvoiceSurat(null);
@@ -853,6 +885,15 @@ export default function RekapProformaInvoicePage() {
       setInvoiceDate(tanggal);
       await fetchCustomerByName(row.namaCustomer);
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
+  };
+
+  const getSortedSuratForPI = (nomorPI: string): SuratMuatInfo[] => {
+    const results = getSuratMuatForPI(nomorPI);
+    return results.sort((a, b) => {
+      const dateA = new Date(a.tanggal || "1970-01-01").getTime();
+      const dateB = new Date(b.tanggal || "1970-01-01").getTime();
+      return dateA - dateB;
+    });
   };
 
   const handleOpenInvoice = async (surat: SuratMuatInfo) => {
@@ -923,6 +964,7 @@ export default function RekapProformaInvoicePage() {
             transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
           });
           try { await deleteDoc(doc(db, "invoiceBaseLocks", piRow.invoiceBaseNumber)); } catch {}
+          try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${piRow.invoiceBaseNumber}`)); } catch {}
         }
         await updateDoc(doc(db, "proformaInvoice", piRow.id), {
           invoiceBaseNumber: null,
@@ -972,6 +1014,7 @@ export default function RekapProformaInvoicePage() {
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
         try { await deleteDoc(doc(db, "invoiceBaseLocks", oldBase)); } catch {}
+        try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${oldBase}`)); } catch {}
       }
       await updateDoc(piRef, { invoiceBaseNumber: null, updatedAt: serverTimestamp() });
       const baseNumber = await getUniqueInvoiceBaseNumber();
@@ -1504,6 +1547,7 @@ export default function RekapProformaInvoicePage() {
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
         try { await deleteDoc(doc(db, "invoiceBaseLocks", piDoc.invoiceBaseNumber)); } catch {}
+        try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${piDoc.invoiceBaseNumber}`)); } catch {}
       }
       const suratDocsMap = new Map<string, any>();
       const suratQuery1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
