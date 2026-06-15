@@ -304,6 +304,7 @@ export default function RekapProformaInvoicePage() {
   const [invoiceDate, setInvoiceDate] = useState("");
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [editingPaymentIndex, setEditingPaymentIndex] = useState<number | null>(null);
   const [paymentForm, setPaymentForm] = useState({
     jumlahUangDibayar: "",
     tanggalPembayaran: "",
@@ -1497,6 +1498,7 @@ export default function RekapProformaInvoicePage() {
 
   const handleOpenPaymentEdit = (item: ProformaInvoice) => {
     setSelectedItem(item);
+    setEditingPaymentIndex(null);
     setPaymentForm({
       jumlahUangDibayar: "",
       tanggalPembayaran: new Date().toISOString().split("T")[0],
@@ -1504,6 +1506,43 @@ export default function RekapProformaInvoicePage() {
       fotoBukti: [],
     });
     setIsPaymentModalOpen(true);
+  };
+
+  const handleEditPaymentEntry = (index: number) => {
+    if (!selectedItem?.riwayatPembayaran) return;
+    const entry = selectedItem.riwayatPembayaran[index];
+    setEditingPaymentIndex(index);
+    setPaymentForm({
+      jumlahUangDibayar: String(entry.jumlah || ""),
+      tanggalPembayaran: entry.tanggal || "",
+      statusPelunasan: selectedItem.statusPelunasan || getPaymentStatus(selectedItem),
+      fotoBukti: entry.fotoBukti || [],
+    });
+  };
+
+  const handleDeletePaymentEntry = async (index: number) => {
+    if (!selectedItem) return;
+    if (!confirm("Apakah Anda yakin ingin menghapus riwayat pembayaran ini?")) return;
+    setIsSubmitting(true);
+    try {
+      const existingRiwayat = [...(selectedItem.riwayatPembayaran || [])];
+      existingRiwayat.splice(index, 1);
+      const totalPaid = existingRiwayat.reduce((sum, r) => sum + (r.jumlah || 0), 0);
+      const total = selectedItem.jumlahTertagih || 0;
+      let status = "Belum Lunas";
+      if (totalPaid >= total && total > 0) status = "Lunas";
+      else if (totalPaid > 0) status = "Cicilan";
+      const lastTanggal = existingRiwayat.length > 0 ? existingRiwayat[existingRiwayat.length - 1].tanggal : "";
+      await updateDoc(doc(db, "proformaInvoice", selectedItem.id), {
+        riwayatPembayaran: existingRiwayat,
+        jumlahUangDibayar: totalPaid,
+        tanggalPembayaran: lastTanggal,
+        statusPelunasan: status,
+        updatedAt: serverTimestamp(),
+      });
+      setSelectedItem((prev) => prev ? { ...prev, riwayatPembayaran: existingRiwayat, jumlahUangDibayar: totalPaid, tanggalPembayaran: lastTanggal, statusPelunasan: status } : null);
+      fetchData();
+    } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
   };
 
   const handleFotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1531,21 +1570,30 @@ export default function RekapProformaInvoicePage() {
     try {
       const newJumlah = parseFloat(paymentForm.jumlahUangDibayar) || 0;
       const newTanggal = paymentForm.tanggalPembayaran.trim();
-      const existingRiwayat = selectedItem.riwayatPembayaran || [];
-      const updatedRiwayat = [...existingRiwayat, { tanggal: newTanggal, jumlah: newJumlah, fotoBukti: paymentForm.fotoBukti || [] }];
+      let updatedRiwayat: RiwayatPembayaran[];
+      if (editingPaymentIndex !== null) {
+        updatedRiwayat = (selectedItem.riwayatPembayaran || []).map((r, i) =>
+          i === editingPaymentIndex ? { tanggal: newTanggal, jumlah: newJumlah, fotoBukti: paymentForm.fotoBukti || [] } : r
+        );
+      } else {
+        updatedRiwayat = [...(selectedItem.riwayatPembayaran || []), { tanggal: newTanggal, jumlah: newJumlah, fotoBukti: paymentForm.fotoBukti || [] }];
+      }
       const totalPaid = updatedRiwayat.reduce((sum, r) => sum + r.jumlah, 0);
       const total = selectedItem.jumlahTertagih || 0;
       let status = "Belum Lunas";
       if (totalPaid >= total && total > 0) status = "Lunas";
       else if (totalPaid > 0) status = "Cicilan";
+      const lastTanggal = updatedRiwayat.length > 0 ? updatedRiwayat[updatedRiwayat.length - 1].tanggal : "";
       await updateDoc(doc(db, "proformaInvoice", selectedItem.id), {
         riwayatPembayaran: updatedRiwayat,
         jumlahUangDibayar: totalPaid,
-        tanggalPembayaran: newTanggal,
+        tanggalPembayaran: lastTanggal,
         statusPelunasan: status,
         updatedAt: serverTimestamp(),
       });
       setIsPaymentModalOpen(false);
+      setEditingPaymentIndex(null);
+      setPaymentForm({ jumlahUangDibayar: "", tanggalPembayaran: "", statusPelunasan: "", fotoBukti: [] });
       fetchData();
     } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
   };
@@ -2849,10 +2897,10 @@ export default function RekapProformaInvoicePage() {
         </div>
       </Modal>
 
-      <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title="Tambah Pembayaran" size="md" footer={
+      <Modal isOpen={isPaymentModalOpen} onClose={() => { setIsPaymentModalOpen(false); setEditingPaymentIndex(null); setPaymentForm({ jumlahUangDibayar: "", tanggalPembayaran: "", statusPelunasan: "", fotoBukti: [] }); }} title={editingPaymentIndex !== null ? "Edit Pembayaran" : "Tambah Pembayaran"} size="md" footer={
         <div className="flex justify-end gap-3">
-          <Button variant="outline" onClick={() => setIsPaymentModalOpen(false)}>Batal</Button>
-          <Button variant="primary" onClick={handleUpdatePayment} isLoading={isSubmitting}>Simpan</Button>
+          <Button variant="outline" onClick={() => { setIsPaymentModalOpen(false); setEditingPaymentIndex(null); setPaymentForm({ jumlahUangDibayar: "", tanggalPembayaran: "", statusPelunasan: "", fotoBukti: [] }); }}>Batal</Button>
+          <Button variant="primary" onClick={handleUpdatePayment} isLoading={isSubmitting}>{editingPaymentIndex !== null ? "Simpan Perubahan" : "Simpan"}</Button>
         </div>
       }>
         <form onSubmit={handleUpdatePayment} className="space-y-4">
@@ -2862,11 +2910,18 @@ export default function RekapProformaInvoicePage() {
           {(selectedItem?.riwayatPembayaran || []).length > 0 && (
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
               <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Riwayat Pembayaran</p>
-              <table className="w-full text-sm"><thead><tr className="border-b border-gray-200"><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-gray-600">Jumlah</th><th className="text-center py-1 px-2 text-xs font-semibold text-gray-600">Foto</th></tr></thead><tbody>{selectedItem?.riwayatPembayaran?.map((r, i) => (<tr key={i} className="border-b border-gray-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td><td className="py-1 px-2 text-center text-gray-700">{(r.fotoBukti || []).length > 0 ? (r.fotoBukti || []).length + " foto" : "-"}</td></tr>))}</tbody><tfoot><tr className="border-t border-gray-300"><td colSpan={2} className="py-1 px-2 text-xs font-bold text-gray-700">Total Dibayar</td><td className="py-1 px-2 text-right font-mono font-bold text-gray-900">{formatRupiah(selectedItem?.jumlahUangDibayar || 0)}</td><td></td></tr></tfoot></table>
+              <table className="w-full text-sm"><thead><tr className="border-b border-gray-200"><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">No</th><th className="text-left py-1 px-2 text-xs font-semibold text-gray-600">Tanggal</th><th className="text-right py-1 px-2 text-xs font-semibold text-gray-600">Jumlah</th><th className="text-center py-1 px-2 text-xs font-semibold text-gray-600">Foto</th><th className="text-center py-1 px-2 text-xs font-semibold text-gray-600">Aksi</th></tr></thead><tbody>{selectedItem?.riwayatPembayaran?.map((r, i) => (<tr key={i} className="border-b border-gray-100"><td className="py-1 px-2 text-gray-700">{i + 1}</td><td className="py-1 px-2 text-gray-700">{r.tanggal}</td><td className="py-1 px-2 text-right font-mono text-gray-900">{formatRupiah(r.jumlah)}</td><td className="py-1 px-2 text-center text-gray-700">{(r.fotoBukti || []).length > 0 ? (r.fotoBukti || []).length + " foto" : "-"}</td><td className="py-1 px-2 text-center"><div className="flex items-center justify-center gap-1"><button type="button" onClick={() => handleEditPaymentEntry(i)} className="p-1 text-amber-600 hover:bg-amber-50 rounded transition-colors" title="Edit"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button><button type="button" onClick={() => handleDeletePaymentEntry(i)} className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors" title="Hapus"><svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div></td></tr>))}</tbody><tfoot><tr className="border-t border-gray-300"><td colSpan={2} className="py-1 px-2 text-xs font-bold text-gray-700">Total Dibayar</td><td className="py-1 px-2 text-right font-mono font-bold text-gray-900">{formatRupiah(selectedItem?.jumlahUangDibayar || 0)}</td><td colSpan={2}></td></tr></tfoot></table>
+              {(selectedItem?.riwayatPembayaran || []).some((r) => (r.fotoBukti || []).length > 0) && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(selectedItem?.riwayatPembayaran || []).flatMap((r) => r.fotoBukti || []).map((foto, idx) => (
+                    <img key={idx} src={foto} alt={`Bukti ${idx + 1}`} className="h-16 w-16 object-cover rounded-lg border border-gray-200 cursor-pointer hover:scale-110 transition-transform" onClick={() => window.open(foto, "_blank")} />
+                  ))}
+                </div>
+              )}
             </div>
           )}
           <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-            <p className="text-sm font-semibold text-blue-700 mb-3">Pembayaran Baru</p>
+            <p className="text-sm font-semibold text-blue-700 mb-3">{editingPaymentIndex !== null ? "Edit Pembayaran" : "Pembayaran Baru"}</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div><label className="block text-sm font-semibold text-gray-700 mb-1.5">Jumlah Pembayaran</label><input type="text" inputMode="decimal" value={paymentForm.jumlahUangDibayar} onChange={(e) => setPaymentForm((prev) => ({ ...prev, jumlahUangDibayar: e.target.value }))} placeholder="0.00" className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white transition-all duration-200 focus:w-auto focus:min-w-[280px] focus:py-3 focus:px-4 focus:text-base focus:shadow-2xl focus:z-50 focus:relative focus:border-green-500 focus:ring-2 focus:ring-green-200" /></div>
               <Input label="Tanggal Pembayaran" type="date" value={paymentForm.tanggalPembayaran} onChange={(e) => setPaymentForm((prev) => ({ ...prev, tanggalPembayaran: e.target.value }))} />
@@ -2887,11 +2942,20 @@ export default function RekapProformaInvoicePage() {
               </div>
             )}
           </div>
-          <div className="p-3 bg-amber-50 rounded-lg border border-amber-100"><p className="text-sm text-amber-700"><span className="font-semibold">Status Otomatis: </span>{selectedItem && (() => { const currentPaid = selectedItem.jumlahUangDibayar || 0; const newPaid = parseFloat(paymentForm.jumlahUangDibayar) || 0; const totalPaid = currentPaid + newPaid; const total = selectedItem.jumlahTertagih || 0; if (totalPaid >= total && total > 0) return "Lunas"; if (totalPaid > 0) return "Cicilan"; return "Belum Lunas"; })()}</p></div>
+          <div className="p-3 bg-amber-50 rounded-lg border border-amber-100"><p className="text-sm text-amber-700"><span className="font-semibold">Status Otomatis: </span>{selectedItem && (() => { const currentPaid = selectedItem.jumlahUangDibayar || 0; const newPaid = parseFloat(paymentForm.jumlahUangDibayar) || 0; const totalPaid = editingPaymentIndex !== null ? currentPaid - ((selectedItem.riwayatPembayaran?.[editingPaymentIndex]?.jumlah || 0)) + newPaid : currentPaid + newPaid; const total = selectedItem.jumlahTertagih || 0; if (totalPaid >= total && total > 0) return "Lunas"; if (totalPaid > 0) return "Cicilan"; return "Belum Lunas"; })()}</p></div>
           {selectedItem && parseFloat(paymentForm.jumlahUangDibayar || "0") > 0 && (
             <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
-              <div className="flex justify-between items-center text-sm"><span className="font-medium text-blue-700">Total Setelah Pembayaran</span><span className="font-mono font-semibold text-blue-700">{formatRupiah((selectedItem.jumlahUangDibayar || 0) + (parseFloat(paymentForm.jumlahUangDibayar) || 0))}</span></div>
-              <div className="flex justify-between items-center text-sm mt-1"><span className="font-medium text-blue-700">Sisa Pembayaran</span><span className="font-mono font-semibold text-blue-700">{formatRupiah(Math.max(0, (selectedItem.jumlahTertagih || 0) - (selectedItem.jumlahUangDibayar || 0) - (parseFloat(paymentForm.jumlahUangDibayar) || 0)))}</span></div>
+              {(() => {
+                const currentPaid = selectedItem.jumlahUangDibayar || 0;
+                const newPaid = parseFloat(paymentForm.jumlahUangDibayar) || 0;
+                const totalPaid = editingPaymentIndex !== null ? currentPaid - ((selectedItem.riwayatPembayaran?.[editingPaymentIndex]?.jumlah || 0)) + newPaid : currentPaid + newPaid;
+                return (
+                  <>
+                    <div className="flex justify-between items-center text-sm"><span className="font-medium text-blue-700">Total Setelah Pembayaran</span><span className="font-mono font-semibold text-blue-700">{formatRupiah(totalPaid)}</span></div>
+                    <div className="flex justify-between items-center text-sm mt-1"><span className="font-medium text-blue-700">Sisa Pembayaran</span><span className="font-mono font-semibold text-blue-700">{formatRupiah(Math.max(0, (selectedItem.jumlahTertagih || 0) - totalPaid))}</span></div>
+                  </>
+                );
+              })()}
             </div>
           )}
         </form>
