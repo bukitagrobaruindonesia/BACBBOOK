@@ -2420,15 +2420,19 @@ export default function RekapProformaInvoicePage() {
       width: "340px",
       render: (row: ProformaInvoice) => {
         const produkStatus = getProdukLoadStatus(row);
-        const isComplete = produkStatus.every((p) => p.status === "complete");
-        const isPartial = produkStatus.some((p) => p.status === "partial" || p.status === "complete");
+        const giProduk = produkStatus.filter((p) => p.isGI);
+        const doProduk = produkStatus.filter((p) => !p.isGI);
+        const giComplete = giProduk.length === 0 || giProduk.every((p) => p.status === "complete");
+        const doComplete = doProduk.length === 0 || doProduk.every((p) => p.status === "complete");
+        const isComplete = giComplete && doComplete;
+        const isPartial = produkStatus.some((p) => p.status === "partial" || p.status === "complete") && !isComplete;
         const badge = isComplete
           ? { class: "bg-green-100 text-green-700", label: "Selesai Dimuat" }
           : isPartial
           ? { class: "bg-yellow-100 text-yellow-700", label: "Sebagian Dimuat" }
           : { class: "bg-gray-100 text-gray-600", label: "Belum Dimuat" };
-        const hasGIBelum = produkStatus.some((p) => p.isGI && p.status !== "complete");
-        const hasNonGIBelum = produkStatus.some((p) => !p.isGI && p.status !== "complete");
+        const hasGIBelum = giProduk.some((p) => p.status !== "complete");
+        const hasDOBelum = doProduk.some((p) => p.status !== "complete");
         return (
           <div className="flex flex-col gap-2">
             <span className={`px-2 py-1 rounded-md text-xs font-bold ${badge.class}`}>{badge.label}</span>
@@ -2452,7 +2456,7 @@ export default function RekapProformaInvoicePage() {
                     Buat Surat Muat GI
                   </button>
                 )}
-                {hasNonGIBelum && (
+                {hasDOBelum && (
                   <button onClick={(e) => { e.stopPropagation(); router.push("/dashboard/surat-pengangkutan?nomorPI=" + encodeURIComponent(row.nomorPI)); }} className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-xs font-semibold transition-colors flex items-center gap-1">
                     <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                     Buat Surat DO
@@ -2606,17 +2610,39 @@ export default function RekapProformaInvoicePage() {
                 })()}
               </div>
               <div className="space-y-2">
-                {getProdukLoadStatus(selectedItem).map((p, i) => (
-                  <div key={i} className="flex justify-between items-center text-sm">
-                    <span className="font-medium text-gray-700">{p.namaProduk} {p.isGI ? <span className="text-green-700 font-bold text-xs">[GI]</span> : <span className="text-blue-700 font-bold text-xs">[DO]</span>}</span>
-                    <span className="font-mono text-gray-900">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
-                  </div>
-                ))}
+                {(() => {
+                  const ps = getProdukLoadStatus(selectedItem);
+                  const giPs = ps.filter((p) => p.isGI);
+                  const doPs = ps.filter((p) => !p.isGI);
+                  const giComp = giPs.length === 0 || giPs.every((p) => p.status === "complete");
+                  const doComp = doPs.length === 0 || doPs.every((p) => p.status === "complete");
+                  return (
+                    <>
+                      {ps.map((p, i) => (
+                        <div key={i} className="flex justify-between items-center text-sm">
+                          <span className="font-medium text-gray-700">{p.namaProduk} {p.isGI ? <span className="text-green-700 font-bold text-xs">[GI]</span> : <span className="text-blue-700 font-bold text-xs">[DO]</span>}</span>
+                          <span className="font-mono text-gray-900">{p.loaded.toLocaleString()} / {p.ordered.toLocaleString()} KG</span>
+                        </div>
+                      ))}
+                      {(giPs.length > 0 || doPs.length > 0) && (
+                        <div className="mt-2 pt-2 border-t border-blue-100 flex gap-3 text-xs">
+                          {giPs.length > 0 && <span className={`px-2 py-1 rounded-md font-bold ${giComp ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>GI: {giComp ? "Selesai" : "Belum Selesai"}</span>}
+                          {doPs.length > 0 && <span className={`px-2 py-1 rounded-md font-bold ${doComp ? "bg-green-100 text-green-700" : "bg-yellow-100 text-yellow-700"}`}>DO: {doComp ? "Selesai" : "Belum Selesai"}</span>}
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
             {(() => {
-              const status = getStatusPengangkutan(selectedItem);
-              return status === "complete" && selectedItem.statusPemesanan !== "Batal" ? (
+              const ps = getProdukLoadStatus(selectedItem);
+              const giPs = ps.filter((p) => p.isGI);
+              const doPs = ps.filter((p) => !p.isGI);
+              const giComp = giPs.length === 0 || giPs.every((p) => p.status === "complete");
+              const doComp = doPs.length === 0 || doPs.every((p) => p.status === "complete");
+              const allComplete = giComp && doComp;
+              return allComplete && selectedItem.statusPemesanan !== "Batal" ? (
                 <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-200">
                   <div className="flex items-center justify-between mb-2">
                     <p className="text-xs text-indigo-600 uppercase tracking-wide font-semibold">Berita Acara Serah Terima</p>
