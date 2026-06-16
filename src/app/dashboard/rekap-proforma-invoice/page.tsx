@@ -760,7 +760,7 @@ export default function RekapProformaInvoicePage() {
 
   const getUniqueInvoiceBaseNumber = async (): Promise<string> => {
     const poolRef = doc(db, "counters", "invoiceBasePool");
-    const maxRetries = 10;
+    const maxRetries = 15;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const result = await runTransaction(db, async (transaction) => {
@@ -784,7 +784,7 @@ export default function RekapProformaInvoicePage() {
           const lockRef = doc(db, "invoiceBaseLocks", candidateBase);
           const lockDoc = await transaction.get(lockRef);
           if (lockDoc.exists()) {
-            let searchNum = 1;
+            let searchNum = candidateNum + 1;
             let found = false;
             while (searchNum <= lastNumber + 1000 && !found) {
               const testBase = String(searchNum).padStart(3, "0");
@@ -805,14 +805,19 @@ export default function RekapProformaInvoicePage() {
               throw new Error("No available invoice base number found");
             }
           }
-          transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
+          transaction.set(lockRef, { createdAt: serverTimestamp(), used: true, nomorPI: "pending" });
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
           return String(candidateNum).padStart(3, "0");
         });
+        const verifyRef = doc(db, "invoiceBaseLocks", result);
+        const verifySnap = await getDoc(verifyRef);
+        if (verifySnap.exists() && verifySnap.data().nomorPI && verifySnap.data().nomorPI !== "pending") {
+          continue;
+        }
         return result;
       } catch (error: any) {
         if (attempt === maxRetries - 1) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+        await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
       }
     }
     throw new Error("Failed to generate unique invoice base number after retries");
@@ -901,6 +906,54 @@ export default function RekapProformaInvoicePage() {
       setInvoiceDate(tanggal);
       await fetchCustomerByName(row.namaCustomer);
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
+  };
+
+  const handleResetInvoiceBase = async (row: ProformaInvoice) => {
+    if (!confirm("Reset nomor base invoice? Nomor lama akan dibatalkan dan nomor baru akan digenerate.")) return;
+    setIsLoading(true);
+    try {
+      const piRef = doc(db, "proformaInvoice", row.id);
+      const piSnap = await getDoc(piRef);
+      const oldBase = piSnap.data()?.invoiceBaseNumber;
+      if (oldBase) {
+        const poolRef = doc(db, "counters", "invoiceBasePool");
+        await runTransaction(db, async (transaction) => {
+          const poolSnap = await transaction.get(poolRef);
+          let lastNumber = poolSnap.data()?.lastNumber || 0;
+          let gaps = (poolSnap.data()?.gaps || []) as number[];
+          const baseNum = parseInt(oldBase);
+          if (!gaps.includes(baseNum)) {
+            gaps.push(baseNum);
+            gaps.sort((a, b) => a - b);
+          }
+          if (baseNum === lastNumber) {
+            let newLast = lastNumber - 1;
+            while (newLast > 0 && gaps.includes(newLast)) {
+              newLast--;
+            }
+            lastNumber = Math.max(0, newLast);
+          }
+          transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
+        });
+        try {
+          await updateDoc(doc(db, "invoiceBaseLocks", oldBase), { reset: true, resetAt: serverTimestamp() });
+        } catch {}
+      }
+      const newBase = await getUniqueInvoiceBaseNumber();
+      await updateDoc(piRef, { invoiceBaseNumber: newBase, updatedAt: serverTimestamp() });
+      const allSurat = getSuratMuatForPI(row.nomorPI);
+      for (const surat of allSurat) {
+        const suratRef = doc(db, "suratPengangkutan", surat.id);
+        await updateDoc(suratRef, { nomorInvoice: deleteField(), updatedAt: serverTimestamp() });
+      }
+      await fetchData();
+      alert(`Nomor base invoice berhasil direset ke ${newBase}`);
+    } catch (error) {
+      console.error(error);
+      alert("Gagal reset nomor base invoice.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getSortedSuratForPI = (nomorPI: string): SuratMuatInfo[] => {
@@ -1051,12 +1104,17 @@ export default function RekapProformaInvoicePage() {
         ttdHormatNama: "Sri Setyo Wibowo",
         ttdHormatJabatan: "Manager Keuangan",
         ttdHormatImage: "/Picture4.png",
+        isPrinted: false,
+        printedAt: null,
+        printedBy: "",
         updatedAt: serverTimestamp(),
       };
       await setDoc(doc(db, "arsipInvoice", invoiceNomor), { ...arsipData, createdAt: serverTimestamp() }, { merge: true });
+      await updateDoc(doc(db, "invoiceBaseLocks", invoiceNomor.replace("BAGB-INV-", "")), { nomorPI: pi.nomorPI });
       setIsInvoiceModalOpen(false);
       setInvoiceExists(true);
       alert("Invoice berhasil diterbitkan!");
+      router.push("/dashboard/arsip-invoice");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice."); } finally { setIsSubmitting(false); }
   };
 
@@ -1227,12 +1285,17 @@ export default function RekapProformaInvoicePage() {
         ttdHormatNama: "Sri Setyo Wibowo",
         ttdHormatJabatan: "Manager Keuangan",
         ttdHormatImage: "/Picture4.png",
+        isPrinted: false,
+        printedAt: null,
+        printedBy: "",
         updatedAt: serverTimestamp(),
       };
       await setDoc(doc(db, "arsipInvoiceSementara", invoiceNomor), { ...arsipData, createdAt: serverTimestamp() }, { merge: true });
+      await updateDoc(doc(db, "suratPengangkutan", surat.id), { nomorInvoice: invoiceNomor });
       setIsInvoiceModalOpen(false);
       setInvoiceSementaraExists(true);
       alert("Invoice sementara berhasil diterbitkan!");
+      router.push("/dashboard/arsip-invoice-sementara");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice sementara."); } finally { setIsSubmitting(false); }
   };
 
@@ -1622,7 +1685,9 @@ export default function RekapProformaInvoicePage() {
           }
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
-        try { await deleteDoc(doc(db, "invoiceBaseLocks", piDoc.invoiceBaseNumber)); } catch {}
+        try {
+          await updateDoc(doc(db, "invoiceBaseLocks", piDoc.invoiceBaseNumber), { deleted: true, deletedAt: serverTimestamp() });
+        } catch {}
         try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${piDoc.invoiceBaseNumber}`)); } catch {}
       }
       const suratDocsMap = new Map<string, any>();
@@ -2727,7 +2792,7 @@ export default function RekapProformaInvoicePage() {
     {
       key: "invoice",
       header: "Invoice",
-      width: "200px",
+      width: "240px",
       render: (row: ProformaInvoice) => {
         const status = getStatusPengangkutan(row);
         const isComplete = status === "complete";
@@ -2750,7 +2815,7 @@ export default function RekapProformaInvoicePage() {
               Invoice
             </button>
             {row.invoiceBaseNumber && row.statusPemesanan !== "Batal" && (
-              <button onClick={(e) => { e.stopPropagation(); handleOpenFullInvoice(row); }} className="px-2 py-1 rounded-md text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors" title="Terbitkan Ulang">
+              <button onClick={(e) => { e.stopPropagation(); handleResetInvoiceBase(row); }} className="px-2 py-1 rounded-md text-xs font-semibold bg-orange-600 hover:bg-orange-700 text-white transition-colors" title="Reset Base Invoice">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
               </button>
             )}
