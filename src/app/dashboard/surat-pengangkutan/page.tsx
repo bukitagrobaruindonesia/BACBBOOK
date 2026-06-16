@@ -384,11 +384,21 @@ export default function SuratPengangkutanPage() {
     });
   };
 
+  const clearFieldErrorForItem = (itemId: number) => {
+    setErrors((prev) => {
+      const n = { ...prev };
+      Object.keys(n).forEach((key) => {
+        if (key.includes(`_${itemId}`)) delete n[key];
+      });
+      return n;
+    });
+  };
+
   const clearAllItemErrors = (itemId: number) => {
     setErrors((prev) => {
       const n = { ...prev };
       Object.keys(n).forEach((key) => {
-        if (key.includes(`_${itemId}`) || key.endsWith(`_${items.findIndex((it) => it.id === itemId)}`)) delete n[key];
+        if (key.includes(`_${itemId}`)) delete n[key];
       });
       return n;
     });
@@ -533,8 +543,7 @@ export default function SuratPengangkutanPage() {
 
   const handleSubDOSelect = (itemId: number, nomorSubDO: string) => {
     clearFieldError(`nomorSubDO_${itemId}`);
-    clearFieldError(`nomorSubDO_${items.findIndex((it) => it.id === itemId)}`);
-    clearFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`);
+    clearFieldError(`jenisPupuk_${itemId}`);
     clearFieldError(`nomorPI_${itemId}`);
 
     if (!nomorSubDO) return;
@@ -778,8 +787,7 @@ export default function SuratPengangkutanPage() {
     setPiShowMap((prev) => ({ ...prev, [itemId]: false }));
     setPiSearchMap((prev) => ({ ...prev, [itemId]: pi.nomorPI }));
     clearFieldError(`nomorPI_${itemId}`);
-    clearFieldError(`nomorPI_${items.findIndex((it) => it.id === itemId)}`);
-    clearFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`);
+    clearFieldError(`jenisPupuk_${itemId}`);
 
     const statusMap = await loadProductStatusForPI(pi);
     const fullyLoaded = piFullyLoadedMap[pi.nomorPI] !== undefined ? piFullyLoadedMap[pi.nomorPI] : (getValidProductsForPI(pi).every((prod) => statusMap[prod.namaProduk]?.status === "complete"));
@@ -833,12 +841,10 @@ export default function SuratPengangkutanPage() {
     );
   };
 
-  const handleProdukSelectForItem = async (itemId: number, pi: ProformaInvoice, produkIndex: number) => {
-    clearFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`);
+  const handleProdukSelectForItem = async (itemId: number, pi: ProformaInvoice, prod: ProformaInvoice["produkItems"][number]) => {
+    clearFieldError(`jenisPupuk_${itemId}`);
 
     const statusMap = piProductStatus[pi.nomorPI] || {};
-    const validProducts = getValidProductsForPI(pi);
-    const prod = validProducts[produkIndex];
     if (!prod) return;
 
     if (statusMap[prod.namaProduk]?.status === "complete") {
@@ -1039,14 +1045,13 @@ export default function SuratPengangkutanPage() {
               updated.sisa = formatSisaKG(piSisaAfter);
             }
           }
-          const idx = items.findIndex((it) => it.id === id);
-          clearFieldError(`pengambilan_${idx}`);
+          clearFieldError(`pengambilan_${id}`);
           if (value.trim() !== "" && zak <= 0) {
-            setFieldError(`pengambilan_${idx}`, "Pengambilan harus lebih dari 0");
+            setFieldError(`pengambilan_${id}`, "Pengambilan harus lebih dari 0");
           } else if (finalMaxZAK > 0 && zak > finalMaxZAK) {
-            setFieldError(`pengambilan_${idx}`, `Maksimal ${finalMaxZAK} ZAK (${finalMaxZAK * item.bobotPerUnit} KG)`);
+            setFieldError(`pengambilan_${id}`, `Maksimal ${finalMaxZAK} ZAK (${finalMaxZAK * item.bobotPerUnit} KG)`);
           } else if (finalMaxZAK === 0) {
-            setFieldError(`pengambilan_${idx}`, "Sisa PI atau DO sudah habis");
+            setFieldError(`pengambilan_${id}`, "Sisa PI atau DO sudah habis");
           }
         }
         return updated;
@@ -1079,36 +1084,36 @@ export default function SuratPengangkutanPage() {
 
     const productKeys: Record<string, number> = {};
     items.forEach((item, idx) => {
-      if (!item.nomorPI.trim()) newErrors[`nomorPI_${idx}`] = "Nomor PI wajib dipilih";
-      if (!item.jenisPupuk.trim()) newErrors[`jenisPupuk_${idx}`] = "Jenis pupuk wajib diisi";
+      if (!item.nomorPI.trim()) newErrors[`nomorPI_${item.id}`] = "Nomor PI wajib dipilih";
+      if (!item.jenisPupuk.trim()) newErrors[`jenisPupuk_${item.id}`] = "Jenis pupuk wajib diisi";
       const prodStatus = piProductStatus[item.nomorPI]?.[item.jenisPupuk];
       if (item.jenisPupuk && prodStatus?.status === "complete") {
-        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} pada PI ${item.nomorPI} sudah dimuat semua`;
+        newErrors[`jenisPupuk_${item.id}`] = `Produk ${item.jenisPupuk} pada PI ${item.nomorPI} sudah dimuat semua`;
       }
       if (isMandiri) {
         if (!item.nomorSubDO.trim()) {
-          newErrors[`nomorSubDO_${idx}`] = "Nomor Sub DO wajib dipilih";
+          newErrors[`nomorSubDO_${item.id}`] = "Nomor Sub DO wajib dipilih";
         } else {
           const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
           if (doItem) {
             if (isDOExpired(doItem.tanggalKadaluarsa)) {
-              newErrors[`nomorSubDO_${idx}`] = `DO ${doItem.nomorSubDO} sudah kadaluarsa (${doItem.tanggalKadaluarsa}). Silakan perpanjang masa kadaluarsa di Input DO.`;
+              newErrors[`nomorSubDO_${item.id}`] = `DO ${doItem.nomorSubDO} sudah kadaluarsa (${doItem.tanggalKadaluarsa}). Silakan perpanjang masa kadaluarsa di Input DO.`;
             }
             if (item.fot.trim() && doItem.fot.trim().toUpperCase() !== item.fot.trim().toUpperCase()) {
-              newErrors[`nomorSubDO_${idx}`] = `FOT DO (${doItem.fot}) tidak sesuai dengan FOT produk PI (${item.fot})`;
+              newErrors[`nomorSubDO_${item.id}`] = `FOT DO (${doItem.fot}) tidak sesuai dengan FOT produk PI (${item.fot})`;
             }
           }
         }
-        if (!item.nomorPO.trim()) newErrors[`nomorPO_${idx}`] = "Nomor PO wajib diisi";
-        if (!item.party.trim()) newErrors[`party_${idx}`] = "Party wajib diisi";
+        if (!item.nomorPO.trim()) newErrors[`nomorPO_${item.id}`] = "Nomor PO wajib diisi";
+        if (!item.party.trim()) newErrors[`party_${item.id}`] = "Party wajib diisi";
       }
       if (!item.pengambilanZAK.trim()) {
-        newErrors[`pengambilan_${idx}`] = "Pengambilan wajib diisi";
+        newErrors[`pengambilan_${item.id}`] = "Pengambilan wajib diisi";
       } else {
         const zak = parseFloat(item.pengambilanZAK) || 0;
-        if (zak <= 0) newErrors[`pengambilan_${idx}`] = "Pengambilan harus lebih dari 0";
+        if (zak <= 0) newErrors[`pengambilan_${item.id}`] = "Pengambilan harus lebih dari 0";
         if (zak > item.maxZAK && item.maxZAK > 0) {
-          newErrors[`pengambilan_${idx}`] = `Maksimal ${item.maxZAK} ZAK (${item.maxZAK * item.bobotPerUnit} KG)`;
+          newErrors[`pengambilan_${item.id}`] = `Maksimal ${item.maxZAK} ZAK (${item.maxZAK * item.bobotPerUnit} KG)`;
         }
         if (isMandiri && item.nomorSubDO.trim()) {
           const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
@@ -1116,7 +1121,7 @@ export default function SuratPengangkutanPage() {
             const doSisa = Math.max(0, doItem.partyKG - getLoadedKGForDOFromSurat(doItem));
             const maxZAKDO = item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
             if (zak > maxZAKDO && maxZAKDO > 0) {
-              newErrors[`pengambilan_${idx}`] = `Melebihi sisa DO: maksimal ${maxZAKDO} ZAK (${doSisa} KG)`;
+              newErrors[`pengambilan_${item.id}`] = `Melebihi sisa DO: maksimal ${maxZAKDO} ZAK (${doSisa} KG)`;
             }
           }
         }
@@ -1124,15 +1129,15 @@ export default function SuratPengangkutanPage() {
       const fot = (item.fot || "").trim();
       const giFOT = isGudangIndukFOT(fot);
       if (jenisSurat === "gudangInduk" && !giFOT && item.jenisPupuk) {
-        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT selain Gudang Induk`;
+        newErrors[`jenisPupuk_${item.id}`] = `Produk ${item.jenisPupuk} berasal dari FOT selain Gudang Induk`;
       }
       if (jenisSurat === "do" && giFOT && item.jenisPupuk) {
-        newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} berasal dari FOT Gudang Induk`;
+        newErrors[`jenisPupuk_${item.id}`] = `Produk ${item.jenisPupuk} berasal dari FOT Gudang Induk`;
       }
       const key = `${item.nomorPI.trim()}|${item.jenisPupuk.trim()}`;
       if (item.nomorPI.trim() && item.jenisPupuk.trim()) {
         if (productKeys[key] !== undefined) {
-          newErrors[`jenisPupuk_${idx}`] = `Produk ${item.jenisPupuk} dari PI ${item.nomorPI} sudah dipilih di Item ${productKeys[key] + 1}`;
+          newErrors[`jenisPupuk_${item.id}`] = `Produk ${item.jenisPupuk} dari PI ${item.nomorPI} sudah dipilih di Item ${productKeys[key] + 1}`;
         } else {
           productKeys[key] = idx;
         }
@@ -1773,7 +1778,6 @@ export default function SuratPengangkutanPage() {
                             </p>
                           )}
                           {errors[`nomorSubDO_${item.id}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorSubDO_${item.id}`]}</p>}
-                          {errors[`nomorSubDO_${idx}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorSubDO_${idx}`]}</p>}
                         </div>
                         <Input label="Nomor PO" type="text" value={item.nomorPO} readOnly />
                       </>
@@ -1820,7 +1824,6 @@ export default function SuratPengangkutanPage() {
                         )}
                       </div>
                       {errors[`nomorPI_${item.id}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorPI_${item.id}`]}</p>}
-                      {errors[`nomorPI_${idx}`] && <p className="mt-1 text-sm text-red-600">{errors[`nomorPI_${idx}`]}</p>}
                       {selectedPI && (
                         <div className="mt-2 p-2 bg-green-50 rounded-lg border border-green-200 text-xs text-green-700">
                           <span className="font-semibold">{selectedPI.nomorPI}</span> — {selectedPI.namaCustomer}
@@ -1840,7 +1843,7 @@ export default function SuratPengangkutanPage() {
                                 key={pidx}
                                 type="button"
                                 onClick={() => {
-                                  if (!isDisabled) handleProdukSelectForItem(item.id, selectedPI, pidx);
+                                  if (!isDisabled) handleProdukSelectForItem(item.id, selectedPI, prod);
                                 }}
                                 disabled={isDisabled}
                                 className={`p-3 rounded-lg border text-left transition-all ${
@@ -1869,7 +1872,7 @@ export default function SuratPengangkutanPage() {
                       </div>
                     )}
                     <div className="md:col-span-3">
-                      <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Pilih produk dari PI atau DO" error={errors[`jenisPupuk_${idx}`]} required readOnly />
+                      <Input label="Jenis Pupuk" type="text" value={item.jenisPupuk} onChange={(e) => handleItemChange(item.id, "jenisPupuk", e.target.value)} placeholder="Pilih produk dari PI atau DO" error={errors[`jenisPupuk_${item.id}`] || errors[`jenisPupuk_${idx}`]} required readOnly />
                     </div>
                     {isMandiri && (
                       <Input label="Party" type="text" value={item.party} readOnly />
@@ -1922,8 +1925,8 @@ export default function SuratPengangkutanPage() {
                       </div>
                     )}
                   </div>
-                  {errors[`pengambilan_${idx}`] && (
-                    <p className="mt-2 text-sm text-red-600">{errors[`pengambilan_${idx}`]}</p>
+                  {(errors[`pengambilan_${item.id}`] || errors[`pengambilan_${idx}`]) && (
+                    <p className="mt-2 text-sm text-red-600">{errors[`pengambilan_${item.id}`] || errors[`pengambilan_${idx}`]}</p>
                   )}
                 </div>
               );
