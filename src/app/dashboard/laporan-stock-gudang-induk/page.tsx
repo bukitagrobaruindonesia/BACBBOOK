@@ -490,9 +490,6 @@ export default function LaporanInputStockGudangPage() {
   };
 
   const hitungStokAkhirKG = (row: StockGudang) => {
-    if (row.unit === "ZAK") {
-      return (row.stokAkhirUnit || 0) * (row.bobotPerUnit || 50);
-    }
     return row.stokAkhirKG || 0;
   };
 
