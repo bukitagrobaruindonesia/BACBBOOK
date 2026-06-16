@@ -1488,14 +1488,24 @@ export default function SuratPengangkutanPage() {
               stockDeductions[x.stock.id] = { ref: x.ref, stockId: x.stock.id, totalUnit: 0, totalKG: 0 };
             }
             const zak = parseFloat(x.item.pengambilanZAK) || 0;
-            const isDusBotol = x.item.bobotPerUnit === 1 && x.item.jenisPupuk && isDusOrBotolProduct(x.item.jenisPupuk);
-            if (isDusBotol) {
-              stockDeductions[x.stock.id].totalUnit += zak;
-              stockDeductions[x.stock.id].totalKG += 0;
+            const stockUnit = x.stock.unit || "ZAK";
+            const isStockDus = stockUnit === "DUS";
+            const isStockBotol = stockUnit === "BOTOL";
+            const isDusBotolItem = x.item.bobotPerUnit === 1 && x.item.jenisPupuk && isDusOrBotolProduct(x.item.jenisPupuk);
+            const botolPerDus = x.item.jenisPupuk ? getBotolPerDus(x.item.jenisPupuk) : 20;
+            let unitDeduction = zak;
+            let kgDeduction = 0;
+            if (isStockDus) {
+              unitDeduction = isDusBotolItem ? zak / botolPerDus : zak;
+              kgDeduction = 0;
+            } else if (isStockBotol) {
+              unitDeduction = zak;
+              kgDeduction = 0;
             } else {
-              stockDeductions[x.stock.id].totalUnit += zak;
-              stockDeductions[x.stock.id].totalKG += zak * x.item.bobotPerUnit;
+              kgDeduction = zak * x.item.bobotPerUnit;
             }
+            stockDeductions[x.stock.id].totalUnit += unitDeduction;
+            stockDeductions[x.stock.id].totalKG += kgDeduction;
           });
           Object.entries(stockDeductions).forEach(([stockId, { ref, totalUnit, totalKG }]) => {
             const snapIdx = stockRefs.findIndex((r) => r.id === stockId);

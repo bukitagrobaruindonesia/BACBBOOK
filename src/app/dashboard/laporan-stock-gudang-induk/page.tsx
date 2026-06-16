@@ -306,7 +306,7 @@ export default function LaporanInputStockGudangPage() {
       const isZAK = formData.unit === "ZAK";
       const stokTersediaUnit = parseFloat(formData.stokTersediaUnit) || 0;
       const bobotPerUnit = isBotol ? (parseFloat(formData.botolPerDus) || 20) : (parseFloat(formData.bobotPerUnit) || 50);
-      const botolPerDus = (isBotol || isDus) ? parseFloat(formData.botolPerDus) || 20 : null;
+      const botolPerDus = isBotol ? parseFloat(formData.botolPerDus) || 20 : null;
 
       const hitungStokAwalKG = () => {
         if (isKG) return 0;
@@ -331,7 +331,7 @@ export default function LaporanInputStockGudangPage() {
 
         if (formData.stokTersediaUnit) {
           const newStokUnit = parseFloat(formData.stokTersediaUnit) || 0;
-          const newStokKG = isKG ? 0 : (isDus || isBotol) ? 0 : newStokUnit * bobotPerUnit;
+          const newStokKG = isKG ? 0 : newStokUnit * bobotPerUnit;
           docData.stokAkhirUnit = isKG ? 0 : newStokUnit;
           docData.stokAkhirKG = newStokKG;
         }
@@ -485,6 +485,18 @@ export default function LaporanInputStockGudangPage() {
     return unit;
   };
 
+  const formatDusDisplay = (row: StockGudang, unitField: number) => {
+    if (row.unit === "DUS") {
+      const dusCount = unitField || 0;
+      const botolCount = dusCount * (row.botolPerDus || 20);
+      return `${dusCount.toLocaleString("id-ID", { maximumFractionDigits: 10 })} DUS (${botolCount.toLocaleString("id-ID", { maximumFractionDigits: 10 })} botol)`;
+    }
+    if (row.unit === "BOTOL") {
+      return `${(unitField || 0).toLocaleString("id-ID", { maximumFractionDigits: 10 })} botol`;
+    }
+    return `${(unitField || 0).toLocaleString("id-ID", { maximumFractionDigits: 10 })} ${row.unit}`;
+  };
+
   const hitungStokAwalKG = (row: StockGudang) => {
     if (row.unit === "ZAK") {
       return (row.stokAwalUnit || 0) * (row.bobotPerUnit || 50);
@@ -496,11 +508,8 @@ export default function LaporanInputStockGudangPage() {
   };
 
   const getBotolCount = (row: StockGudang, unitField: number) => {
-    if (row.unit === "DUS") {
+    if (row.unit === "DUS" || row.unit === "BOTOL") {
       return (unitField || 0) * (row.botolPerDus || 20);
-    }
-    if (row.unit === "BOTOL") {
-      return unitField || 0;
     }
     return unitField || 0;
   };
@@ -654,7 +663,7 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-gray-600">
-              {getBotolCount(row, row.stokAwalUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
+              {formatDusDisplay(row, row.stokAwalUnit)}
             </p>
           )}
           {row.unit !== "DUS" && row.unit !== "BOTOL" && (
@@ -671,7 +680,7 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-green-600">
-              +{getBotolCount(row, row.barangMasukUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
+              +{formatDusDisplay(row, row.barangMasukUnit)}
             </p>
           )}
           {row.unit !== "DUS" && row.unit !== "BOTOL" && (
@@ -688,7 +697,7 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-red-600">
-              -{getBotolCount(row, row.barangKeluarUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
+              -{formatDusDisplay(row, row.barangKeluarUnit)}
             </p>
           )}
           {row.unit !== "DUS" && row.unit !== "BOTOL" && (
@@ -705,7 +714,7 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-sm">
           {row.unit !== "KG" && (
             <p className="font-mono font-bold text-green-700">
-              {getBotolCount(row, row.stokAkhirUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
+              {formatDusDisplay(row, row.stokAkhirUnit)}
             </p>
           )}
           {row.unit !== "DUS" && row.unit !== "BOTOL" && (
