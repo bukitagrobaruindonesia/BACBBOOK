@@ -933,6 +933,15 @@ export default function RekapProformaInvoicePage() {
       setInvoiceNomor(nomor);
       if (selectedItem) {
         await fetchCustomerByName(selectedItem.namaCustomer);
+        const allSurat = getSuratMuatForPI(selectedItem.nomorPI);
+        const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
+        const parsed = parseInvoiceNumber(nomor);
+        if (parsed && parsed.isPartial && sortedSurat.length > 0) {
+          const sIndex = parsed.partialNum - 1;
+          if (sIndex >= 0 && sIndex < sortedSurat.length) {
+            setInvoiceDate(sortedSurat[sIndex].tanggal);
+          }
+        }
       }
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
   };
