@@ -122,6 +122,7 @@ interface EditSuratItem {
   sisa: string;
   maxZAK: number;
   fot: string;
+  nomorPI?: string;
 }
 
 interface ExistingSurat {
@@ -1359,6 +1360,7 @@ export default function RekapProformaInvoicePage() {
         totalKG: (parseFloat(it.pengambilanZAK) || 0) * it.bobotPerUnit,
         sisa: it.sisa,
         fot: it.fot || "",
+        nomorPI: it.nomorPI || "",
       }));
       const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
       const updateData: any = {
@@ -1394,7 +1396,18 @@ export default function RekapProformaInvoicePage() {
         if (piSnap.exists()) {
           const piData = piSnap.data();
           const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
-          const newSisa = Math.max(0, currentSisa + delta);
+          const itemsForThisPI = newItems.filter((it) => {
+            const itemPI = it.nomorPI || "";
+            return !itemPI || itemPI === piNomor;
+          });
+          const oldItemsForThisPI = oldItems.filter((it) => {
+            const itemPI = it.nomorPI || "";
+            return !itemPI || itemPI === piNomor;
+          });
+          const newTotalKG = itemsForThisPI.reduce((sum, it) => sum + (it.totalKG || 0), 0);
+          const oldTotalKG = oldItemsForThisPI.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+          const piDelta = oldTotalKG - newTotalKG;
+          const newSisa = Math.max(0, currentSisa + piDelta);
           const totalOrdered = piRow.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
           let newStatus = "pending";
           if (newSisa <= 0) newStatus = "complete";
