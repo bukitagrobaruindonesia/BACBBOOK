@@ -1269,13 +1269,16 @@ export default function SuratPengangkutanPage() {
 
       const doItemsWithId = items.filter((it) => it.doId);
       const piItemsWithId = items.filter((it) => it.piId);
-      const stockItemsForGI = isGI
-        ? items.map((it) => getStockForProduct(it.jenisPupuk)).filter((s): s is StockItem => !!s)
+      const stockItemRefsForGI = isGI
+        ? items.map((it) => {
+            const stock = getStockForProduct(it.jenisPupuk);
+            return stock ? { item: it, stock, ref: doc(db, "stockGudang", stock.id) } : null;
+          }).filter((x): x is NonNullable<typeof x> => !!x)
         : [];
+      const stockRefs = stockItemRefsForGI.map((x) => x.ref);
 
       const doRefs = doItemsWithId.map((it) => doc(db, "do", it.doId!));
       const piRefs = piItemsWithId.map((it) => doc(db, "proformaInvoice", it.piId!));
-      const stockRefs = stockItemsForGI.map((s) => doc(db, "stockGudang", s.id));
 
       let nomorSeri = "";
       let isMandiriCounter = false;
@@ -1358,26 +1361,30 @@ export default function SuratPengangkutanPage() {
         });
 
         if (isGI) {
-          stockSnaps.forEach((snap, idx) => {
-            const item = items.find((it) => {
-              const stock = getStockForProduct(it.jenisPupuk);
-              return stock && stock.id === stockRefs[idx].id;
-            });
-            if (!item) return;
-            if (!snap.exists()) throw new Error(`Stok untuk ${item.jenisPupuk} tidak ditemukan`);
+          const stockDeductions: Record<string, { ref: any; stockId: string; totalUnit: number; totalKG: number }> = {};
+          stockItemRefsForGI.forEach((x) => {
+            if (!stockDeductions[x.stock.id]) {
+              stockDeductions[x.stock.id] = { ref: x.ref, stockId: x.stock.id, totalUnit: 0, totalKG: 0 };
+            }
+            const zak = parseFloat(x.item.pengambilanZAK) || 0;
+            stockDeductions[x.stock.id].totalUnit += zak;
+            stockDeductions[x.stock.id].totalKG += zak * x.item.bobotPerUnit;
+          });
+          Object.entries(stockDeductions).forEach(([stockId, { ref, totalUnit, totalKG }]) => {
+            const snapIdx = stockRefs.findIndex((r) => r.id === stockId);
+            const snap = stockSnaps[snapIdx];
+            if (!snap.exists()) throw new Error(`Stok untuk produk tidak ditemukan`);
             const currentData = snap.data() as StockDoc;
             const currentStokUnit = currentData.stokAkhirUnit || 0;
             const currentStokKG = currentData.stokAkhirKG || 0;
-            const minusUnit = parseFloat(item.pengambilanZAK) || 0;
-            const minusKG = minusUnit * item.bobotPerUnit;
-            if (currentStokUnit - minusUnit < 0 || currentStokKG - minusKG < 0) {
-              throw new Error(`Stok gudang untuk ${item.jenisPupuk} tidak mencukupi`);
+            if (currentStokUnit - totalUnit < 0 || currentStokKG - totalKG < 0) {
+              throw new Error(`Stok gudang tidak mencukupi untuk total pengambilan`);
             }
-            transaction.update(stockRefs[idx], {
-              barangKeluarUnit: (currentData.barangKeluarUnit || 0) + minusUnit,
-              barangKeluarKG: (currentData.barangKeluarKG || 0) + minusKG,
-              stokAkhirUnit: currentStokUnit - minusUnit,
-              stokAkhirKG: currentStokKG - minusKG,
+            transaction.update(ref, {
+              barangKeluarUnit: (currentData.barangKeluarUnit || 0) + totalUnit,
+              barangKeluarKG: (currentData.barangKeluarKG || 0) + totalKG,
+              stokAkhirUnit: currentStokUnit - totalUnit,
+              stokAkhirKG: currentStokKG - totalKG,
               updatedAt: serverTimestamp(),
             });
           });
