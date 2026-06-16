@@ -963,14 +963,31 @@ export default function RekapProformaInvoicePage() {
             }
             transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
           });
+          // FIX: Hapus lock agar nomor bisa dipakai lagi
           try { await deleteDoc(doc(db, "invoiceBaseLocks", piRow.invoiceBaseNumber)); } catch {}
+          // FIX: Hapus partial pool untuk S number
           try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${piRow.invoiceBaseNumber}`)); } catch {}
+          // FIX: Hapus arsipInvoice jika ada
+          try { await deleteDoc(doc(db, "arsipInvoice", `BAGB-INV-${piRow.invoiceBaseNumber}`)); } catch {}
+          // FIX: Hapus semua arsipInvoiceSementara dengan base number ini
+          const arsipSementaraQuery = query(
+            collection(db, "arsipInvoiceSementara"),
+            where("nomorInvoice", ">=", `BAGB-INV-S1-${piRow.invoiceBaseNumber}`),
+            where("nomorInvoice", "<=", `BAGB-INV-S999-${piRow.invoiceBaseNumber}`)
+          );
+          try {
+            const arsipSnap = await getDocs(arsipSementaraQuery);
+            for (const d of arsipSnap.docs) {
+              await deleteDoc(doc(db, "arsipInvoiceSementara", d.id));
+            }
+          } catch {}
         }
         await updateDoc(doc(db, "proformaInvoice", piRow.id), {
           invoiceBaseNumber: null,
           updatedAt: serverTimestamp(),
         });
       }
+      // FIX: Hapus nomorInvoice dari semua suratPengangkutan
       const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
       const suratSnap1 = await getDocs(suratQ1);
       for (const d of suratSnap1.docs) {
@@ -1013,8 +1030,24 @@ export default function RekapProformaInvoicePage() {
           }
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
+        // FIX: Hapus lock
         try { await deleteDoc(doc(db, "invoiceBaseLocks", oldBase)); } catch {}
+        // FIX: Hapus partial pool
         try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${oldBase}`)); } catch {}
+        // FIX: Hapus arsipInvoice
+        try { await deleteDoc(doc(db, "arsipInvoice", `BAGB-INV-${oldBase}`)); } catch {}
+        // FIX: Hapus arsipInvoiceSementara
+        const arsipSementaraQuery = query(
+          collection(db, "arsipInvoiceSementara"),
+          where("nomorInvoice", ">=", `BAGB-INV-S1-${oldBase}`),
+          where("nomorInvoice", "<=", `BAGB-INV-S999-${oldBase}`)
+        );
+        try {
+          const arsipSnap = await getDocs(arsipSementaraQuery);
+          for (const d of arsipSnap.docs) {
+            await deleteDoc(doc(db, "arsipInvoiceSementara", d.id));
+          }
+        } catch {}
       }
       await updateDoc(piRef, { invoiceBaseNumber: null, updatedAt: serverTimestamp() });
       const baseNumber = await getUniqueInvoiceBaseNumber();
@@ -1059,6 +1092,8 @@ export default function RekapProformaInvoicePage() {
             transaction.set(partialPoolRef, { lastPartial, gaps, updatedAt: Timestamp.now() }, { merge: true });
           });
         }
+        // FIX: Hapus arsipInvoiceSementara dengan nomor ini
+        try { await deleteDoc(doc(db, "arsipInvoiceSementara", oldNomor)); } catch {}
       }
       await updateDoc(suratRef, { nomorInvoice: null, updatedAt: serverTimestamp() });
       const nomor = await generateInvoiceNumber(invoiceSurat);
@@ -1155,19 +1190,7 @@ export default function RekapProformaInvoicePage() {
       const pi = selectedItem;
       const surat = invoiceSurat;
       const suratItems = surat.items || [];
-      // FIX: Only include items from this PI in the selected SP
-      const relevantSuratItems = suratItems.filter((it) => {
-        const itemPI = it.nomorPI || "";
-        if (!itemPI) return true;
-        if (Array.isArray(itemPI)) return itemPI.includes(pi.nomorPI);
-        return itemPI === pi.nomorPI;
-      });
-      if (relevantSuratItems.length === 0) {
-        alert("Tidak ada produk dari PI ini dalam surat pengangkutan yang dipilih.");
-        setIsSubmitting(false);
-        return;
-      }
-      const invoiceItems = relevantSuratItems.map((it, idx) => {
+      const invoiceItems = suratItems.map((it, idx) => {
         const produk = pi.produkItems.find((p) =>
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
           it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
@@ -2067,15 +2090,8 @@ export default function RekapProformaInvoicePage() {
     const tanggalInvoice = invoiceDate || pi.tanggal;
     let invoiceItems: any[];
     if (invoiceSurat) {
-      // FIX: For sementara invoice, only show items from this PI in the selected SP
       const suratItems = invoiceSurat.items || [];
-      const relevantSuratItems = suratItems.filter((it) => {
-        const itemPI = it.nomorPI || "";
-        if (!itemPI) return true;
-        if (Array.isArray(itemPI)) return itemPI.includes(pi.nomorPI);
-        return itemPI === pi.nomorPI;
-      });
-      invoiceItems = relevantSuratItems.map((it, idx) => {
+      invoiceItems = suratItems.map((it, idx) => {
         const produk = pi.produkItems.find((p) =>
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
           it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
