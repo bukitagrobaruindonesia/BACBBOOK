@@ -438,12 +438,17 @@ export default function SuratPengangkutanPage() {
   }, [urlNomorPI, piList, jenisSurat, subJenisDO, showJenisModal, showSubJenisModal]);
 
   const handleClickOutside = (e: MouseEvent) => {
+    const target = e.target as Node;
+    let clickedInsideAny = false;
     Object.keys(itemSearchRefs.current).forEach((key) => {
       const ref = itemSearchRefs.current[Number(key)];
-      if (ref && !ref.contains(e.target as Node)) {
-        setPiShowMap((prev) => ({ ...prev, [key]: false }));
+      if (ref && ref.contains(target)) {
+        clickedInsideAny = true;
       }
     });
+    if (!clickedInsideAny) {
+      setPiShowMap({});
+    }
   };
 
   const fetchExistingSurat = async () => {
@@ -1747,7 +1752,7 @@ export default function SuratPengangkutanPage() {
               const doItemForFilter = item.nomorSubDO ? doList.find((d) => d.nomorSubDO === item.nomorSubDO) : null;
               const validProducts = selectedPI ? getValidProductsForPI(selectedPI, doItemForFilter?.fot) : [];
               return (
-                <div key={item.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+                <div key={item.id} className="p-4 bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h4>
                     {items.length > 1 && (
@@ -1791,7 +1796,7 @@ export default function SuratPengangkutanPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Cari Proforma Invoice</label>
                       <div
                         ref={(el) => { itemSearchRefs.current[item.id] = el; }}
-                        className="relative z-40"
+                        className="relative"
                       >
                         <input
                           type="text"
@@ -1801,11 +1806,16 @@ export default function SuratPengangkutanPage() {
                             setPiShowMap((prev) => ({ ...prev, [item.id]: true }));
                           }}
                           onFocus={() => setPiShowMap((prev) => ({ ...prev, [item.id]: true }))}
+                          onBlur={() => {
+                            setTimeout(() => {
+                              setPiShowMap((prev) => ({ ...prev, [item.id]: false }));
+                            }, 200);
+                          }}
                           placeholder="Ketik nomor PI atau nama customer..."
                           className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
                         />
                         {showSearch && (
-                          <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[300px] overflow-y-auto z-[60]" onMouseDown={(e) => e.preventDefault()}>
+                          <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-[300px] overflow-y-auto overflow-x-hidden" onMouseDown={(e) => e.preventDefault()}>
                             {filteredPI.length === 0 ? (
                               <div className="p-4 text-sm text-gray-500">{searchVal ? "Tidak ada PI yang cocok" : "Tidak ada PI yang tersedia"}</div>
                             ) : (
