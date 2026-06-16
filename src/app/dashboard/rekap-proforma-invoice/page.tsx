@@ -329,6 +329,7 @@ export default function RekapProformaInvoicePage() {
   });
   const [bastExists, setBastExists] = useState(false);
   const [invoiceExists, setInvoiceExists] = useState(false);
+  const [invoiceSementaraExists, setInvoiceSementaraExists] = useState(false);
   const [editForm, setEditForm] = useState({
     tanggal: "",
     nomorPI: "",
@@ -370,6 +371,7 @@ export default function RekapProformaInvoicePage() {
     } else {
       setBastExists(false);
       setInvoiceExists(false);
+      setInvoiceSementaraExists(false);
     }
   }, [selectedItem]);
 
@@ -429,6 +431,9 @@ export default function RekapProformaInvoicePage() {
       const data = snapshot.docs.map((docSnap) => ({
         id: docSnap.id,
         namaBarang: docSnap.data().namaBarang || "",
+        kodeBarang: docSnap.data().kodeBarang || "",
+        fot: docSnap.data().fot || "",
+        namaProdusen: docSnap.data().namaProdusen || "",
         bobotPerUnit: docSnap.data().bobotPerUnit || 50,
         stokAkhirUnit: docSnap.data().stokAkhirUnit || 0,
         stokAkhirKG: docSnap.data().stokAkhirKG || 0,
@@ -498,17 +503,21 @@ export default function RekapProformaInvoicePage() {
   const checkInvoiceExists = async (nomorPI: string) => {
     try {
       const piRow = data.find((d) => d.nomorPI === nomorPI);
-      if (piRow && piRow.invoiceBaseNumber) { setInvoiceExists(true); return; }
-      const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
-      const suratSnap1 = await getDocs(suratQ1);
-      const suratQ2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", nomorPI));
-      const suratSnap2 = await getDocs(suratQ2);
-      let hasInvoice = false;
-      [suratSnap1, suratSnap2].forEach((snap) => {
-        snap.forEach((d) => { if (d.data().nomorInvoice) hasInvoice = true; });
-      });
-      setInvoiceExists(hasInvoice);
-    } catch { setInvoiceExists(false); }
+      if (piRow && piRow.invoiceBaseNumber) {
+        const fullNomor = `BAGB-INV-${piRow.invoiceBaseNumber}`;
+        const arsipRef = doc(db, "arsipInvoice", fullNomor);
+        const arsipSnap = await getDoc(arsipRef);
+        setInvoiceExists(arsipSnap.exists());
+      } else {
+        setInvoiceExists(false);
+      }
+      const sementaraQ = query(collection(db, "arsipInvoiceSementara"), where("nomorPI", "==", nomorPI));
+      const sementaraSnap = await getDocs(sementaraQ);
+      setInvoiceSementaraExists(!sementaraSnap.empty);
+    } catch {
+      setInvoiceExists(false);
+      setInvoiceSementaraExists(false);
+    }
   };
 
   const getUniqueBastNumber = async (): Promise<string> => {
@@ -953,12 +962,6 @@ export default function RekapProformaInvoicePage() {
     } catch (error) { console.error(error); }
   };
 
-
-
-
-
-
-
   const handleTerbitkanInvoice = async () => {
     if (!selectedItem || !invoiceNomor || !selectedOrderTTD) {
       alert("Pilih TTD untuk Diorder Oleh terlebih dahulu.");
@@ -1017,6 +1020,7 @@ export default function RekapProformaInvoicePage() {
         nomorInvoice: invoiceNomor,
         tanggalInvoice: invoiceDate || pi.tanggal,
         nomorPI: pi.nomorPI,
+        customerId: pi.customerId || "",
         namaCustomer: pi.namaCustomer,
         alamatCustomer: pi.alamatCustomer,
         npwp: pi.npwp || "",
@@ -1046,11 +1050,12 @@ export default function RekapProformaInvoicePage() {
       };
       await setDoc(doc(db, "arsipInvoice", invoiceNomor), { ...arsipData, createdAt: serverTimestamp() }, { merge: true });
       setIsInvoiceModalOpen(false);
+      setInvoiceExists(true);
       alert("Invoice berhasil diterbitkan!");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice."); } finally { setIsSubmitting(false); }
   };
 
-    const handlePerbaruiInvoice = async () => {
+  const handlePerbaruiInvoice = async () => {
     if (!selectedItem || !invoiceNomor) return;
     if (!confirm("Perbarui data invoice dengan perubahan terbaru dari PI?")) return;
     setIsSubmitting(true);
@@ -1146,7 +1151,7 @@ export default function RekapProformaInvoicePage() {
     }
   };
 
-const handleTerbitkanInvoiceSementara = async () => {
+  const handleTerbitkanInvoiceSementara = async () => {
     if (!selectedItem || !invoiceSurat || !invoiceNomor || !selectedOrderTTD) {
       alert("Pilih TTD untuk Diorder Oleh terlebih dahulu.");
       return;
@@ -1157,7 +1162,11 @@ const handleTerbitkanInvoiceSementara = async () => {
     try {
       const pi = selectedItem;
       const surat = invoiceSurat;
-      const suratItems = surat.items || [];
+      const targetNomorPI = pi.nomorPI;
+      const suratItems = (surat.items || []).filter((it) => {
+        const itemPI = it.nomorPI || "";
+        return !itemPI || itemPI === targetNomorPI;
+      });
       const invoiceItems = suratItems.map((it, idx) => {
         const produk = pi.produkItems.find((p) =>
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
@@ -1186,6 +1195,7 @@ const handleTerbitkanInvoiceSementara = async () => {
         nomorInvoice: invoiceNomor,
         tanggalInvoice: invoiceDate || surat.tanggal,
         nomorPI: pi.nomorPI,
+        customerId: pi.customerId || "",
         nomorSeriSP: surat.nomorSeri,
         namaCustomer: pi.namaCustomer,
         alamatCustomer: pi.alamatCustomer,
@@ -1197,8 +1207,8 @@ const handleTerbitkanInvoiceSementara = async () => {
           tanggal: surat.tanggal,
           driverUnit: surat.driverUnit,
           nomorPolisi: surat.nomorPolisi,
-          items: surat.items,
-          totalKG: surat.totalKG,
+          items: suratItems,
+          totalKG: suratItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0),
         },
         subtotal: totalSubTotal,
         ppnNominal: ppn,
@@ -1216,6 +1226,7 @@ const handleTerbitkanInvoiceSementara = async () => {
       };
       await setDoc(doc(db, "arsipInvoiceSementara", invoiceNomor), { ...arsipData, createdAt: serverTimestamp() }, { merge: true });
       setIsInvoiceModalOpen(false);
+      setInvoiceSementaraExists(true);
       alert("Invoice sementara berhasil diterbitkan!");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice sementara."); } finally { setIsSubmitting(false); }
   };
@@ -2058,7 +2069,11 @@ const handleTerbitkanInvoiceSementara = async () => {
     const tanggalInvoice = invoiceDate || pi.tanggal;
     let invoiceItems: any[];
     if (invoiceSurat) {
-      const suratItems = invoiceSurat.items || [];
+      const targetNomorPI = pi.nomorPI;
+      const suratItems = (invoiceSurat.items || []).filter((it) => {
+        const itemPI = it.nomorPI || "";
+        return !itemPI || itemPI === targetNomorPI;
+      });
       invoiceItems = suratItems.map((it, idx) => {
         const produk = pi.produkItems.find((p) =>
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
@@ -2393,7 +2408,6 @@ const handleTerbitkanInvoiceSementara = async () => {
     printWindow.document.close();
   };
 
-  
   const handlePrintFoto = (fotoSrc: string, index: number) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
@@ -3174,20 +3188,47 @@ const handleTerbitkanInvoiceSementara = async () => {
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title={invoiceSurat ? "Print Invoice Sementara" : "Print Invoice"} size="md" footer={
         <div className="flex justify-end gap-3 flex-wrap">
           <Button variant="outline" onClick={() => setIsInvoiceModalOpen(false)}>Batal</Button>
-          {invoiceExists ? (
-            <Button variant="secondary" onClick={handlePerbaruiInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isSubmitting} isLoading={isSubmitting}>Perbarui Invoice</Button>
-          ) : invoiceSurat ? (
-            <Button variant="primary" onClick={handleTerbitkanInvoiceSementara} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>
+          {invoiceSurat ? (
+            <>
+              <Button variant="primary" onClick={handleTerbitkanInvoiceSementara} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>
+                Terbitkan
+              </Button>
+              <Button variant="secondary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice}>
+                Print
+              </Button>
+            </>
           ) : (
-            <Button variant="primary" onClick={handleTerbitkanInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>
+            <>
+              {invoiceExists ? (
+                <Button variant="secondary" onClick={handlePerbaruiInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isSubmitting} isLoading={isSubmitting}>
+                  Perbarui
+                </Button>
+              ) : (
+                <Button variant="primary" onClick={handleTerbitkanInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>
+                  Terbitkan
+                </Button>
+              )}
+              <Button variant="secondary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice}>
+                Print
+              </Button>
+            </>
           )}
-          <Button variant="primary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice}>Print</Button>
         </div>
       }>
         <div className="space-y-4">
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200"><p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Invoice</p><p className="text-lg font-mono font-bold text-green-700">{invoiceNomor || "Memuat..."}</p>{isGeneratingInvoice && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor invoice...</p>}</div>
-          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200"><p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Tanggal Invoice</p><p className="text-sm font-semibold text-gray-800">{invoiceDate ? new Date(invoiceDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "-"}</p><p className="text-xs text-gray-500 mt-1">{invoiceSurat ? "Menyesuaikan tanggal Surat Pengangkutan" : invoiceDate !== selectedItem?.tanggal ? "Menyesuaikan tanggal Surat Pengangkutan terakhir" : "Menyesuaikan tanggal Proforma Invoice"}</p></div>
-          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100"><p className="text-sm text-blue-700"><span className="font-semibold">Dipesan Oleh:</span> {selectedItem?.namaCustomer || "-"}</p></div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Nomor Invoice</p>
+            <p className="text-lg font-mono font-bold text-green-700">{invoiceNomor || "Memuat..."}</p>
+            {isGeneratingInvoice && <p className="text-sm text-gray-500 mt-1">Menghasilkan nomor invoice...</p>}
+          </div>
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-200">
+            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Tanggal Invoice</p>
+            <p className="text-sm font-semibold text-gray-800">{invoiceDate ? new Date(invoiceDate).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "-"}</p>
+            <p className="text-xs text-gray-500 mt-1">{invoiceSurat ? "Menyesuaikan tanggal Surat Pengangkutan" : invoiceDate !== selectedItem?.tanggal ? "Menyesuaikan tanggal Surat Pengangkutan terakhir" : "Menyesuaikan tanggal Proforma Invoice"}</p>
+          </div>
+          <div className="p-3 bg-blue-50 rounded-lg border border-blue-100">
+            <p className="text-sm text-blue-700"><span className="font-semibold">Dipesan Oleh:</span> {selectedItem?.namaCustomer || "-"}</p>
+          </div>
           <p className="text-sm text-gray-600">Pilih TTD untuk bagian <strong>Diorder Oleh</strong>:</p>
           <Select label="Pilih TTD Diorder Oleh" value={selectedOrderTTD} onChange={(e) => setSelectedOrderTTD(e.target.value)} options={[{ value: "", label: "Pilih tanda tangan..." }, ...ttdList.map((ttd) => ({ value: ttd.id, label: `${ttd.nama} - ${ttd.jabatan}` }))]} />
           {selectedOrderTTD && (
@@ -3199,6 +3240,18 @@ const handleTerbitkanInvoiceSementara = async () => {
                   <><img src={ttd.ttdImage} alt="TTD" className="h-16 object-contain bg-white rounded-lg border border-gray-200" /><div><p className="text-sm font-semibold text-gray-900">{ttd.nama}</p><p className="text-xs text-gray-500">{ttd.jabatan}</p></div></>
                 );
               })()}
+            </div>
+          )}
+          {invoiceSurat && (
+            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+              <p className="text-xs text-amber-700 font-semibold mb-1">Invoice Sementara</p>
+              <p className="text-sm text-gray-700">Hanya produk dari <strong>{selectedItem?.nomorPI}</strong> yang akan ditampilkan.</p>
+              <p className="text-xs text-gray-500 mt-1">Nomor SP: {invoiceSurat.nomorSeri}</p>
+            </div>
+          )}
+          {!invoiceSurat && invoiceExists && (
+            <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+              <p className="text-sm text-green-700"><span className="font-semibold">Status:</span> Invoice sudah diterbitkan. Klik &quot;Perbarui&quot; untuk memperbarui data.</p>
             </div>
           )}
         </div>
