@@ -262,6 +262,7 @@ export default function LaporanInputStockGudangPage() {
 
     const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
     const isBotol = formData.unit === "BOTOL";
+  const isDus = formData.unit === "DUS";
 
     if (isUnitBased && !isBotol) {
       if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0)
@@ -300,6 +301,7 @@ export default function LaporanInputStockGudangPage() {
 
     try {
       const isBotol = formData.unit === "BOTOL";
+  const isDus = formData.unit === "DUS";
       const isKG = formData.unit === "KG";
       const isZAK = formData.unit === "ZAK";
       const stokTersediaUnit = parseFloat(formData.stokTersediaUnit) || 0;
@@ -334,10 +336,10 @@ export default function LaporanInputStockGudangPage() {
           docData.stokAkhirKG = newStokKG;
         }
 
-        if (isBotol) {
+        if (isBotol || isDus) {
           docData.botolPerDus = botolPerDus;
           docData.volumeMl = parseFloat(formData.volumeMl) || 500;
-          docData.displayUnit = "ZAK";
+          if (isBotol) docData.displayUnit = "ZAK";
         }
 
         await updateDoc(doc(db, "stockGudang", editId), docData);
@@ -363,10 +365,10 @@ export default function LaporanInputStockGudangPage() {
           updatedAt: serverTimestamp(),
         };
 
-        if (isBotol) {
+        if (isBotol || isDus) {
           docData.botolPerDus = botolPerDus;
           docData.volumeMl = parseFloat(formData.volumeMl) || 500;
-          docData.displayUnit = "ZAK";
+          if (isBotol) docData.displayUnit = "ZAK";
         }
 
         await addDoc(collection(db, "stockGudang"), docData);
@@ -457,6 +459,7 @@ export default function LaporanInputStockGudangPage() {
 
   const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
   const isBotol = formData.unit === "BOTOL";
+  const isDus = formData.unit === "DUS";
 
   const filteredStockList = stockList.filter((stock) => {
     const matchesSearch =
@@ -483,7 +486,7 @@ export default function LaporanInputStockGudangPage() {
   };
 
   const hitungStokAwalKG = (row: StockGudang) => {
-    if (row.unit === "ZAK") {
+    if (row.unit === "ZAK" || row.unit === "DUS") {
       return (row.stokAwalUnit || 0) * (row.bobotPerUnit || 50);
     }
     return row.stokAwalKG || 0;
@@ -612,11 +615,12 @@ export default function LaporanInputStockGudangPage() {
       header: "Konversi",
       width: "140px",
       render: (row: StockGudang) => {
-        if (row.unit === "BOTOL") {
+        if (row.unit === "BOTOL" || row.unit === "DUS") {
           return (
             <div className="text-xs">
               <p className="font-mono text-pink-600">{row.botolPerDus || 20} botol/DUS</p>
               <p className="font-mono text-pink-500">{row.volumeMl || 500} ml/botol</p>
+              {row.unit === "DUS" && <p className="font-mono text-purple-600">{row.bobotPerUnit?.toLocaleString()} KG/DUS</p>}
             </div>
           );
         }
@@ -952,18 +956,18 @@ export default function LaporanInputStockGudangPage() {
 
                 {isUnitBased && !isBotol && (
                   <Input
-                    label="Bobot Per Unit (KG)"
+                    label={isDus ? "Bobot Per DUS (KG)" : "Bobot Per Unit (KG)"}
                     type="number"
                     name="bobotPerUnit"
                     value={formData.bobotPerUnit}
                     onChange={handleChange}
-                    placeholder="Contoh: 50"
+                    placeholder={isDus ? "Contoh: 25" : "Contoh: 50"}
                     error={errors.bobotPerUnit}
                     required
                   />
                 )}
 
-                {isBotol && (
+                {(isBotol || isDus) && (
                   <>
                     <Input
                       label="Botol Per DUS"
