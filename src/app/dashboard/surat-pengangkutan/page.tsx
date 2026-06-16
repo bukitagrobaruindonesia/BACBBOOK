@@ -160,6 +160,10 @@ const formatSisaKG = (kg: number) => {
   return `${kg.toLocaleString()} KG`;
 };
 
+const sanitizeLockDocId = (nomorSeri: string) => {
+  return nomorSeri.replace(/\//g, "-");
+};
+
 const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<string> => {
   const prefix = `BAGB-SP-DO/${year}/${roman}`;
   const poolRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
@@ -184,14 +188,14 @@ const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<s
           lastNumber = candidateNum;
         }
         const candidateSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
-        const lockRef = doc(db, "suratPengangkutanLocks", candidateSeri);
+        const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(candidateSeri));
         const lockDoc = await transaction.get(lockRef);
         if (lockDoc.exists()) {
           let searchNum = 1;
           let found = false;
           while (searchNum <= lastNumber + 1000 && !found) {
             const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
-            const testRef = doc(db, "suratPengangkutanLocks", testSeri);
+            const testRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(testSeri));
             const testDoc = await transaction.get(testRef);
             if (!testDoc.exists()) {
               if (gaps.includes(searchNum)) {
@@ -243,14 +247,14 @@ const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): P
           lastNumber = candidateNum;
         }
         const candidateSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
-        const lockRef = doc(db, "suratPengangkutanLocks", candidateSeri);
+        const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(candidateSeri));
         const lockDoc = await transaction.get(lockRef);
         if (lockDoc.exists()) {
           let searchNum = 1;
           let found = false;
           while (searchNum <= lastNumber + 1000 && !found) {
             const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
-            const testRef = doc(db, "suratPengangkutanLocks", testSeri);
+            const testRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(testSeri));
             const testDoc = await transaction.get(testRef);
             if (!testDoc.exists()) {
               if (gaps.includes(searchNum)) {
@@ -280,7 +284,7 @@ const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): P
 
 const releaseSeriDO = async (nomorSeri: string) => {
   try {
-    const lockRef = doc(db, "suratPengangkutanLocks", nomorSeri);
+    const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(nomorSeri));
     const lockSnap = await getDoc(lockRef);
     if (lockSnap.exists()) {
       await deleteDoc(lockRef);
@@ -302,7 +306,7 @@ const releaseSeriDO = async (nomorSeri: string) => {
         transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
       });
     } else if (nomorSeri.startsWith("BAGB-DO-")) {
-      const match = nomorSeri.match(/^BAGB-DO-(.+?)-(.+?)-SP-(\d{4})$/);
+      const match = nomorSeri.match(/^BAGB-DO-(.+?)-(.+?)-SP\/(\d{4})$/);
       if (match) {
         const nsub = match[1];
         const perusahaan = match[2];
