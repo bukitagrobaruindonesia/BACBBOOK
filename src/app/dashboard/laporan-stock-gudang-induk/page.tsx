@@ -306,7 +306,7 @@ export default function LaporanInputStockGudangPage() {
       const isZAK = formData.unit === "ZAK";
       const stokTersediaUnit = parseFloat(formData.stokTersediaUnit) || 0;
       const bobotPerUnit = isBotol ? (parseFloat(formData.botolPerDus) || 20) : (parseFloat(formData.bobotPerUnit) || 50);
-      const botolPerDus = isBotol ? parseFloat(formData.botolPerDus) || 20 : null;
+      const botolPerDus = (isBotol || isDus) ? parseFloat(formData.botolPerDus) || 20 : null;
 
       const hitungStokAwalKG = () => {
         if (isKG) return 0;
@@ -331,7 +331,7 @@ export default function LaporanInputStockGudangPage() {
 
         if (formData.stokTersediaUnit) {
           const newStokUnit = parseFloat(formData.stokTersediaUnit) || 0;
-          const newStokKG = isKG ? 0 : newStokUnit * bobotPerUnit;
+          const newStokKG = isKG ? 0 : (isDus || isBotol) ? 0 : newStokUnit * bobotPerUnit;
           docData.stokAkhirUnit = isKG ? 0 : newStokUnit;
           docData.stokAkhirKG = newStokKG;
         }
@@ -496,7 +496,10 @@ export default function LaporanInputStockGudangPage() {
   };
 
   const getBotolCount = (row: StockGudang, unitField: number) => {
-    if (row.unit === "DUS" || row.unit === "BOTOL") {
+    if (row.unit === "DUS") {
+      return (unitField || 0) * (row.botolPerDus || 20);
+    }
+    if (row.unit === "BOTOL") {
       return unitField || 0;
     }
     return unitField || 0;
