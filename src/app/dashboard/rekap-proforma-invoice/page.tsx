@@ -1155,7 +1155,19 @@ export default function RekapProformaInvoicePage() {
       const pi = selectedItem;
       const surat = invoiceSurat;
       const suratItems = surat.items || [];
-      const invoiceItems = suratItems.map((it, idx) => {
+      // FIX: Only include items from this PI in the selected SP
+      const relevantSuratItems = suratItems.filter((it) => {
+        const itemPI = it.nomorPI || "";
+        if (!itemPI) return true;
+        if (Array.isArray(itemPI)) return itemPI.includes(pi.nomorPI);
+        return itemPI === pi.nomorPI;
+      });
+      if (relevantSuratItems.length === 0) {
+        alert("Tidak ada produk dari PI ini dalam surat pengangkutan yang dipilih.");
+        setIsSubmitting(false);
+        return;
+      }
+      const invoiceItems = relevantSuratItems.map((it, idx) => {
         const produk = pi.produkItems.find((p) =>
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
           it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
@@ -2055,8 +2067,15 @@ export default function RekapProformaInvoicePage() {
     const tanggalInvoice = invoiceDate || pi.tanggal;
     let invoiceItems: any[];
     if (invoiceSurat) {
+      // FIX: For sementara invoice, only show items from this PI in the selected SP
       const suratItems = invoiceSurat.items || [];
-      invoiceItems = suratItems.map((it, idx) => {
+      const relevantSuratItems = suratItems.filter((it) => {
+        const itemPI = it.nomorPI || "";
+        if (!itemPI) return true;
+        if (Array.isArray(itemPI)) return itemPI.includes(pi.nomorPI);
+        return itemPI === pi.nomorPI;
+      });
+      invoiceItems = relevantSuratItems.map((it, idx) => {
         const produk = pi.produkItems.find((p) =>
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
           it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
