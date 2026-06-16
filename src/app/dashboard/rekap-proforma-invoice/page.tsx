@@ -826,28 +826,11 @@ export default function RekapProformaInvoicePage() {
       baseNumber = await getUniqueInvoiceBaseNumber();
       await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
     }
-    const partialPoolRef = doc(db, "counters", `invoicePartialPool_${baseNumber}`);
-    const partialResult = await runTransaction(db, async (transaction) => {
-      const poolSnap = await transaction.get(partialPoolRef);
-      let lastPartial = 0;
-      let gaps: number[] = [];
-      if (poolSnap.exists()) {
-        lastPartial = poolSnap.data().lastPartial || 0;
-        gaps = poolSnap.data().gaps || [];
-      }
-      gaps.sort((a, b) => a - b);
-      let candidateNum: number;
-      if (gaps.length > 0) {
-        candidateNum = gaps[0];
-        gaps = gaps.filter((g) => g !== candidateNum);
-      } else {
-        candidateNum = lastPartial + 1;
-        lastPartial = candidateNum;
-      }
-      transaction.set(partialPoolRef, { lastPartial, gaps, updatedAt: Timestamp.now() }, { merge: true });
-      return candidateNum;
-    });
-    const nomor = `BAGB-INV-S${partialResult}-${baseNumber}`;
+    const allSurat = getSuratMuatForPI(selectedItem.nomorPI);
+    const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
+    const sIndex = sortedSurat.findIndex((s) => s.id === surat.id);
+    const sNum = sIndex >= 0 ? sIndex + 1 : 1;
+    const nomor = `BAGB-INV-S${sNum}-${baseNumber}`;
     await updateDoc(suratRef, { nomorInvoice: nomor });
     return nomor;
   };
