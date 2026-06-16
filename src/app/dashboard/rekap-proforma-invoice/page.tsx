@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
-  collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, where,
+  collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, deleteField, where,
   serverTimestamp, getDoc, addDoc, setDoc, runTransaction, Timestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
@@ -67,6 +67,7 @@ interface ProformaInvoice {
   id: string;
   tanggal: string;
   nomorPI: string;
+  customerId?: string;
   namaCustomer: string;
   alamatCustomer: string;
   npwp: string;
@@ -184,6 +185,20 @@ const parseInvoiceNumber = (nomor: string) => {
     partialNum: match[1] ? parseInt(match[1]) : 0,
     baseNum: parseInt(match[2]),
   };
+};
+
+const terbilangRupiah = (nilai: number): string => {
+  const huruf = ["", "Satu", "Dua", "Tiga", "Empat", "Lima", "Enam", "Tujuh", "Delapan", "Sembilan", "Sepuluh", "Sebelas"];
+  if (nilai < 12) return huruf[nilai] + " Rupiah";
+  if (nilai < 20) return terbilangRupiah(nilai - 10) + " Belas Rupiah";
+  if (nilai < 100) return huruf[Math.floor(nilai / 10)] + " Puluh " + terbilangRupiah(nilai % 10).replace(" Rupiah", "") + " Rupiah";
+  if (nilai < 200) return "Seratus " + terbilangRupiah(nilai - 100).replace(" Rupiah", "") + " Rupiah";
+  if (nilai < 1000) return huruf[Math.floor(nilai / 100)] + " Ratus " + terbilangRupiah(nilai % 100).replace(" Rupiah", "") + " Rupiah";
+  if (nilai < 2000) return "Seribu " + terbilangRupiah(nilai - 1000).replace(" Rupiah", "") + " Rupiah";
+  if (nilai < 1000000) return terbilangRupiah(Math.floor(nilai / 1000)) + " Ribu " + terbilangRupiah(nilai % 1000).replace(" Rupiah", "") + " Rupiah";
+  if (nilai < 1000000000) return terbilangRupiah(Math.floor(nilai / 1000000)) + " Juta " + terbilangRupiah(nilai % 1000000).replace(" Rupiah", "") + " Rupiah";
+  if (nilai < 1000000000000) return terbilangRupiah(Math.floor(nilai / 1000000000)) + " Miliar " + terbilangRupiah(nilai % 1000000000).replace(" Rupiah", "") + " Rupiah";
+  return "Nilai terlalu besar";
 };
 
 const formatRupiah = (num: number) => {
@@ -938,168 +953,11 @@ export default function RekapProformaInvoicePage() {
     } catch (error) { console.error(error); }
   };
 
-  const handleResetInvoice = async (nomorPI: string) => {
-    if (!confirm("Reset Invoice? Nomor seri akan dikembalikan ke pool.")) return;
-    try {
-      const piRow = data.find((d) => d.nomorPI === nomorPI);
-      if (piRow) {
-        if (piRow.invoiceBaseNumber) {
-          const baseNum = parseInt(piRow.invoiceBaseNumber);
-          const poolRef = doc(db, "counters", "invoiceBasePool");
-          await runTransaction(db, async (transaction) => {
-            const poolSnap = await transaction.get(poolRef);
-            let lastNumber = poolSnap.data()?.lastNumber || 0;
-            let gaps = (poolSnap.data()?.gaps || []) as number[];
-            if (!gaps.includes(baseNum)) {
-              gaps.push(baseNum);
-              gaps.sort((a, b) => a - b);
-            }
-            if (baseNum === lastNumber) {
-              let newLast = lastNumber - 1;
-              while (newLast > 0 && gaps.includes(newLast)) {
-                newLast--;
-              }
-              lastNumber = Math.max(0, newLast);
-            }
-            transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
-          });
-          // FIX: Hapus lock agar nomor bisa dipakai lagi
-          try { await deleteDoc(doc(db, "invoiceBaseLocks", piRow.invoiceBaseNumber)); } catch {}
-          // FIX: Hapus partial pool untuk S number
-          try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${piRow.invoiceBaseNumber}`)); } catch {}
-          // FIX: Hapus arsipInvoice jika ada
-          try { await deleteDoc(doc(db, "arsipInvoice", `BAGB-INV-${piRow.invoiceBaseNumber}`)); } catch {}
-          // FIX: Hapus semua arsipInvoiceSementara dengan base number ini
-          const arsipSementaraQuery = query(
-            collection(db, "arsipInvoiceSementara"),
-            where("nomorInvoice", ">=", `BAGB-INV-S1-${piRow.invoiceBaseNumber}`),
-            where("nomorInvoice", "<=", `BAGB-INV-S999-${piRow.invoiceBaseNumber}`)
-          );
-          try {
-            const arsipSnap = await getDocs(arsipSementaraQuery);
-            for (const d of arsipSnap.docs) {
-              await deleteDoc(doc(db, "arsipInvoiceSementara", d.id));
-            }
-          } catch {}
-        }
-        await updateDoc(doc(db, "proformaInvoice", piRow.id), {
-          invoiceBaseNumber: null,
-          updatedAt: serverTimestamp(),
-        });
-      }
-      // FIX: Hapus nomorInvoice dari semua suratPengangkutan
-      const suratQ1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
-      const suratSnap1 = await getDocs(suratQ1);
-      for (const d of suratSnap1.docs) {
-        await updateDoc(doc(db, "suratPengangkutan", d.id), { nomorInvoice: null, updatedAt: serverTimestamp() });
-      }
-      const suratQ2 = query(collection(db, "suratPengangkutan"), where("nomorPI", "array-contains", nomorPI));
-      const suratSnap2 = await getDocs(suratQ2);
-      for (const d of suratSnap2.docs) {
-        await updateDoc(doc(db, "suratPengangkutan", d.id), { nomorInvoice: null, updatedAt: serverTimestamp() });
-      }
-      setInvoiceExists(false);
-      fetchData();
-    } catch (error) { console.error(error); }
-  };
 
-  const handleRegenerateInvoice = async () => {
-    if (!selectedItem) return;
-    if (!confirm("Regenerate nomor invoice? Nomor lama akan dikembalikan ke pool.")) return;
-    setIsGeneratingInvoice(true);
-    try {
-      const piRef = doc(db, "proformaInvoice", selectedItem.id);
-      const oldBase = selectedItem.invoiceBaseNumber;
-      if (oldBase) {
-        const baseNum = parseInt(oldBase);
-        const poolRef = doc(db, "counters", "invoiceBasePool");
-        await runTransaction(db, async (transaction) => {
-          const poolSnap = await transaction.get(poolRef);
-          let lastNumber = poolSnap.data()?.lastNumber || 0;
-          let gaps = (poolSnap.data()?.gaps || []) as number[];
-          if (!gaps.includes(baseNum)) {
-            gaps.push(baseNum);
-            gaps.sort((a, b) => a - b);
-          }
-          if (baseNum === lastNumber) {
-            let newLast = lastNumber - 1;
-            while (newLast > 0 && gaps.includes(newLast)) {
-              newLast--;
-            }
-            lastNumber = Math.max(0, newLast);
-          }
-          transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
-        });
-        // FIX: Hapus lock
-        try { await deleteDoc(doc(db, "invoiceBaseLocks", oldBase)); } catch {}
-        // FIX: Hapus partial pool
-        try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${oldBase}`)); } catch {}
-        // FIX: Hapus arsipInvoice
-        try { await deleteDoc(doc(db, "arsipInvoice", `BAGB-INV-${oldBase}`)); } catch {}
-        // FIX: Hapus arsipInvoiceSementara
-        const arsipSementaraQuery = query(
-          collection(db, "arsipInvoiceSementara"),
-          where("nomorInvoice", ">=", `BAGB-INV-S1-${oldBase}`),
-          where("nomorInvoice", "<=", `BAGB-INV-S999-${oldBase}`)
-        );
-        try {
-          const arsipSnap = await getDocs(arsipSementaraQuery);
-          for (const d of arsipSnap.docs) {
-            await deleteDoc(doc(db, "arsipInvoiceSementara", d.id));
-          }
-        } catch {}
-      }
-      await updateDoc(piRef, { invoiceBaseNumber: null, updatedAt: serverTimestamp() });
-      const baseNumber = await getUniqueInvoiceBaseNumber();
-      await updateDoc(piRef, { invoiceBaseNumber: baseNumber, updatedAt: serverTimestamp() });
-      const nomor = `BAGB-INV-${baseNumber}`;
-      setInvoiceNomor(nomor);
-    } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
-  };
 
-  const handleRegenerateInvoiceSementara = async () => {
-    if (!selectedItem || !invoiceSurat) return;
-    if (!confirm("Regenerate nomor invoice sementara?")) return;
-    setIsGeneratingInvoice(true);
-    try {
-      const suratRef = doc(db, "suratPengangkutan", invoiceSurat.id);
-      const suratSnap = await getDoc(suratRef);
-      const oldNomor = suratSnap.data()?.nomorInvoice;
-      if (oldNomor) {
-        const parsed = parseInvoiceNumber(oldNomor);
-        if (parsed && parsed.isPartial) {
-          const baseNum = String(parsed.baseNum).padStart(3, "0");
-          const partialNum = parsed.partialNum;
-          const partialPoolRef = doc(db, "counters", `invoicePartialPool_${baseNum}`);
-          await runTransaction(db, async (transaction) => {
-            const poolSnap = await transaction.get(partialPoolRef);
-            let lastPartial = 0;
-            let gaps: number[] = [];
-            if (poolSnap.exists()) {
-              lastPartial = poolSnap.data().lastPartial || 0;
-              gaps = poolSnap.data().gaps || [];
-            }
-            if (!gaps.includes(partialNum)) {
-              gaps.push(partialNum);
-              gaps.sort((a, b) => a - b);
-            }
-            if (partialNum === lastPartial && gaps.length > 0) {
-              const maxGap = Math.max(...gaps);
-              if (maxGap < lastPartial) {
-                lastPartial = maxGap;
-              }
-            }
-            transaction.set(partialPoolRef, { lastPartial, gaps, updatedAt: Timestamp.now() }, { merge: true });
-          });
-        }
-        // FIX: Hapus arsipInvoiceSementara dengan nomor ini
-        try { await deleteDoc(doc(db, "arsipInvoiceSementara", oldNomor)); } catch {}
-      }
-      await updateDoc(suratRef, { nomorInvoice: null, updatedAt: serverTimestamp() });
-      const nomor = await generateInvoiceNumber(invoiceSurat);
-      setInvoiceNomor(nomor);
-    } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
-  };
+
+
+
 
   const handleTerbitkanInvoice = async () => {
     if (!selectedItem || !invoiceNomor || !selectedOrderTTD) {
@@ -1192,7 +1050,103 @@ export default function RekapProformaInvoicePage() {
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice."); } finally { setIsSubmitting(false); }
   };
 
-  const handleTerbitkanInvoiceSementara = async () => {
+    const handlePerbaruiInvoice = async () => {
+    if (!selectedItem || !invoiceNomor) return;
+    if (!confirm("Perbarui data invoice dengan perubahan terbaru dari PI?")) return;
+    setIsSubmitting(true);
+    try {
+      const pi = selectedItem;
+      const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
+      const groupedItems = pi.produkItems.reduce((acc, produk) => {
+        const key = `${produk.namaProduk}|${produk.fot || ""}`;
+        if (!acc[key]) {
+          acc[key] = {
+            namaProduk: produk.namaProduk,
+            fot: produk.fot || "",
+            produsen: produk.produsen || "",
+            bobotPerUnit: produk.bobotPerUnit || 50,
+            hargaSatuan: produk.hargaSatuan || 0,
+            hargaPerZakDus: produk.hargaPerZakDus || 0,
+            kuantitas: 0,
+          };
+        }
+        return acc;
+      }, {} as Record<string, any>);
+      Object.values(groupedItems).forEach((group: any) => {
+        let loadedQty = 0;
+        allSuratForPI.forEach((surat) => {
+          (surat.items || []).forEach((it) => {
+            const itemPI = it.nomorPI || "";
+            if (itemPI && itemPI !== pi.nomorPI) return;
+            const match = it.jenisPupuk.toUpperCase().includes(group.namaProduk.toUpperCase()) || group.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
+            if (match) {
+              const bobot = it.bobotPerUnit || group.bobotPerUnit || 50;
+              loadedQty += (it.pengambilanZAK || 0) * bobot;
+            }
+          });
+        });
+        group.kuantitas = loadedQty;
+      });
+      const invoiceItems = Object.values(groupedItems).map((item: any, idx: number) => ({
+        no: idx + 1,
+        namaProduk: item.namaProduk,
+        produsen: item.produsen,
+        kemasan: item.bobotPerUnit ? `${item.bobotPerUnit} KG` : "-",
+        fot: item.fot,
+        kuantitas: item.kuantitas,
+        satuan: "KG",
+        hargaSatuan: item.hargaSatuan,
+        hargaPerZakDus: item.hargaPerZakDus,
+        subTotal: item.kuantitas * item.hargaSatuan,
+      })).filter((it) => it.kuantitas > 0);
+      const totalKuantitas = invoiceItems.reduce((sum, it) => sum + it.kuantitas, 0);
+      const subtotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
+      const dppNilaiLain = 0;
+      const ongkosKirim = pi.ongkosKirim || 0;
+      const ppnRate = 0.11;
+      const ppnNominal = pi.includePPN ? Math.round(subtotal * ppnRate) : 0;
+      const totalPembayaran = subtotal + dppNilaiLain + ongkosKirim + ppnNominal;
+      const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
+      const arsipData = {
+        nomorInvoice: invoiceNomor,
+        nomorPI: pi.nomorPI,
+        customerId: pi.customerId || "",
+        tanggalInvoice: new Date().toISOString().split("T")[0],
+        tanggalJatuhTempo: pi.tanggalJatuhTempo || "",
+        namaCustomer: pi.namaCustomer,
+        alamatCustomer: pi.alamatCustomer,
+        npwp: pi.npwp,
+        metodePembayaran: pi.metodePembayaran,
+        produkItems: invoiceItems,
+        uangMuka: pi.uangMuka || 0,
+        includePPN: pi.includePPN,
+        ppnNominal,
+        ongkosKirim,
+        dppNilaiLain,
+        subtotal,
+        totalPembayaran,
+        totalKuantitas,
+        terbilang: terbilangRupiah(totalPembayaran),
+        status: "belum lunas",
+        totalDibayar: 0,
+        sisaPembayaran: totalPembayaran,
+        pembayaranTerakhir: null,
+        orderOleh: orderTTD ? { nama: orderTTD.nama, jabatan: orderTTD.jabatan, ttdImage: orderTTD.ttdImage } : null,
+        createdBy: user?.nama || "",
+        updatedAt: serverTimestamp(),
+      };
+      await setDoc(doc(db, "arsipInvoice", invoiceNomor), arsipData, { merge: true });
+      alert(`Invoice ${invoiceNomor} berhasil diperbarui!`);
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      alert("Gagal memperbarui invoice.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+const handleTerbitkanInvoiceSementara = async () => {
     if (!selectedItem || !invoiceSurat || !invoiceNomor || !selectedOrderTTD) {
       alert("Pilih TTD untuk Diorder Oleh terlebih dahulu.");
       return;
@@ -3219,10 +3173,14 @@ export default function RekapProformaInvoicePage() {
 
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title={invoiceSurat ? "Print Invoice Sementara" : "Print Invoice"} size="md" footer={
         <div className="flex justify-end gap-3 flex-wrap">
-          {invoiceSurat ? (<Button variant="secondary" onClick={handleRegenerateInvoiceSementara} disabled={isGeneratingInvoice}>Regenerate</Button>) : (<Button variant="secondary" onClick={handleRegenerateInvoice} disabled={isGeneratingInvoice}>Regenerate</Button>)}
-          {invoiceExists && (<Button variant="danger" onClick={() => { if (selectedItem) handleResetInvoice(selectedItem.nomorPI); setIsInvoiceModalOpen(false); }}>Reset Invoice</Button>)}
           <Button variant="outline" onClick={() => setIsInvoiceModalOpen(false)}>Batal</Button>
-          {invoiceSurat ? (<Button variant="primary" onClick={handleTerbitkanInvoiceSementara} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>) : (<Button variant="primary" onClick={handleTerbitkanInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>)}
+          {invoiceExists ? (
+            <Button variant="secondary" onClick={handlePerbaruiInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isSubmitting} isLoading={isSubmitting}>Perbarui Invoice</Button>
+          ) : invoiceSurat ? (
+            <Button variant="primary" onClick={handleTerbitkanInvoiceSementara} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>
+          ) : (
+            <Button variant="primary" onClick={handleTerbitkanInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice || isSubmitting} isLoading={isSubmitting}>Terbitkan</Button>
+          )}
           <Button variant="primary" onClick={handlePrintInvoice} disabled={!selectedOrderTTD || !invoiceNomor || isGeneratingInvoice}>Print</Button>
         </div>
       }>
