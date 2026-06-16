@@ -264,7 +264,7 @@ export default function LaporanInputStockGudangPage() {
     const isBotol = formData.unit === "BOTOL";
   const isDus = formData.unit === "DUS";
 
-    if (isUnitBased && !isBotol) {
+    if (isUnitBased && !isBotol && !isDus) {
       if (!formData.bobotPerUnit || parseFloat(formData.bobotPerUnit) <= 0)
         newErrors.bobotPerUnit = "Bobot per unit tidak valid";
     }
@@ -486,8 +486,12 @@ export default function LaporanInputStockGudangPage() {
   };
 
   const hitungStokAwalKG = (row: StockGudang) => {
-    if (row.unit === "ZAK" || row.unit === "DUS") {
+    if (row.unit === "ZAK") {
       return (row.stokAwalUnit || 0) * (row.bobotPerUnit || 50);
+    }
+    if (row.unit === "DUS") {
+      // DUS doesn't have bobotPerUnit, calculate from botolPerDus * volume
+      return 0; // DUS is measured in units, not KG
     }
     return row.stokAwalKG || 0;
   };
@@ -620,7 +624,6 @@ export default function LaporanInputStockGudangPage() {
             <div className="text-xs">
               <p className="font-mono text-pink-600">{row.botolPerDus || 20} botol/DUS</p>
               <p className="font-mono text-pink-500">{row.volumeMl || 500} ml/botol</p>
-              {row.unit === "DUS" && <p className="font-mono text-purple-600">{row.bobotPerUnit?.toLocaleString()} KG/DUS</p>}
             </div>
           );
         }
@@ -954,14 +957,14 @@ export default function LaporanInputStockGudangPage() {
                   required
                 />
 
-                {isUnitBased && !isBotol && (
+                {isUnitBased && !isBotol && !isDus && (
                   <Input
-                    label={isDus ? "Bobot Per DUS (KG)" : "Bobot Per Unit (KG)"}
+                    label="Bobot Per Unit (KG)"
                     type="number"
                     name="bobotPerUnit"
                     value={formData.bobotPerUnit}
                     onChange={handleChange}
-                    placeholder={isDus ? "Contoh: 25" : "Contoh: 50"}
+                    placeholder="Contoh: 50"
                     error={errors.bobotPerUnit}
                     required
                   />

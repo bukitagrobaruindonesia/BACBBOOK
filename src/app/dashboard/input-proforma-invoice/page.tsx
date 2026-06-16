@@ -500,7 +500,20 @@ export default function InputProformaInvoicePage() {
 
   const calculateHargaPerZakDus = (item: ProdukItem): string => {
     const price = parseFloat(item.hargaSatuan) || 0;
-    return String(price * (item.bobotPerUnit || 1));
+    const stock = stockList.find((s) => s.namaBarang === item.namaProduk);
+    if (!stock) return String(price * (item.bobotPerUnit || 1));
+
+    // If unit is DUS or BOTOL, multiply by botolPerDus
+    if (stock.unit === "DUS" || stock.unit === "BOTOL") {
+      const botolPerDus = stock.botolPerDus || 20;
+      return String(price * botolPerDus);
+    }
+    // If unit is ZAK, multiply by bobotPerUnit
+    if (stock.unit === "ZAK") {
+      return String(price * (stock.bobotPerUnit || 50));
+    }
+    // For KG, just return the price
+    return String(price);
   };
 
   const handleProdukChange = (id: string, field: string, value: string | boolean) => {
@@ -515,6 +528,8 @@ export default function InputProformaInvoicePage() {
               newItem.produsen = stock.namaProdusen || "";
               newItem.bobotPerUnit = stock.bobotPerUnit || 50;
               newItem.jumlahIsiBotol = (stock as any).jumlahIsiBotol || 1;
+              // Auto-set satuan from stock unit
+              newItem.satuan = stock.unit === "BOTOL" ? "BOTOL" : stock.unit === "DUS" ? "DUS" : stock.unit === "ZAK" ? "ZAK" : "KG";
             } else {
               newItem.fot = "";
               newItem.produsen = "";
@@ -795,7 +810,7 @@ export default function InputProformaInvoicePage() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-32">Kuantitas</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-24">Satuan</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Harga Satuan</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Harga Per ZAK/DUS</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Harga Per Unit</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase tracking-wider w-24">PPN 11%</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase tracking-wider w-40">Total Harga</th>
                     <th className="px-4 py-3 text-center text-xs font-semibold text-green-800 uppercase tracking-wider w-16">Aksi</th>
@@ -833,7 +848,20 @@ export default function InputProformaInvoicePage() {
                         <input type="text" inputMode="decimal" value={item.hargaSatuan} onChange={(e) => handleProdukChange(item.id, "hargaSatuan", e.target.value)} placeholder="0.00" className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`harga_${index}`] ? "border-red-500" : "border-gray-300"}`} />
                         {errors[`harga_${index}`] && <p className="mt-1 text-xs text-red-600">{errors[`harga_${index}`]}</p>}
                       </td>
-                      <td className="px-4 py-3 text-sm font-mono text-gray-700">{item.hargaPerZakDus ? formatRupiah(parseFloat(item.hargaPerZakDus)) : "-"}</td>
+                      <td className="px-4 py-3 text-sm font-mono text-gray-700">
+                        {item.hargaPerZakDus ? formatRupiah(parseFloat(item.hargaPerZakDus)) : "-"}
+                        {(() => {
+                          const stock = stockList.find((s) => s.namaBarang === item.namaProduk);
+                          if (!stock || !item.hargaPerZakDus) return null;
+                          if (stock.unit === "DUS" || stock.unit === "BOTOL") {
+                            return <span className="text-xs text-gray-500 block">({stock.botolPerDus || 20} botol)</span>;
+                          }
+                          if (stock.unit === "ZAK") {
+                            return <span className="text-xs text-gray-500 block">({stock.bobotPerUnit || 50} KG)</span>;
+                          }
+                          return null;
+                        })()}
+                      </td>
                       <td className="px-4 py-3 text-center">
                         <input type="checkbox" checked={item.includePPN} onChange={(e) => handleProdukChange(item.id, "includePPN", e.target.checked)} className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer" />
                       </td>
