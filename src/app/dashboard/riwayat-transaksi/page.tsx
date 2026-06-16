@@ -1183,11 +1183,16 @@ export default function RiwayatTransaksiPage() {
         <div className="text-sm">
           {row.jenis === "suratPengangkutanGudangInduk" || row.jenis === "suratPengangkutanDO" ? (
             <div className="space-y-1">
-              {(row.items || []).map((it, idx) => (
-                <p key={idx} className="font-semibold text-gray-800">
-                  {it.jenisPupuk} <span className="text-xs font-normal text-gray-500">({it.pengambilanZAK || 0} ZAK / {(it.totalKG || 0).toLocaleString("id-ID")} KG)</span>
-                </p>
-              ))}
+              {(row.items || []).map((it, idx) => {
+                const isDusBotol = it.bobotPerUnit === 1;
+                const unitLabel = isDusBotol ? "BOTOL" : "ZAK";
+                const kgDisplay = isDusBotol ? "0" : (it.totalKG || 0).toLocaleString("id-ID");
+                return (
+                  <p key={idx} className="font-semibold text-gray-800">
+                    {it.jenisPupuk} <span className="text-xs font-normal text-gray-500">({it.pengambilanZAK || 0} {unitLabel} / {kgDisplay} KG)</span>
+                  </p>
+                );
+              })}
               {row.nomorPIList && row.nomorPIList.length > 0 && (
                 <p className="text-xs text-gray-500 mt-1">PI: {row.nomorPIList.join(", ")}</p>
               )}

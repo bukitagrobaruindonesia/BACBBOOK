@@ -133,6 +133,7 @@ interface StockDoc {
   stokAkhirKG?: number;
   barangKeluarUnit?: number;
   barangKeluarKG?: number;
+  unit?: string;
 }
 
 const getRomanMonth = (month: number) => {
@@ -1487,8 +1488,14 @@ export default function SuratPengangkutanPage() {
               stockDeductions[x.stock.id] = { ref: x.ref, stockId: x.stock.id, totalUnit: 0, totalKG: 0 };
             }
             const zak = parseFloat(x.item.pengambilanZAK) || 0;
-            stockDeductions[x.stock.id].totalUnit += zak;
-            stockDeductions[x.stock.id].totalKG += zak * x.item.bobotPerUnit;
+            const isDusBotol = x.item.bobotPerUnit === 1 && x.item.jenisPupuk && isDusOrBotolProduct(x.item.jenisPupuk);
+            if (isDusBotol) {
+              stockDeductions[x.stock.id].totalUnit += zak;
+              stockDeductions[x.stock.id].totalKG += 0;
+            } else {
+              stockDeductions[x.stock.id].totalUnit += zak;
+              stockDeductions[x.stock.id].totalKG += zak * x.item.bobotPerUnit;
+            }
           });
           Object.entries(stockDeductions).forEach(([stockId, { ref, totalUnit, totalKG }]) => {
             const snapIdx = stockRefs.findIndex((r) => r.id === stockId);
@@ -1497,16 +1504,31 @@ export default function SuratPengangkutanPage() {
             const currentData = snap.data() as StockDoc;
             const currentStokUnit = currentData.stokAkhirUnit || 0;
             const currentStokKG = currentData.stokAkhirKG || 0;
-            if (currentStokUnit - totalUnit < 0 || currentStokKG - totalKG < 0) {
-              throw new Error(`Stok gudang tidak mencukupi untuk total pengambilan`);
+            const stockUnit = currentData.unit || "ZAK";
+            const isStockDusBotol = stockUnit === "DUS" || stockUnit === "BOTOL";
+            if (isStockDusBotol) {
+              if (currentStokUnit - totalUnit < 0) {
+                throw new Error(`Stok gudang tidak mencukupi untuk total pengambilan`);
+              }
+              transaction.update(ref, {
+                barangKeluarUnit: (currentData.barangKeluarUnit || 0) + totalUnit,
+                barangKeluarKG: 0,
+                stokAkhirUnit: currentStokUnit - totalUnit,
+                stokAkhirKG: 0,
+                updatedAt: serverTimestamp(),
+              });
+            } else {
+              if (currentStokUnit - totalUnit < 0 || currentStokKG - totalKG < 0) {
+                throw new Error(`Stok gudang tidak mencukupi untuk total pengambilan`);
+              }
+              transaction.update(ref, {
+                barangKeluarUnit: (currentData.barangKeluarUnit || 0) + totalUnit,
+                barangKeluarKG: (currentData.barangKeluarKG || 0) + totalKG,
+                stokAkhirUnit: currentStokUnit - totalUnit,
+                stokAkhirKG: currentStokKG - totalKG,
+                updatedAt: serverTimestamp(),
+              });
             }
-            transaction.update(ref, {
-              barangKeluarUnit: (currentData.barangKeluarUnit || 0) + totalUnit,
-              barangKeluarKG: (currentData.barangKeluarKG || 0) + totalKG,
-              stokAkhirUnit: currentStokUnit - totalUnit,
-              stokAkhirKG: currentStokKG - totalKG,
-              updatedAt: serverTimestamp(),
-            });
           });
         }
 

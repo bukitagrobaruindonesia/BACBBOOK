@@ -497,7 +497,7 @@ export default function LaporanInputStockGudangPage() {
 
   const getBotolCount = (row: StockGudang, unitField: number) => {
     if (row.unit === "DUS" || row.unit === "BOTOL") {
-      return (unitField || 0) * (row.botolPerDus || 20);
+      return unitField || 0;
     }
     return unitField || 0;
   };
