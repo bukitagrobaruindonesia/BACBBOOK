@@ -1321,13 +1321,12 @@ export default function SuratPengangkutanPage() {
             const item = doItemsWithId[idx];
             if (!snap.exists()) throw new Error(`DO ${item.nomorSubDO} tidak ditemukan`);
             const doData = snap.data() as DODoc;
-            const currentLoaded = doData.loadedKG || 0;
+            const currentLoaded = item.doLoadedKG || 0;
             const addKG = (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
             const party = doData.partyKG || 0;
             if (currentLoaded + addKG > party) {
               throw new Error(`Pengambilan melebihi party DO ${item.nomorSubDO}`);
             }
-            transaction.update(doRefs[idx], { loadedKG: currentLoaded + addKG, updatedAt: serverTimestamp() });
           });
         }
 

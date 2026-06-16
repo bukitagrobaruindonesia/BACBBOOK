@@ -811,8 +811,9 @@ export default function RekapProformaInvoicePage() {
     throw new Error("Failed to generate unique invoice base number after retries");
   };
 
-  const generateInvoiceNumber = async (surat: SuratMuatInfo): Promise<string> => {
-    if (!selectedItem) return "";
+  const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoice): Promise<string> => {
+    const pi = piRow || selectedItem;
+    if (!pi) return "";
     const suratRef = doc(db, "suratPengangkutan", surat.id);
     const suratSnap = await getDoc(suratRef);
     const existingNomor = suratSnap.data()?.nomorInvoice;
@@ -820,14 +821,14 @@ export default function RekapProformaInvoicePage() {
       const parsed = parseInvoiceNumber(existingNomor);
       if (parsed) return existingNomor;
     }
-    const piRef = doc(db, "proformaInvoice", selectedItem.id);
+    const piRef = doc(db, "proformaInvoice", pi.id);
     const piSnap = await getDoc(piRef);
     let baseNumber = piSnap.data()?.invoiceBaseNumber;
     if (!baseNumber) {
       baseNumber = await getUniqueInvoiceBaseNumber();
       await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
     }
-    const allSurat = getSuratMuatForPI(selectedItem.nomorPI);
+    const allSurat = getSuratMuatForPI(pi.nomorPI);
     const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
     const sIndex = sortedSurat.findIndex((s) => s.id === surat.id);
     const sNum = sIndex >= 0 ? sIndex + 1 : 1;
@@ -904,8 +905,14 @@ export default function RekapProformaInvoicePage() {
     });
   };
 
-  const handleOpenInvoice = async (surat: SuratMuatInfo) => {
+  const handleOpenInvoice = async (surat: SuratMuatInfo, piRow?: ProformaInvoice) => {
+    const pi = piRow || selectedItem;
+    if (!pi) {
+      alert("Data PI tidak ditemukan.");
+      return;
+    }
     setInvoiceSurat(surat);
+    setSelectedItem(pi);
     setSelectedOrderTTD("");
     setInvoiceNomor("");
     setInvoiceDate(surat.tanggal);
@@ -913,18 +920,16 @@ export default function RekapProformaInvoicePage() {
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
-      const nomor = await generateInvoiceNumber(surat);
+      const nomor = await generateInvoiceNumber(surat, pi);
       setInvoiceNomor(nomor);
-      if (selectedItem) {
-        await fetchCustomerByName(selectedItem.namaCustomer);
-        const allSurat = getSuratMuatForPI(selectedItem.nomorPI);
-        const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
-        const parsed = parseInvoiceNumber(nomor);
-        if (parsed && parsed.isPartial && sortedSurat.length > 0) {
-          const sIndex = parsed.partialNum - 1;
-          if (sIndex >= 0 && sIndex < sortedSurat.length) {
-            setInvoiceDate(sortedSurat[sIndex].tanggal);
-          }
+      await fetchCustomerByName(pi.namaCustomer);
+      const allSurat = getSuratMuatForPI(pi.nomorPI);
+      const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
+      const parsed = parseInvoiceNumber(nomor);
+      if (parsed && parsed.isPartial && sortedSurat.length > 0) {
+        const sIndex = parsed.partialNum - 1;
+        if (sIndex >= 0 && sIndex < sortedSurat.length) {
+          setInvoiceDate(sortedSurat[sIndex].tanggal);
         }
       }
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
@@ -1261,37 +1266,72 @@ export default function RekapProformaInvoicePage() {
     setIsEditModalOpen(true);
   };
 
-  const handleEditSurat = (surat: SuratMuatInfo) => {
+  const handleEditSurat = async (surat: SuratMuatInfo) => {
     setSelectedSurat(surat);
     setNomorSeriError("");
-    setEditSuratForm({
-      tanggal: surat.tanggal,
-      nomorSeri: surat.nomorSeri,
-      nomorPolisi: surat.nomorPolisi,
-      driverUnit: surat.driverUnit,
-      nomorSIM: surat.nomorSIM || "",
-      jenisSurat: surat.jenisSurat || "gudangInduk",
-      subJenisDO: surat.subJenisDO || "",
-      kepadaNama: surat.kepadaNama || "",
-      kepadaPerusahaan: surat.kepadaPerusahaan || "",
-      kepadaAlamat: surat.kepadaAlamat || "",
-      items: (surat.items || []).map((it) => {
-        const pengambilan = it.pengambilanZAK || 0;
-        const sisa = parseFloat(it.sisa || "0") || 0;
-        return {
-          nomorSubDO: it.nomorSubDO || "",
-          nomorPO: it.nomorPO || "",
-          jenisPupuk: it.jenisPupuk || "",
-          party: it.party || "",
-          pengambilanZAK: String(pengambilan),
-          bobotPerUnit: it.bobotPerUnit || 50,
-          sisa: String(sisa),
-          maxZAK: pengambilan + sisa,
-          fot: it.fot || "",
-        };
-      }),
-    });
-    setIsEditSuratModalOpen(true);
+    setIsLoading(true);
+    try {
+      const piNomors = Array.isArray(surat.nomorPI) ? surat.nomorPI : [surat.nomorPI].filter(Boolean);
+      const piDataMap: Record<string, ProformaInvoice> = {};
+      for (const piNomor of piNomors) {
+        const piRow = data.find((d) => d.nomorPI === piNomor);
+        if (piRow) piDataMap[piNomor] = piRow;
+      }
+      setEditSuratForm({
+        tanggal: surat.tanggal,
+        nomorSeri: surat.nomorSeri,
+        nomorPolisi: surat.nomorPolisi,
+        driverUnit: surat.driverUnit,
+        nomorSIM: surat.nomorSIM || "",
+        jenisSurat: surat.jenisSurat || "gudangInduk",
+        subJenisDO: surat.subJenisDO || "",
+        kepadaNama: surat.kepadaNama || "",
+        kepadaPerusahaan: surat.kepadaPerusahaan || "",
+        kepadaAlamat: surat.kepadaAlamat || "",
+        items: (surat.items || []).map((it) => {
+          const pengambilan = it.pengambilanZAK || 0;
+          const sisa = parseFloat(it.sisa || "0") || 0;
+          const itemPI = it.nomorPI || "";
+          let maxZAK = pengambilan + sisa;
+          if (itemPI && piDataMap[itemPI]) {
+            const piData = piDataMap[itemPI];
+            const piProduk = piData.produkItems.find((p) =>
+              p.namaProduk.toUpperCase().includes((it.jenisPupuk || "").toUpperCase()) ||
+              (it.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+            );
+            if (piProduk) {
+              const totalOrdered = piProduk.kuantitas || 0;
+              const otherSuratLoaded = getSuratMuatForPI(itemPI).reduce((sum, s) => {
+                if (s.id === surat.id) return sum;
+                return sum + (s.items || []).reduce((itemSum, si) => {
+                  if (si.nomorPI && si.nomorPI !== itemPI) return itemSum;
+                  const match = (si.jenisPupuk || "").toUpperCase().includes((it.jenisPupuk || "").toUpperCase()) ||
+                    (it.jenisPupuk || "").toUpperCase().includes((si.jenisPupuk || "").toUpperCase());
+                  if (match) return itemSum + (si.pengambilanZAK || 0);
+                  return itemSum;
+                }, 0);
+              }, 0);
+              maxZAK = Math.max(0, totalOrdered - otherSuratLoaded);
+            }
+          }
+          return {
+            nomorSubDO: it.nomorSubDO || "",
+            nomorPO: it.nomorPO || "",
+            jenisPupuk: it.jenisPupuk || "",
+            party: it.party || "",
+            pengambilanZAK: String(pengambilan),
+            bobotPerUnit: it.bobotPerUnit || 50,
+            sisa: String(sisa),
+            maxZAK: maxZAK,
+            fot: it.fot || "",
+            nomorPI: itemPI,
+          };
+        }),
+      });
+      setIsEditSuratModalOpen(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleUpdateFull = async (e: React.FormEvent) => {
@@ -2069,6 +2109,7 @@ export default function RekapProformaInvoicePage() {
   const handlePrintInvoice = () => {
     if (!selectedItem || !invoiceNomor) return;
     const pi = selectedItem;
+    if (!pi) return;
     const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
     const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
     const tanggalInvoice = invoiceDate || pi.tanggal;
@@ -2452,6 +2493,38 @@ export default function RekapProformaInvoicePage() {
           else { item.sisa = String(Math.max(0, maxZAK - zak)); }
         }
       }
+      if (field === "jenisPupuk" || field === "nomorPI") {
+        const itemPI = item.nomorPI || "";
+        const piData = data.find((d) => d.nomorPI === itemPI);
+        if (piData) {
+          const piProduk = piData.produkItems.find((p) =>
+            p.namaProduk.toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) ||
+            (item.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+          );
+          if (piProduk) {
+            const totalOrdered = piProduk.kuantitas || 0;
+            const otherSuratLoaded = getSuratMuatForPI(itemPI).reduce((sum, s) => {
+              if (selectedSurat && s.id === selectedSurat.id) return sum;
+              return sum + (s.items || []).reduce((itemSum, si) => {
+                if (si.nomorPI && si.nomorPI !== itemPI) return itemSum;
+                const match = (si.jenisPupuk || "").toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) ||
+                  (item.jenisPupuk || "").toUpperCase().includes((si.jenisPupuk || "").toUpperCase());
+                if (match) return itemSum + (si.pengambilanZAK || 0);
+                return itemSum;
+              }, 0);
+            }, 0);
+            const currentLoaded = parseFloat(item.pengambilanZAK) || 0;
+            const newMaxZAK = Math.max(0, totalOrdered - otherSuratLoaded);
+            item.maxZAK = newMaxZAK;
+            if (currentLoaded > newMaxZAK) {
+              item.pengambilanZAK = String(newMaxZAK);
+              item.sisa = "0";
+            } else {
+              item.sisa = String(Math.max(0, newMaxZAK - currentLoaded));
+            }
+          }
+        }
+      }
       newItems[idx] = item;
       return { ...prev, items: newItems };
     });
@@ -2460,7 +2533,7 @@ export default function RekapProformaInvoicePage() {
   const addSuratItem = () => {
     setEditSuratForm((prev) => ({
       ...prev,
-      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0, fot: "" }],
+      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0, fot: "", nomorPI: "" }],
     }));
   };
 
@@ -2983,7 +3056,7 @@ export default function RekapProformaInvoicePage() {
                         <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handlePrintSuratPDF(surat)} className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print Surat"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg></button></td>
                         <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handleEditSurat(surat)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition-colors" title="Edit Surat"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg></button></td>
                         <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handleDeleteSurat(surat)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Hapus Surat"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></td>
-                        <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handleOpenInvoice(surat)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Invoice"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></button></td>
+                        <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handleOpenInvoice(surat, selectedItem || undefined)} className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Invoice"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg></button></td>
                       </tr>
                     );})}
                   </tbody>
@@ -3172,13 +3245,15 @@ export default function RekapProformaInvoicePage() {
               <div key={idx} className="p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div className="flex items-center justify-between mb-3"><h5 className="text-sm font-semibold text-gray-700">Item {idx + 1}</h5>{editSuratForm.items.length > 1 && (<button type="button" onClick={() => removeSuratItem(idx)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>)}</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Nomor PI</label><input type="text" value={item.nomorPI || ""} onChange={(e) => handleSuratItemChange(idx, "nomorPI", e.target.value)} placeholder="Nomor PI" className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[260px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Nomor SUB DO</label><input type="text" value={item.nomorSubDO} onChange={(e) => handleSuratItemChange(idx, "nomorSubDO", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[260px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Nomor PO</label><input type="text" value={item.nomorPO} onChange={(e) => handleSuratItemChange(idx, "nomorPO", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[260px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Jenis Pupuk *</label><input type="text" value={item.jenisPupuk} onChange={(e) => handleSuratItemChange(idx, "jenisPupuk", e.target.value)} required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[260px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">FOT</label><input type="text" value={item.fot} onChange={(e) => handleSuratItemChange(idx, "fot", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Party</label><input type="text" value={item.party} onChange={(e) => handleSuratItemChange(idx, "party", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
-                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Pengambilan (ZAK) *</label><input type="number" value={item.pengambilanZAK} onChange={(e) => handleSuratItemChange(idx, "pengambilanZAK", e.target.value)} required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
-                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Sisa</label><input type="text" value={item.sisa} onChange={(e) => handleSuratItemChange(idx, "sisa", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
+                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Pengambilan (ZAK) * <span className="text-gray-400">(Max: {item.maxZAK})</span></label><input type="number" value={item.pengambilanZAK} onChange={(e) => handleSuratItemChange(idx, "pengambilanZAK", e.target.value)} onWheel={(e) => e.currentTarget.blur()} required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
+                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Sisa <span className="text-gray-400">(Auto)</span></label><input type="text" value={item.sisa} readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" /></div>
+                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Max ZAK <span className="text-gray-400">(Auto)</span></label><input type="text" value={String(item.maxZAK)} readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" /></div>
                 </div>
               </div>
             ))}
