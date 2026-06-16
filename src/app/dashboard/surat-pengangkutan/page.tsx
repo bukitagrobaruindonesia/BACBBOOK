@@ -11,6 +11,7 @@ import {
   serverTimestamp,
   doc,
   updateDoc,
+  setDoc,
   where,
   getDoc,
   deleteDoc,
@@ -1209,7 +1210,7 @@ export default function SuratPengangkutanPage() {
           currentCount = counterSnap.data().count || 0;
         }
         const nextCount = currentCount + 1;
-        await updateDoc(counterRef, { count: nextCount, updatedAt: Timestamp.now() });
+        await setDoc(counterRef, { count: nextCount, updatedAt: Timestamp.now() }, { merge: true });
         nomorSeri = `BAGB-SP/${year}/${roman}/${String(nextCount).padStart(4, "0")}`;
       } else if (jenisSurat === "do") {
         if (subJenisDO === "dikuasakan") {
