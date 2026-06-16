@@ -481,7 +481,7 @@ export default function LaporanInputStockGudangPage() {
   const endItem = Math.min(endIndex, filteredStockList.length);
 
   const getDisplayUnitLabel = (unit: string) => {
-    if (unit === "BOTOL") return "DUS";
+    if (unit === "BOTOL" || unit === "DUS") return "BOTOL";
     return unit;
   };
 
@@ -493,6 +493,13 @@ export default function LaporanInputStockGudangPage() {
       return 0;
     }
     return row.stokAwalKG || 0;
+  };
+
+  const getBotolCount = (row: StockGudang, unitField: number) => {
+    if (row.unit === "DUS" || row.unit === "BOTOL") {
+      return (unitField || 0) * (row.botolPerDus || 20);
+    }
+    return unitField || 0;
   };
 
   const hitungStokAkhirKG = (row: StockGudang) => {
@@ -644,7 +651,7 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-gray-600">
-              {row.stokAwalUnit?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
+              {getBotolCount(row, row.stokAwalUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
             </p>
           )}
           {row.unit !== "DUS" && row.unit !== "BOTOL" && (
@@ -661,7 +668,7 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-green-600">
-              +{row.barangMasukUnit?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
+              +{getBotolCount(row, row.barangMasukUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
             </p>
           )}
           {row.unit !== "DUS" && row.unit !== "BOTOL" && (
@@ -678,7 +685,7 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-xs">
           {row.unit !== "KG" && (
             <p className="font-mono text-red-600">
-              -{row.barangKeluarUnit?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
+              -{getBotolCount(row, row.barangKeluarUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
             </p>
           )}
           {row.unit !== "DUS" && row.unit !== "BOTOL" && (
@@ -695,7 +702,7 @@ export default function LaporanInputStockGudangPage() {
         <div className="text-sm">
           {row.unit !== "KG" && (
             <p className="font-mono font-bold text-green-700">
-              {row.stokAkhirUnit?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
+              {getBotolCount(row, row.stokAkhirUnit).toLocaleString("id-ID", { maximumFractionDigits: 10 })} {getDisplayUnitLabel(row.unit)}
             </p>
           )}
           {row.unit !== "DUS" && row.unit !== "BOTOL" && (
