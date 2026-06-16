@@ -1266,6 +1266,16 @@ export default function RekapProformaInvoicePage() {
     setIsEditModalOpen(true);
   };
 
+  const getSatuanFromPI = (nomorPI: string, namaProduk: string): string => {
+    const piData = data.find((d) => d.nomorPI === nomorPI);
+    if (!piData) return "ZAK";
+    const produk = piData.produkItems.find((p) =>
+      p.namaProduk.toUpperCase().includes(namaProduk.toUpperCase()) ||
+      namaProduk.toUpperCase().includes(p.namaProduk.toUpperCase())
+    );
+    return produk?.satuan || "ZAK";
+  };
+
   const handleEditSurat = async (surat: SuratMuatInfo) => {
     setSelectedSurat(surat);
     setNomorSeriError("");
@@ -2486,11 +2496,11 @@ export default function RekapProformaInvoicePage() {
       const newItems = [...prev.items];
       const item = { ...newItems[idx], [field]: value };
       if (field === "pengambilanZAK") {
-        const zak = parseFloat(value) || 0;
-        const maxZAK = item.maxZAK || 0;
-        if (maxZAK > 0) {
-          if (zak >= maxZAK) { item.pengambilanZAK = String(maxZAK); item.sisa = "0"; }
-          else { item.sisa = String(Math.max(0, maxZAK - zak)); }
+        const qty = parseFloat(value) || 0;
+        const maxQty = item.maxZAK || 0;
+        if (maxQty > 0) {
+          if (qty >= maxQty) { item.pengambilanZAK = String(maxQty); item.sisa = "0"; }
+          else { item.sisa = String(Math.max(0, maxQty - qty)); }
         }
       }
       if (field === "jenisPupuk" || field === "nomorPI") {
@@ -3251,9 +3261,10 @@ export default function RekapProformaInvoicePage() {
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Jenis Pupuk *</label><input type="text" value={item.jenisPupuk} onChange={(e) => handleSuratItemChange(idx, "jenisPupuk", e.target.value)} required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[260px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">FOT</label><input type="text" value={item.fot} onChange={(e) => handleSuratItemChange(idx, "fot", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Party</label><input type="text" value={item.party} onChange={(e) => handleSuratItemChange(idx, "party", e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
-                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Pengambilan (ZAK) * <span className="text-gray-400">(Max: {item.maxZAK})</span></label><input type="number" value={item.pengambilanZAK} onChange={(e) => handleSuratItemChange(idx, "pengambilanZAK", e.target.value)} onWheel={(e) => e.currentTarget.blur()} required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
+                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Satuan <span className="text-gray-400">(dari PI)</span></label><input type="text" value={(() => { const piData = data.find((d) => d.nomorPI === item.nomorPI); if (!piData) return "ZAK"; const produk = piData.produkItems.find((p) => p.namaProduk.toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) || (item.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())); return produk?.satuan || "ZAK"; })()} readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-700 font-medium" /></div>
+                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Pengambilan ({(() => { const piData = data.find((d) => d.nomorPI === item.nomorPI); if (!piData) return "ZAK"; const produk = piData.produkItems.find((p) => p.namaProduk.toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) || (item.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())); return produk?.satuan || "ZAK"; })()}) * <span className="text-gray-400">(Max: {item.maxZAK})</span></label><input type="number" value={item.pengambilanZAK} onChange={(e) => handleSuratItemChange(idx, "pengambilanZAK", e.target.value)} onWheel={(e) => e.currentTarget.blur()} required className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-200 focus:w-auto focus:min-w-[200px] focus:py-2.5 focus:px-3 focus:text-base focus:shadow-2xl focus:border-green-500 focus:ring-2 focus:ring-green-200 focus:bg-white focus:z-50 focus:relative focus:rounded-md" /></div>
                   <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Sisa <span className="text-gray-400">(Auto)</span></label><input type="text" value={item.sisa} readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" /></div>
-                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Max ZAK <span className="text-gray-400">(Auto)</span></label><input type="text" value={String(item.maxZAK)} readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" /></div>
+                  <div className="relative overflow-visible"><label className="block text-xs font-medium text-gray-600 mb-1">Max {(() => { const piData = data.find((d) => d.nomorPI === item.nomorPI); if (!piData) return "ZAK"; const produk = piData.produkItems.find((p) => p.namaProduk.toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) || (item.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())); return produk?.satuan || "ZAK"; })()} <span className="text-gray-400">(Auto)</span></label><input type="text" value={String(item.maxZAK)} readOnly className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600" /></div>
                 </div>
               </div>
             ))}
