@@ -946,8 +946,20 @@ export default function RekapProformaInvoicePage() {
         const suratRef = doc(db, "suratPengangkutan", surat.id);
         await updateDoc(suratRef, { nomorInvoice: deleteField(), updatedAt: serverTimestamp() });
       }
+      const oldFullInvoice = `BAGB-INV-${oldBase}`;
+      const oldSementaraPattern = `BAGB-INV-S`;
+      try {
+        await deleteDoc(doc(db, "arsipInvoice", oldFullInvoice));
+      } catch {}
+      const sementaraQuery = query(collection(db, "arsipInvoiceSementara"), where("nomorPI", "==", row.nomorPI));
+      const sementaraSnap = await getDocs(sementaraQuery);
+      for (const sDoc of sementaraSnap.docs) {
+        try {
+          await deleteDoc(doc(db, "arsipInvoiceSementara", sDoc.id));
+        } catch {}
+      }
       await fetchData();
-      alert(`Nomor base invoice berhasil direset ke ${newBase}`);
+      alert(`Nomor base invoice berhasil direset ke ${newBase}. Invoice lama dan sementara telah dihapus.`);
     } catch (error) {
       console.error(error);
       alert("Gagal reset nomor base invoice.");
@@ -1032,7 +1044,7 @@ export default function RekapProformaInvoicePage() {
       const pi = selectedItem;
       const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
       const groupedItems = pi.produkItems.reduce((acc, produk) => {
-        const key = `${produk.namaProduk}|${produk.fot || ""}`;
+        const key = produk.namaProduk;
         if (!acc[key]) {
           acc[key] = {
             namaProduk: produk.namaProduk,
@@ -1118,102 +1130,6 @@ export default function RekapProformaInvoicePage() {
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice."); } finally { setIsSubmitting(false); }
   };
 
-  const handlePerbaruiInvoice = async () => {
-    if (!selectedItem || !invoiceNomor) return;
-    if (!confirm("Perbarui data invoice dengan perubahan terbaru dari PI?")) return;
-    setIsSubmitting(true);
-    try {
-      const pi = selectedItem;
-      const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
-      const groupedItems = pi.produkItems.reduce((acc, produk) => {
-        const key = `${produk.namaProduk}|${produk.fot || ""}`;
-        if (!acc[key]) {
-          acc[key] = {
-            namaProduk: produk.namaProduk,
-            fot: produk.fot || "",
-            produsen: produk.produsen || "",
-            bobotPerUnit: produk.bobotPerUnit || 50,
-            hargaSatuan: produk.hargaSatuan || 0,
-            hargaPerZakDus: produk.hargaPerZakDus || 0,
-            kuantitas: 0,
-          };
-        }
-        return acc;
-      }, {} as Record<string, any>);
-      Object.values(groupedItems).forEach((group: any) => {
-        let loadedQty = 0;
-        allSuratForPI.forEach((surat) => {
-          (surat.items || []).forEach((it) => {
-            const itemPI = it.nomorPI || "";
-            if (itemPI && itemPI !== pi.nomorPI) return;
-            const match = it.jenisPupuk.toUpperCase().includes(group.namaProduk.toUpperCase()) || group.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
-            if (match) {
-              const bobot = it.bobotPerUnit || group.bobotPerUnit || 50;
-              loadedQty += (it.pengambilanZAK || 0) * bobot;
-            }
-          });
-        });
-        group.kuantitas = loadedQty;
-      });
-      const invoiceItems = Object.values(groupedItems).map((item: any, idx: number) => ({
-        no: idx + 1,
-        namaProduk: item.namaProduk,
-        produsen: item.produsen,
-        kemasan: item.bobotPerUnit ? `${item.bobotPerUnit} KG` : "-",
-        fot: item.fot,
-        kuantitas: item.kuantitas,
-        satuan: "KG",
-        hargaSatuan: item.hargaSatuan,
-        hargaPerZakDus: item.hargaPerZakDus,
-        subTotal: item.kuantitas * item.hargaSatuan,
-      })).filter((it) => it.kuantitas > 0);
-      const totalKuantitas = invoiceItems.reduce((sum, it) => sum + it.kuantitas, 0);
-      const subtotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
-      const dppNilaiLain = 0;
-      const ongkosKirim = pi.ongkosKirim || 0;
-      const ppnRate = 0.11;
-      const ppnNominal = pi.includePPN ? Math.round(subtotal * ppnRate) : 0;
-      const totalPembayaran = subtotal + dppNilaiLain + ongkosKirim + ppnNominal;
-      const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
-      const arsipData = {
-        nomorInvoice: invoiceNomor,
-        nomorPI: pi.nomorPI,
-        customerId: pi.customerId || "",
-        tanggalInvoice: new Date().toISOString().split("T")[0],
-        tanggalJatuhTempo: pi.tanggalJatuhTempo || "",
-        namaCustomer: pi.namaCustomer,
-        alamatCustomer: pi.alamatCustomer,
-        npwp: pi.npwp,
-        metodePembayaran: pi.metodePembayaran,
-        produkItems: invoiceItems,
-        uangMuka: pi.uangMuka || 0,
-        includePPN: pi.includePPN,
-        ppnNominal,
-        ongkosKirim,
-        dppNilaiLain,
-        subtotal,
-        totalPembayaran,
-        totalKuantitas,
-        terbilang: terbilangRupiah(totalPembayaran),
-        status: "belum lunas",
-        totalDibayar: 0,
-        sisaPembayaran: totalPembayaran,
-        pembayaranTerakhir: null,
-        orderOleh: orderTTD ? { nama: orderTTD.nama, jabatan: orderTTD.jabatan, ttdImage: orderTTD.ttdImage } : null,
-        createdBy: user?.nama || "",
-        updatedAt: serverTimestamp(),
-      };
-      await setDoc(doc(db, "arsipInvoice", invoiceNomor), arsipData, { merge: true });
-      alert(`Invoice ${invoiceNomor} berhasil diperbarui!`);
-      fetchData();
-    } catch (error) {
-      console.error(error);
-      alert("Gagal memperbarui invoice.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const handleTerbitkanInvoiceSementara = async () => {
     if (!selectedItem || !invoiceSurat || !invoiceNomor || !selectedOrderTTD) {
       alert("Pilih TTD untuk Diorder Oleh terlebih dahulu.");
@@ -1297,6 +1213,100 @@ export default function RekapProformaInvoicePage() {
       alert("Invoice sementara berhasil diterbitkan!");
       router.push("/dashboard/arsip-invoice-sementara");
     } catch (error) { console.error(error); alert("Gagal menerbitkan invoice sementara."); } finally { setIsSubmitting(false); }
+  };
+
+  const handlePerbaruiInvoice = async () => {
+    if (!selectedItem || !invoiceNomor) return;
+    if (!confirm("Perbarui data invoice dengan perubahan terbaru dari PI?")) return;
+    setIsSubmitting(true);
+    try {
+      const pi = selectedItem;
+      const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
+      const groupedItems = pi.produkItems.reduce((acc, produk) => {
+        const key = produk.namaProduk;
+        if (!acc[key]) {
+          acc[key] = {
+            namaProduk: produk.namaProduk,
+            fot: produk.fot || "",
+            produsen: produk.produsen || "",
+            bobotPerUnit: produk.bobotPerUnit || 50,
+            hargaSatuan: produk.hargaSatuan || 0,
+            hargaPerZakDus: produk.hargaPerZakDus || 0,
+            kuantitas: 0,
+          };
+        }
+        let loadedQty = 0;
+        allSuratForPI.forEach((surat) => {
+          (surat.items || []).forEach((it) => {
+            const itemPI = it.nomorPI || "";
+            if (itemPI && itemPI !== pi.nomorPI) return;
+            const match = it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) || produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
+            if (match) {
+              const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
+              loadedQty += (it.pengambilanZAK || 0) * bobot;
+            }
+          });
+        });
+        acc[key].kuantitas = loadedQty;
+        return acc;
+      }, {} as Record<string, any>);
+      const invoiceItems = Object.values(groupedItems).map((item: any, idx: number) => ({
+        no: idx + 1,
+        namaProduk: item.namaProduk,
+        produsen: item.produsen,
+        kemasan: item.bobotPerUnit ? `${item.bobotPerUnit} KG` : "-",
+        fot: item.fot,
+        kuantitas: item.kuantitas,
+        satuan: "KG",
+        hargaSatuan: item.hargaSatuan,
+        hargaPerZakDus: item.hargaPerZakDus,
+        subTotal: item.kuantitas * item.hargaSatuan,
+      })).filter((it) => it.kuantitas > 0);
+      const totalKuantitas = invoiceItems.reduce((sum, it) => sum + it.kuantitas, 0);
+      const subtotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
+      const dppNilaiLain = 0;
+      const ongkosKirim = pi.ongkosKirim || 0;
+      const ppnRate = 0.11;
+      const ppnNominal = pi.includePPN ? Math.round(subtotal * ppnRate) : 0;
+      const totalPembayaran = subtotal + dppNilaiLain + ongkosKirim + ppnNominal;
+      const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
+      const arsipData = {
+        nomorInvoice: invoiceNomor,
+        nomorPI: pi.nomorPI,
+        customerId: pi.customerId || "",
+        tanggalInvoice: new Date().toISOString().split("T")[0],
+        tanggalJatuhTempo: pi.tanggalJatuhTempo || "",
+        namaCustomer: pi.namaCustomer,
+        alamatCustomer: pi.alamatCustomer,
+        npwp: pi.npwp,
+        metodePembayaran: pi.metodePembayaran,
+        produkItems: invoiceItems,
+        uangMuka: pi.uangMuka || 0,
+        includePPN: pi.includePPN,
+        ppnNominal,
+        ongkosKirim,
+        dppNilaiLain,
+        subtotal,
+        totalPembayaran,
+        totalKuantitas,
+        terbilang: terbilangRupiah(totalPembayaran),
+        status: "belum lunas",
+        totalDibayar: 0,
+        sisaPembayaran: totalPembayaran,
+        pembayaranTerakhir: null,
+        orderOleh: orderTTD ? { nama: orderTTD.nama, jabatan: orderTTD.jabatan, ttdImage: orderTTD.ttdImage } : null,
+        createdBy: user?.nama || "",
+        updatedAt: serverTimestamp(),
+      };
+      await setDoc(doc(db, "arsipInvoice", invoiceNomor), arsipData, { merge: true });
+      alert(`Invoice ${invoiceNomor} berhasil diperbarui!`);
+      fetchData();
+    } catch (error) {
+      console.error(error);
+      alert("Gagal memperbarui invoice.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const filteredData = data.filter((item) => {
@@ -2253,7 +2263,7 @@ export default function RekapProformaInvoicePage() {
       }).filter((it) => it.kuantitas > 0);
     } else {
       const groupedItems = pi.produkItems.reduce((acc, produk) => {
-        const key = `${produk.namaProduk}|${produk.fot || ""}`;
+        const key = produk.namaProduk;
         if (!acc[key]) {
           acc[key] = {
             namaProduk: produk.namaProduk,
