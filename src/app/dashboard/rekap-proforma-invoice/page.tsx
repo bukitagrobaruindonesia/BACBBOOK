@@ -678,7 +678,7 @@ export default function RekapProformaInvoicePage() {
       return sum + (s.items || []).reduce((itemSum: number, it: SuratMuatItem) => {
         const itemPI = it.nomorPI || "";
         if (itemPI && itemPI !== nomorPI) return itemSum;
-        return itemSum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+        return itemSum + (it.pengambilanZAK || 0);
       }, 0);
     }, 0);
   };
@@ -728,6 +728,9 @@ export default function RekapProformaInvoicePage() {
       let loaded = 0;
       const fot = (prod.fot || getStockFotForProduct(prod.namaProduk) || "").trim();
       const isGI = isGudangIndukFOT(fot);
+      const satuan = prod.satuan || "ZAK";
+      const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+      const botolPerDus = prod.jumlahIsiBotol || 20;
       suratList.forEach((surat: SuratMuatInfo) => {
         const suratIsGI = !surat.jenisSurat || surat.jenisSurat === "gudangInduk";
         if (isGI && !suratIsGI) return;
@@ -739,7 +742,11 @@ export default function RekapProformaInvoicePage() {
             it.jenisPupuk.toUpperCase().includes(prod.namaProduk.toUpperCase()) ||
             prod.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
           )) {
-            loaded += (it.pengambilanZAK || 0) * (it.bobotPerUnit || 50);
+            if (isBotolOrDus) {
+              loaded += it.pengambilanZAK || 0;
+            } else {
+              loaded += (it.pengambilanZAK || 0) * (it.bobotPerUnit || 50);
+            }
           }
         });
       });
@@ -747,7 +754,7 @@ export default function RekapProformaInvoicePage() {
       let status = "pending";
       if (loaded >= ordered) status = "complete";
       else if (loaded > 0) status = "partial";
-      return { namaProduk: prod.namaProduk, ordered, loaded, remaining, status, isGI, fot };
+      return { namaProduk: prod.namaProduk, ordered, loaded, remaining, status, isGI, fot, satuan, botolPerDus };
     });
   };
 
@@ -2036,8 +2043,28 @@ export default function RekapProformaInvoicePage() {
     const isMandiri = surat.jenisSurat === "do" && surat.subJenisDO === "mandiri";
     const isDikuasakan = surat.jenisSurat === "do" && surat.subJenisDO === "dikuasakan";
     const piDisplay = Array.isArray(surat.nomorPI) ? surat.nomorPI.join(", ") : surat.nomorPI;
+
+    const getSatuanForItem = (item: SuratMuatItem) => {
+      const piData = data.find((d) => {
+        const npi = Array.isArray(surat.nomorPI) ? surat.nomorPI[0] : surat.nomorPI;
+        return d.nomorPI === npi;
+      });
+      if (!piData) return { label: "ZAK", short: "ZAK" };
+      const produk = piData.produkItems.find((p) =>
+        p.namaProduk.toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) ||
+        (item.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+      );
+      const satuan = produk?.satuan || "ZAK";
+      if (satuan === "BOTOL" || satuan === "DUS") {
+        return { label: "BOTOL", short: "BTL" };
+      }
+      return { label: "ZAK", short: "ZAK" };
+    };
+
     const itemsHtml = (surat.items || [])
-      .map((it, idx) => `
+      .map((it, idx) => {
+        const satuanInfo = getSatuanForItem(it);
+        return `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           ${isMandiri ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
@@ -2045,10 +2072,11 @@ export default function RekapProformaInvoicePage() {
           ${isMandiri || isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPO || "-"}</td>` : ""}
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ${satuanInfo.short}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
         </tr>
-      `).join("");
+      `;
+      }).join("");
     let recipientBox = "";
     if (isGI) {
       recipientBox = `<div class="recipient-box"><p class="recipient-title">Kepada Yth :</p><p class="recipient-name">Bapak Kepala Gudang Induk</p><p class="recipient-name">PT Bukit Agrochemical Baru</p><p class="recipient-address">Desa Sungai Rangit<br>Pangkalan Lada, Kalimantan Tengah</p></div>`;
@@ -2105,7 +2133,12 @@ export default function RekapProformaInvoicePage() {
           </div>${recipientBox}
           <div class="salutation"><p>Dengan Hormat,</p><p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p></div>
           <div class="table-section"><div class="table-title">DASAR PENGANGKUTAN</div>
-            <table class="data-table"><thead><tr><th style="width: 30px;">NO</th>${isMandiri ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}${isGI || isDikuasakan ? `<th style="width: 100px;">NOMOR PI</th>` : ""}${isMandiri || isDikuasakan ? `<th style="width: 100px;">NOMOR PO</th>` : ""}<th>JENIS PUPUK</th><th style="width: 60px;">PARTY</th><th style="width: 100px;">PENGAMBILAN<br>ZAK</th><th style="width: 60px;">SISA</th></tr></thead><tbody>${itemsHtml}</tbody></table></div>
+            <table class="data-table"><thead><tr><th style="width: 30px;">NO</th>${isMandiri ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}${isGI || isDikuasakan ? `<th style="width: 100px;">NOMOR PI</th>` : ""}${isMandiri || isDikuasakan ? `<th style="width: 100px;">NOMOR PO</th>` : ""}<th>JENIS PUPUK</th><th style="width: 60px;">PARTY</th><th style="width: 100px;">PENGAMBILAN<br>${(() => {
+              const firstItem = surat.items?.[0];
+              if (!firstItem) return "ZAK";
+              const s = getSatuanForItem(firstItem);
+              return s.short;
+            })()}</th><th style="width: 60px;">SISA</th></tr></thead><tbody>${itemsHtml}</tbody></table></div>
           <div class="table-section"><div class="table-title">DATA UNIT ANGKUTAN</div>
             <table class="data-table"><tbody><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorPolisi || "-"}</td></tr><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.driverUnit || "-"}</td></tr><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${surat.nomorSIM || "-"}</td></tr></tbody></table></div>
           <div class="notes-section"><p style="font-weight: 700;">Notes :</p><p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p><p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p><p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p></div>
@@ -3038,7 +3071,7 @@ export default function RekapProformaInvoicePage() {
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Jenis</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Tanggal</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Jenis Pupuk</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase border">ZAK</th>
+                      <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase border">PENGAMBILAN</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase border">Total KG</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">No. Polisi</th>
                       <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Driver</th>
@@ -3058,9 +3091,37 @@ export default function RekapProformaInvoicePage() {
                         <td className="px-4 py-3 text-sm font-mono font-bold text-green-700 border">{surat.nomorSeri}</td>
                         <td className="px-4 py-3 text-sm border"><span className={`px-2 py-1 rounded-md text-xs font-bold ${jenisClass}`}>{jenisLabel}</span></td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.tanggal}</td>
-                        <td className="px-4 py-3 text-sm text-gray-800 border">{surat.items.map((it: SuratMuatItem, i: number) => (<div key={i}>{it.jenisPupuk} ({it.pengambilanZAK} ZAK)</div>))}</td>
+                        <td className="px-4 py-3 text-sm text-gray-800 border">{surat.items.map((it: SuratMuatItem, i: number) => (
+                          <div key={i}>{it.jenisPupuk} {(() => {
+                            const itemPI = selectedItem?.nomorPI;
+                            const piData = data.find((d) => d.nomorPI === itemPI);
+                            if (!piData) return `(${it.pengambilanZAK} ZAK)`;
+                            const produk = piData.produkItems.find((p) =>
+                              p.namaProduk.toUpperCase().includes((it.jenisPupuk || "").toUpperCase()) ||
+                              (it.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+                            );
+                            const satuan = produk?.satuan || "ZAK";
+                            if (satuan === "BOTOL" || satuan === "DUS") {
+                              return `(${it.pengambilanZAK} BTL)`;
+                            }
+                            return `(${it.pengambilanZAK} ZAK)`;
+                          })()}</div>
+                        ))}</td>
                         <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono border">{surat.items.reduce((sum: number, it: SuratMuatItem) => sum + (it.pengambilanZAK || 0), 0).toLocaleString()}</td>
-                        <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right font-mono border">{surat.totalKG.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right font-mono border">{(() => {
+                          const itemPI = selectedItem?.nomorPI;
+                          const piData = data.find((d) => d.nomorPI === itemPI);
+                          if (!piData) return surat.totalKG.toLocaleString();
+                          const hasBotolOrDus = piData.produkItems.some((p) => {
+                            const satuan = p.satuan || "ZAK";
+                            return satuan === "BOTOL" || satuan === "DUS";
+                          });
+                          if (hasBotolOrDus) {
+                            const totalZAK = surat.items.reduce((sum: number, it: SuratMuatItem) => sum + (it.pengambilanZAK || 0), 0);
+                            return totalZAK.toLocaleString();
+                          }
+                          return surat.totalKG.toLocaleString();
+                        })()}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.nomorPolisi}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 border">{surat.driverUnit}</td>
                         <td className="px-2 py-3 text-sm text-gray-600 border"><button onClick={() => handlePrintSuratPDF(surat)} className="p-1.5 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors" title="Print Surat"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg></button></td>

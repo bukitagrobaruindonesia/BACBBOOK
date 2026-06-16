@@ -389,22 +389,40 @@ export default function BapispFinalPage() {
       ? pi.createdAt.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
       : "-";
 
+    const getSatuanForItem = (item: SuratMuatItem, suratPI: string | string[]) => {
+      const npi = Array.isArray(suratPI) ? suratPI[0] : suratPI;
+      const piData = piMap[npi];
+      if (!piData) return { label: "ZAK", short: "ZAK" };
+      const produk = piData.produkItems.find((p) =>
+        p.namaProduk.toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) ||
+        (item.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+      );
+      const satuan = produk?.satuan || "ZAK";
+      if (satuan === "BOTOL" || satuan === "DUS") {
+        return { label: "BOTOL", short: "BTL" };
+      }
+      return { label: "ZAK", short: "ZAK" };
+    };
+
     let spHtml = "";
     suratList.forEach((surat, sIdx) => {
       const isGI = !surat.jenisSurat || surat.jenisSurat === "gudangInduk";
       const isDikuasakan = surat.jenisSurat === "do" && surat.subJenisDO === "dikuasakan";
       const piDisplay = Array.isArray(surat.nomorPI) ? surat.nomorPI.join(", ") : surat.nomorPI;
-      const spItemsHtml = (surat.items || []).map((it, idx) => `
+      const spItemsHtml = (surat.items || []).map((it, idx) => {
+        const satuanInfo = getSatuanForItem(it, surat.nomorPI);
+        return `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           ${!isGI ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${isGI || isDikuasakan ? (it.nomorPI || piDisplay || "-") : (it.nomorPO || "-")}</td>
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ${satuanInfo.short}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
         </tr>
-      `).join("");
+      `;
+      }).join("");
 
       let recipientBox = "";
       if (isGI) {
@@ -457,7 +475,12 @@ export default function BapispFinalPage() {
                   <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">NOMOR PI</th>
                   <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact;">JENIS PUPUK</th>
                   <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 60px;">PARTY</th>
-                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">PENGAMBILAN<br>ZAK</th>
+                  <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 100px;">PENGAMBILAN<br>${(() => {
+              const firstItem = surat.items?.[0];
+              if (!firstItem) return "ZAK";
+              const s = getSatuanForItem(firstItem, surat.nomorPI);
+              return s.short;
+            })()}</th>
                   <th style="background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; width: 60px;">SISA</th>
                 </tr>
               </thead>

@@ -1237,7 +1237,7 @@ export default function SuratPengangkutanPage() {
               const doSisaAfter = Math.max(0, doSisa - (isDusBotol ? (zakFinal / botolPerDus) * (item.bobotPerUnit || 50) : zakFinal * item.bobotPerUnit));
               updated.sisa = formatParty(doSisaAfter);
             } else {
-              const piSisaAfter = Math.max(0, piSisa - zakFinal);
+              const piSisaAfter = Math.max(0, piSisa - (isDusBotol ? zakFinal : zakFinal * item.bobotPerUnit));
               updated.sisa = isDusBotol ? `${piSisaAfter.toLocaleString()} BOTOL` : formatSisaKG(piSisaAfter);
             }
           } else if (finalMax === 0) {
@@ -1248,7 +1248,7 @@ export default function SuratPengangkutanPage() {
               const doSisaAfter = Math.max(0, doSisa - (isDusBotol ? (zak / botolPerDus) * (item.bobotPerUnit || 50) : zak * item.bobotPerUnit));
               updated.sisa = formatParty(doSisaAfter);
             } else {
-              const piSisaAfter = Math.max(0, piSisa - zak);
+              const piSisaAfter = Math.max(0, piSisa - (isDusBotol ? zak : zak * item.bobotPerUnit));
               updated.sisa = isDusBotol ? `${piSisaAfter.toLocaleString()} BOTOL` : formatSisaKG(piSisaAfter);
             }
           }
@@ -2203,6 +2203,11 @@ export default function SuratPengangkutanPage() {
                           <span>Sudah Dimuat PI: <strong>{item.piLoadedKG.toLocaleString()} {item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk) ? "BOTOL" : "KG"}</strong></span>
                           <span>Sisa PI: <strong>{Math.max(0, item.piKuantitas - item.piLoadedKG).toLocaleString()} {item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk) ? "BOTOL" : "KG"}</strong></span>
                         </div>
+                        {!isDusOrBotolProduct(item.jenisPupuk) && item.bobotPerUnit > 0 && (
+                          <p className="mt-1 text-xs text-purple-600">
+                            = {Math.floor(item.piKuantitas / item.bobotPerUnit).toLocaleString()} ZAK (bobot: {item.bobotPerUnit} KG/ZAK)
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>
