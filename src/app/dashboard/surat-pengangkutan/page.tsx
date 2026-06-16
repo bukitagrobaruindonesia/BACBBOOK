@@ -848,7 +848,7 @@ export default function SuratPengangkutanPage() {
     if (!prod) return;
 
     if (statusMap[prod.namaProduk]?.status === "complete") {
-      setFieldError(`jenisPupuk_${items.findIndex((it) => it.id === itemId)}`, `Produk ${prod.namaProduk} pada PI ${pi.nomorPI} sudah dimuat semua`);
+      setFieldError(`jenisPupuk_${itemId}`, `Produk ${prod.namaProduk} pada PI ${pi.nomorPI} sudah dimuat semua`);
       return;
     }
 
@@ -907,6 +907,8 @@ export default function SuratPengangkutanPage() {
         piLoadedKG: 0,
       },
     ]);
+    setPiSearchMap((prev) => ({ ...prev, [newId]: "" }));
+    setPiShowMap((prev) => ({ ...prev, [newId]: false }));
   };
 
   const addItemWithPI = async (pi: ProformaInvoice) => {
@@ -920,6 +922,9 @@ export default function SuratPengangkutanPage() {
 
     let piKuantitas = 0;
     let piLoadedKG = 0;
+
+    setPiSearchMap((prev) => ({ ...prev, [newId]: pi.nomorPI }));
+    setPiShowMap((prev) => ({ ...prev, [newId]: false }));
 
     if (firstProd) {
       piKuantitas = firstProd.kuantitas || 0;
@@ -1786,7 +1791,7 @@ export default function SuratPengangkutanPage() {
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">Cari Proforma Invoice</label>
                       <div
                         ref={(el) => { itemSearchRefs.current[item.id] = el; }}
-                        className="relative z-50"
+                        className="relative z-40"
                       >
                         <input
                           type="text"
@@ -1800,11 +1805,9 @@ export default function SuratPengangkutanPage() {
                           className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white"
                         />
                         {showSearch && (
-                          <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[300px] overflow-y-auto z-[9999]" onMouseDown={(e) => e.preventDefault()}>
-                            {searchVal && filteredPI.length === 0 ? (
-                              <div className="p-4 text-sm text-gray-500">Tidak ada PI yang cocok</div>
-                            ) : !searchVal ? (
-                              <div className="p-3 text-xs text-gray-400">Ketik minimal 1 karakter untuk mencari PI</div>
+                          <div className="absolute left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl max-h-[300px] overflow-y-auto z-[60]" onMouseDown={(e) => e.preventDefault()}>
+                            {filteredPI.length === 0 ? (
+                              <div className="p-4 text-sm text-gray-500">{searchVal ? "Tidak ada PI yang cocok" : "Tidak ada PI yang tersedia"}</div>
                             ) : (
                               filteredPI.map((pi) => {
                                 return (
