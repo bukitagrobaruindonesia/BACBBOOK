@@ -529,7 +529,15 @@ export default function InputProformaInvoicePage() {
               newItem.bobotPerUnit = stock.bobotPerUnit || 50;
               newItem.jumlahIsiBotol = (stock as any).jumlahIsiBotol || 1;
               // Auto-set satuan from stock unit
-              newItem.satuan = stock.unit === "BOTOL" ? "BOTOL" : stock.unit === "DUS" ? "DUS" : stock.unit === "ZAK" ? "ZAK" : "KG";
+              if (stock.unit === "DUS") {
+              newItem.satuan = "BOTOL";
+            } else if (stock.unit === "BOTOL") {
+              newItem.satuan = "BOTOL";
+            } else if (stock.unit === "ZAK") {
+              newItem.satuan = "ZAK";
+            } else {
+              newItem.satuan = "KG";
+            }
             } else {
               newItem.fot = "";
               newItem.produsen = "";
