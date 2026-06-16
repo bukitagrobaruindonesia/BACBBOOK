@@ -1127,7 +1127,10 @@ export default function RiwayatTransaksiPage() {
 
   const getTotalKGForSurat = (item: UnifiedTransaksi) => {
     if (item.totalPengambilanKG) return item.totalPengambilanKG;
-    if (item.items) return item.items.reduce((sum, it) => sum + (it.totalKG || 0), 0);
+    if (item.items) return item.items.reduce((sum, it) => {
+      const isDusBotol = it.bobotPerUnit === 1;
+      return sum + (isDusBotol ? 0 : (it.totalKG || 0));
+    }, 0);
     return 0;
   };
 
@@ -1186,17 +1189,25 @@ export default function RiwayatTransaksiPage() {
               {(row.items || []).map((it, idx) => {
                 const isDusBotol = it.bobotPerUnit === 1;
                 const unitLabel = isDusBotol ? "BOTOL" : "ZAK";
-                const kgDisplay = isDusBotol ? "0" : (it.totalKG || 0).toLocaleString("id-ID");
                 return (
                   <p key={idx} className="font-semibold text-gray-800">
-                    {it.jenisPupuk} <span className="text-xs font-normal text-gray-500">({it.pengambilanZAK || 0} {unitLabel} / {kgDisplay} KG)</span>
+                    {it.jenisPupuk} <span className="text-xs font-normal text-gray-500">({it.pengambilanZAK || 0} {unitLabel})</span>
                   </p>
                 );
               })}
               {row.nomorPIList && row.nomorPIList.length > 0 && (
                 <p className="text-xs text-gray-500 mt-1">PI: {row.nomorPIList.join(", ")}</p>
               )}
-              {getTotalKGForSurat(row) > 0 && <p className="text-xs text-gray-500 font-medium">Total: {getTotalKGForSurat(row).toLocaleString("id-ID")} KG</p>}
+              {(() => {
+                const totalBotol = (row.items || []).reduce((sum, it) => {
+                  const isDusBotol = it.bobotPerUnit === 1;
+                  return sum + (isDusBotol ? (it.pengambilanZAK || 0) : 0);
+                }, 0);
+                const totalKg = getTotalKGForSurat(row);
+                if (totalBotol > 0) return <p className="text-xs text-gray-500 font-medium">Total: {totalBotol.toLocaleString("id-ID")} BOTOL</p>;
+                if (totalKg > 0) return <p className="text-xs text-gray-500 font-medium">Total: {totalKg.toLocaleString("id-ID")} KG</p>;
+                return null;
+              })()}
             </div>
           ) : (
             <span className="font-semibold text-gray-800">{row.namaBarang}</span>
@@ -1226,7 +1237,20 @@ export default function RiwayatTransaksiPage() {
       render: (row: UnifiedTransaksi) => (
         <span className="font-mono font-bold text-gray-700">
           {row.jenis === "suratPengangkutanGudangInduk" || row.jenis === "suratPengangkutanDO"
-            ? `${getTotalKGForSurat(row).toLocaleString()} KG`
+            ? (() => {
+                const totalBotol = (row.items || []).reduce((sum, it) => {
+                  const isDusBotol = it.bobotPerUnit === 1;
+                  return sum + (isDusBotol ? (it.pengambilanZAK || 0) : 0);
+                }, 0);
+                const totalZak = (row.items || []).reduce((sum, it) => {
+                  const isDusBotol = it.bobotPerUnit === 1;
+                  return sum + (isDusBotol ? 0 : (it.pengambilanZAK || 0));
+                }, 0);
+                const totalKg = getTotalKGForSurat(row);
+                if (totalBotol > 0) return `${totalBotol.toLocaleString("id-ID")} BOTOL`;
+                if (totalZak > 0) return `${totalZak.toLocaleString("id-ID")} ZAK`;
+                return `${totalKg.toLocaleString("id-ID")} KG`;
+              })()
             : `${row.jumlahZAK.toLocaleString()} ${row.unit === "KG" ? "KG" : "ZAK"}`
           }
         </span>

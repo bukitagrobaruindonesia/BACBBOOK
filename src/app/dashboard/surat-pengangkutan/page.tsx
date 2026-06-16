@@ -1459,7 +1459,13 @@ export default function SuratPengangkutanPage() {
               const refIdx = piRefs.findIndex((r) => r.id === item.piId);
               piDeductions[item.nomorPI] = { ref: piRefs[refIdx], piId: item.piId, kg: 0 };
             }
-            piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
+            const isDusBotolItem = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
+        const itemBotolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
+        if (isDusBotolItem) {
+          piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0);
+        } else {
+          piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
+        }
           }
         });
         Object.entries(piDeductions).forEach(([nomorPI, { ref }]) => {
@@ -1467,7 +1473,15 @@ export default function SuratPengangkutanPage() {
           const piSnap = piSnaps[snapIdx];
           if (!piSnap.exists()) throw new Error(`PI ${nomorPI} tidak ditemukan`);
           const piData = piSnap.data() as PIDoc;
-          const totalOrdered = (piData.produkItems || []).reduce((sum: number, p: any) => sum + (p.kuantitas || 0), 0);
+          const totalOrdered = (piData.produkItems || []).reduce((sum: number, p: any) => {
+          const prodIsDusBotol = isDusOrBotolProduct(p.namaProduk);
+          const prodBotolPerDus = getBotolPerDus(p.namaProduk);
+          let qty = p.kuantitas || 0;
+          if (p.satuan === "DUS" && prodIsDusBotol) {
+            qty = qty * prodBotolPerDus;
+          }
+          return sum + qty;
+        }, 0);
           const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : totalOrdered;
           const kg = piDeductions[nomorPI].kg;
           if (currentSisa - kg < 0) {
