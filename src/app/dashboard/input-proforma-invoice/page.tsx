@@ -396,46 +396,35 @@ const fetchStockGudang = async () => {
 
 const ensureCustomerExists = async (nama: string, alamat: string, npwp: string): Promise<CustomerData | undefined> => {
     if (!nama.trim() || !alamat.trim()) return;
-    const normalizedName = nama.trim().toLowerCase();
-    const normalizedAddress = alamat.trim().toLowerCase();
-    const existing = customerList.find((c) => 
-      c.namaCustomer.trim().toLowerCase() === normalizedName &&
-      c.alamatCustomer.trim().toLowerCase() === normalizedAddress
-    );
-    if (existing) {
-      const updateData: any = { updatedAt: serverTimestamp() };
-      if (npwp.trim() && (!existing.npwp || existing.npwp.trim() !== npwp.trim())) updateData.npwp = npwp.trim();
-      if (Object.keys(updateData).length > 1) {
-        try {
-          await updateDoc(doc(db, "customers", existing.id), updateData);
-          fetchCustomers();
-        } catch (error) { console.error(error); }
-      }
-      return existing;
-    }
+
     try {
-      const q = query(
-        collection(db, "customers"),
-        where("namaCustomer", "==", nama.trim()),
-        where("alamatCustomer", "==", alamat.trim())
-      );
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        const data = snap.docs[0].data() as CustomerData;
-        fetchCustomers();
-        return { ...data, id: snap.docs[0].id };
-      }
-      const customerId = await generateCustomerId();
-      const newDoc = await addDoc(collection(db, "customers"), {
-        customerId,
-        namaCustomer: nama.trim(),
-        alamatCustomer: alamat.trim(),
-        npwp: npwp.trim() || "",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      const result = await runTransaction(db, async (transaction) => {
+        const q = query(
+          collection(db, "customers"),
+          where("namaCustomer", "==", nama.trim()),
+          where("alamatCustomer", "==", alamat.trim())
+        );
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const data = snap.docs[0].data() as CustomerData;
+          return { ...data, id: snap.docs[0].id };
+        }
+
+        const customerId = await generateCustomerId();
+        const newDocRef = doc(collection(db, "customers"));
+        transaction.set(newDocRef, {
+          customerId,
+          namaCustomer: nama.trim(),
+          alamatCustomer: alamat.trim(),
+          npwp: npwp.trim() || "",
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        return { id: newDocRef.id, customerId, namaCustomer: nama.trim(), alamatCustomer: alamat.trim(), npwp: npwp.trim() || "", createdAt: new Date(), updatedAt: new Date() };
       });
+
       fetchCustomers();
-      return { id: newDoc.id, customerId, namaCustomer: nama.trim(), alamatCustomer: alamat.trim(), npwp: npwp.trim() || "", createdAt: new Date(), updatedAt: new Date() };
+      return result;
     } catch (error) { console.error(error); }
   };
 
