@@ -442,6 +442,7 @@ export default function SuratPengangkutanPage() {
   const [subJenisDO, setSubJenisDO] = useState<"mandiri" | "dikuasakan" | "">("");
   const [showJenisModal, setShowJenisModal] = useState(true);
   const [showSubJenisModal, setShowSubJenisModal] = useState(false);
+  const [pendingNomorSeri, setPendingNomorSeri] = useState("");
 
   const [formData, setFormData] = useState({
     tanggal: new Date().toISOString().split("T")[0],
@@ -511,6 +512,29 @@ export default function SuratPengangkutanPage() {
       });
     }
   }, [piList, jenisSurat]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (pendingNomorSeri) {
+        if (jenisSurat === "gudangInduk") {
+          releaseSeriSP(pendingNomorSeri);
+        } else if (jenisSurat === "do") {
+          releaseSeriDO(pendingNomorSeri);
+        }
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (pendingNomorSeri) {
+        if (jenisSurat === "gudangInduk") {
+          releaseSeriSP(pendingNomorSeri);
+        } else if (jenisSurat === "do") {
+          releaseSeriDO(pendingNomorSeri);
+        }
+      }
+    };
+  }, [pendingNomorSeri, jenisSurat]);
 
   useEffect(() => {
     if (urlNomorPI && piList.length > 0 && !showJenisModal && !showSubJenisModal) {
@@ -1383,6 +1407,7 @@ export default function SuratPengangkutanPage() {
     if (!validateForm()) return;
     setIsSubmitting(true);
     setSuccessMessage("");
+    let nomorSeri = "";
     try {
       const isGI = jenisSurat === "gudangInduk";
       const isMandiri = subJenisDO === "mandiri";
@@ -1402,7 +1427,6 @@ export default function SuratPengangkutanPage() {
       const doRefs = doItemsWithId.map((it) => doc(db, "do", it.doId!));
       const piRefs = piItemsWithId.map((it) => doc(db, "proformaInvoice", it.piId!));
 
-      let nomorSeri = "";
       let isMandiriCounter = false;
       let mandiriNomorSubDO = "";
       let mandiriPerusahaan = "";
@@ -1423,6 +1447,8 @@ export default function SuratPengangkutanPage() {
           nomorSeri = await getUniqueSeriDOMandiri(perusahaan, nomorSubDO);
         }
       }
+
+      setPendingNomorSeri(nomorSeri);
 
       await runTransaction(db, async (transaction) => {
         const allReads: Promise<any>[] = [];
@@ -1650,6 +1676,7 @@ export default function SuratPengangkutanPage() {
         transaction.set(transaksiRef, transaksiData);
       });
 
+      setPendingNomorSeri("");
       setSuccessMessage(`Surat pengangkutan berhasil dibuat!`);
       resetForm();
       fetchExistingSurat();
@@ -1658,6 +1685,14 @@ export default function SuratPengangkutanPage() {
       fetchSuratDO();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error: any) {
+      if (nomorSeri) {
+        if (jenisSurat === "gudangInduk") {
+          await releaseSeriSP(nomorSeri);
+        } else if (jenisSurat === "do") {
+          await releaseSeriDO(nomorSeri);
+        }
+      }
+      setPendingNomorSeri("");
       console.error(error);
       setFieldError("submit", error.message || "Gagal menyimpan surat pengangkutan. Silakan coba lagi.");
     } finally {
@@ -1666,6 +1701,14 @@ export default function SuratPengangkutanPage() {
   };
 
   const resetForm = () => {
+    if (pendingNomorSeri) {
+      if (jenisSurat === "gudangInduk") {
+        releaseSeriSP(pendingNomorSeri);
+      } else if (jenisSurat === "do") {
+        releaseSeriDO(pendingNomorSeri);
+      }
+      setPendingNomorSeri("");
+    }
     setFormData({
       tanggal: new Date().toISOString().split("T")[0],
       namaKabupaten: "Lamandau",

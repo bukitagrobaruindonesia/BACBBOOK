@@ -331,6 +331,7 @@ export default function RekapProformaInvoicePage() {
   const [bastExists, setBastExists] = useState(false);
   const [invoiceExists, setInvoiceExists] = useState(false);
   const [invoiceSementaraExists, setInvoiceSementaraExists] = useState(false);
+  const [pendingInvoiceBase, setPendingInvoiceBase] = useState("");
   const [editForm, setEditForm] = useState({
     tanggal: "",
     nomorPI: "",
@@ -375,6 +376,24 @@ export default function RekapProformaInvoicePage() {
       setInvoiceSementaraExists(false);
     }
   }, [selectedItem]);
+
+  useEffect(() => {
+    cleanupStalePendingLocks();
+    const interval = setInterval(cleanupStalePendingLocks, 10 * 60 * 1000);
+    const handleBeforeUnload = () => {
+      if (pendingInvoiceBase) {
+        releaseInvoiceBase(pendingInvoiceBase);
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      if (pendingInvoiceBase) {
+        releaseInvoiceBase(pendingInvoiceBase);
+      }
+    };
+  }, [pendingInvoiceBase]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -823,7 +842,56 @@ export default function RekapProformaInvoicePage() {
     throw new Error("Failed to generate unique invoice base number after retries");
   };
 
-  const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoice): Promise<string> => {
+  
+const releaseInvoiceBase = async (baseNumber: string) => {
+  try {
+    const baseNum = parseInt(baseNumber);
+    if (isNaN(baseNum)) return;
+    const poolRef = doc(db, "counters", "invoiceBasePool");
+    await runTransaction(db, async (transaction) => {
+      const poolSnap = await transaction.get(poolRef);
+      let lastNumber = poolSnap.data()?.lastNumber || 0;
+      let gaps = (poolSnap.data()?.gaps || []) as number[];
+      if (!gaps.includes(baseNum)) {
+        gaps.push(baseNum);
+        gaps.sort((a, b) => a - b);
+      }
+      if (baseNum === lastNumber) {
+        let newLast = lastNumber - 1;
+        while (newLast > 0 && gaps.includes(newLast)) {
+          newLast--;
+        }
+        lastNumber = Math.max(0, newLast);
+      }
+      transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
+    });
+    try {
+      await updateDoc(doc(db, "invoiceBaseLocks", baseNumber), { released: true, releasedAt: serverTimestamp() });
+    } catch {}
+  } catch (error) {
+    console.error("Failed to release invoice base:", error);
+  }
+};
+
+const cleanupStalePendingLocks = async () => {
+  try {
+    const locksQuery = query(collection(db, "invoiceBaseLocks"), where("nomorPI", "==", "pending"));
+    const locksSnap = await getDocs(locksQuery);
+    const staleThreshold = Date.now() - 30 * 60 * 1000;
+    for (const lockDoc of locksSnap.docs) {
+      const lockData = lockDoc.data();
+      const createdAt = lockData.createdAt?.toMillis?.() || lockData.createdAt || 0;
+      if (createdAt < staleThreshold) {
+        const baseNumber = lockDoc.id;
+        await releaseInvoiceBase(baseNumber);
+      }
+    }
+  } catch (error) {
+    console.error("Cleanup failed:", error);
+  }
+};
+
+const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoice): Promise<string> => {
     const pi = piRow || selectedItem;
     if (!pi) return "";
     const suratRef = doc(db, "suratPengangkutan", surat.id);
@@ -888,6 +956,7 @@ export default function RekapProformaInvoicePage() {
     setInvoiceNomor("");
     setInvoiceDate("");
     setCustomerId("");
+    setPendingInvoiceBase("");
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
@@ -898,6 +967,7 @@ export default function RekapProformaInvoicePage() {
         baseNumber = await getUniqueInvoiceBaseNumber();
         await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
       }
+      setPendingInvoiceBase(baseNumber);
       const nomor = `BAGB-INV-${baseNumber}`;
       setInvoiceNomor(nomor);
       const allSurat = getSuratMuatForPI(row.nomorPI);
@@ -989,15 +1059,20 @@ export default function RekapProformaInvoicePage() {
     setInvoiceNomor("");
     setInvoiceDate(surat.tanggal);
     setCustomerId("");
+    setPendingInvoiceBase("");
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
       const nomor = await generateInvoiceNumber(surat, pi);
       setInvoiceNomor(nomor);
+      const parsed = parseInvoiceNumber(nomor);
+      if (parsed) {
+        const baseNumber = String(parsed.baseNum).padStart(3, "0");
+        setPendingInvoiceBase(baseNumber);
+      }
       await fetchCustomerByName(pi.namaCustomer);
       const allSurat = getSuratMuatForPI(pi.nomorPI);
       const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
-      const parsed = parseInvoiceNumber(nomor);
       if (parsed && parsed.isPartial && sortedSurat.length > 0) {
         const sIndex = parsed.partialNum - 1;
         if (sIndex >= 0 && sIndex < sortedSurat.length) {
@@ -3412,7 +3487,7 @@ export default function RekapProformaInvoicePage() {
         </form>
       </Modal>
 
-      <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title={invoiceSurat ? "Print Invoice Sementara" : "Print Invoice"} size="md" footer={
+      <Modal isOpen={isInvoiceModalOpen} onClose={() => { if (pendingInvoiceBase) { releaseInvoiceBase(pendingInvoiceBase); setPendingInvoiceBase(""); } setIsInvoiceModalOpen(false); }} title={invoiceSurat ? "Print Invoice Sementara" : "Print Invoice"} size="md" footer={
         <div className="flex justify-end gap-3 flex-wrap">
           <Button variant="outline" onClick={() => setIsInvoiceModalOpen(false)}>Batal</Button>
           {invoiceSurat ? (

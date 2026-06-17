@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import {
-  collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp, getDoc, where,
+  collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp, getDoc, where, runTransaction, Timestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -118,6 +118,86 @@ interface TTDData {
 const getRomanMonth = (month: number) => {
   const romans = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"];
   return romans[month - 1] || "I";
+};
+
+const sanitizeLockDocId = (nomorSeri: string) => {
+  return nomorSeri.replace(/\//g, "-");
+};
+
+const releaseSeriSP = async (nomorSeri: string) => {
+  try {
+    const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(nomorSeri));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists()) {
+      await deleteDoc(lockRef);
+    }
+    const parts = nomorSeri.split("/");
+    if (parts.length === 4 && parts[0] === "BAGB-SP") {
+      const year = parseInt(parts[1]);
+      const roman = parts[2];
+      const num = parseInt(parts[3]);
+      const poolRef = doc(db, "counters", `suratPengangkutanSP_${year}_${roman}`);
+      await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        if (!poolSnap.exists()) return;
+        let gaps = (poolSnap.data().gaps || []) as number[];
+        if (!gaps.includes(num)) {
+          gaps.push(num);
+          gaps.sort((a, b) => a - b);
+        }
+        transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+      });
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const releaseSeriDO = async (nomorSeri: string) => {
+  try {
+    const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(nomorSeri));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists()) {
+      await deleteDoc(lockRef);
+    }
+    const parts = nomorSeri.split("/");
+    if (parts.length === 4 && parts[0] === "BAGB-SP-DO") {
+      const year = parseInt(parts[1]);
+      const roman = parts[2];
+      const num = parseInt(parts[3]);
+      const poolRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+      await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        if (!poolSnap.exists()) return;
+        let gaps = (poolSnap.data().gaps || []) as number[];
+        if (!gaps.includes(num)) {
+          gaps.push(num);
+          gaps.sort((a, b) => a - b);
+        }
+        transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+      });
+    } else if (nomorSeri.startsWith("BAGB-DO-")) {
+      const match = nomorSeri.match(/^BAGB-DO-(.+?)-(.+?)-SP\/(\d{4})$/);
+      if (match) {
+        const nsub = match[1];
+        const perusahaan = match[2];
+        const num = parseInt(match[3]);
+        const poolRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nsub}`);
+        await runTransaction(db, async (transaction) => {
+          const poolSnap = await transaction.get(poolRef);
+          if (!poolSnap.exists()) return;
+          let gaps = (poolSnap.data().gaps || []) as number[];
+          if (!gaps.includes(num)) {
+            gaps.push(num);
+            gaps.sort((a, b) => a - b);
+          }
+          transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+        });
+      }
+    }
+  } catch (error) {
+    console.error(error);
+  }
 };
 
 const parseNomorSeri = (nomorSeri: string) => {
@@ -802,6 +882,13 @@ export default function RiwayatTransaksiPage() {
         const suratSnapshot = await getDocs(suratQuery);
         if (!suratSnapshot.empty) {
           await deleteDoc(doc(db, "suratPengangkutan", suratSnapshot.docs[0].id));
+        }
+        if (item.nomorSeri) {
+          if (item.jenis === "suratPengangkutanGudangInduk") {
+            await releaseSeriSP(item.nomorSeri);
+          } else {
+            await releaseSeriDO(item.nomorSeri);
+          }
         }
       }
       await deleteDoc(doc(db, collectionName, item.id));
