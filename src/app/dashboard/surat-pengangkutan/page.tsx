@@ -438,6 +438,67 @@ const isDOExpired = (tanggalKadaluarsa: string) => {
   return kadaluarsa < today;
 };
 
+const getPILock = async (nomorPI: string, userEmail?: string): Promise<string> => {
+  const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
+  const maxRetries = 15;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const lockSnap = await transaction.get(lockRef);
+        if (lockSnap.exists()) {
+          const data = lockSnap.data();
+          const createdAt = data.createdAt?.toMillis?.() || data.createdAt || 0;
+          const staleThreshold = Date.now() - 5 * 60 * 1000;
+          if (createdAt > staleThreshold) {
+            throw new Error("PI lock exists");
+          }
+        }
+        const lockId = `${nomorPI}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        transaction.set(lockRef, { lockId, createdAt: serverTimestamp(), nomorPI, userEmail: userEmail || "" });
+        return lockId;
+      });
+      return result;
+    } catch (error: any) {
+      if (error.message === "PI lock exists") {
+        if (attempt === maxRetries - 1) throw new Error(`Sedang ada proses surat pengangkutan untuk PI ${nomorPI}. Silakan coba lagi dalam beberapa detik.`);
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Failed to acquire PI lock");
+};
+
+const releasePILock = async (nomorPI: string, lockId: string) => {
+  try {
+    const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists() && lockSnap.data().lockId === lockId) {
+      await deleteDoc(lockRef);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const cleanupStalePILocks = async () => {
+  try {
+    const locksQuery = query(collection(db, "piLocks"));
+    const locksSnap = await getDocs(locksQuery);
+    const staleThreshold = Date.now() - 5 * 60 * 1000;
+    for (const lockDoc of locksSnap.docs) {
+      const lockData = lockDoc.data();
+      const createdAt = lockData.createdAt?.toMillis?.() || lockData.createdAt || 0;
+      if (createdAt < staleThreshold) {
+        await deleteDoc(doc(db, "piLocks", lockDoc.id));
+      }
+    }
+  } catch (error) {
+    console.error("Cleanup PI locks failed:", error);
+  }
+};
+
 export default function SuratPengangkutanPage() {
   const { user } = useAuth();
   const router = useRouter();
@@ -529,6 +590,8 @@ export default function SuratPengangkutanPage() {
   }, [piList, jenisSurat]);
 
   useEffect(() => {
+    cleanupStalePILocks();
+    const interval = setInterval(cleanupStalePILocks, 10 * 60 * 1000);
     const handleBeforeUnload = () => {
       if (pendingNomorSeri) {
         if (jenisSurat === "gudangInduk") {
@@ -537,9 +600,15 @@ export default function SuratPengangkutanPage() {
           releaseSeriDO(pendingNomorSeri);
         }
       }
+      const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+      allPIs.forEach((nomorPI) => {
+        const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
+        deleteDoc(lockRef).catch(() => {});
+      });
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
+      clearInterval(interval);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       if (pendingNomorSeri) {
         if (jenisSurat === "gudangInduk") {
@@ -548,8 +617,13 @@ export default function SuratPengangkutanPage() {
           releaseSeriDO(pendingNomorSeri);
         }
       }
+      const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+      allPIs.forEach((nomorPI) => {
+        const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
+        deleteDoc(lockRef).catch(() => {});
+      });
     };
-  }, [pendingNomorSeri, jenisSurat]);
+  }, [pendingNomorSeri, jenisSurat, items]);
 
   useEffect(() => {
     if (urlNomorPI && piList.length > 0 && !showJenisModal && !showSubJenisModal) {
@@ -1418,103 +1492,118 @@ export default function SuratPengangkutanPage() {
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!validateForm()) return;
-    setIsSubmitting(true);
-    setSuccessMessage("");
-    let nomorSeri = "";
-    try {
-      const isGI = jenisSurat === "gudangInduk";
-      const isMandiri = subJenisDO === "mandiri";
-      const isDikuasakan = subJenisDO === "dikuasakan";
-      const now = new Date();
+  e.preventDefault();
+  if (!validateForm()) return;
+  setIsSubmitting(true);
+  setSuccessMessage("");
+  let nomorSeri = "";
+  const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+  const piLocks: Array<{ nomorPI: string; lockId: string }> = [];
+  try {
+    for (const nomorPI of allPIs) {
+      const lockId = await getPILock(nomorPI, user?.email);
+      piLocks.push({ nomorPI, lockId });
+    }
+  } catch (error: any) {
+    for (const pl of piLocks) {
+      await releasePILock(pl.nomorPI, pl.lockId);
+    }
+    alert(error.message);
+    setIsSubmitting(false);
+    return;
+  }
+  try {
+    const isGI = jenisSurat === "gudangInduk";
+    const isMandiri = subJenisDO === "mandiri";
+    const isDikuasakan = subJenisDO === "dikuasakan";
+    const now = new Date();
 
-      const doItemsWithId = items.filter((it) => it.doId);
-      const piItemsWithId = items.filter((it) => it.piId);
-      const stockItemRefsForGI = isGI
-        ? items.map((it) => {
-            const stock = getStockForProduct(it.jenisPupuk);
-            return stock ? { item: it, stock, ref: doc(db, "stockGudang", stock.id) } : null;
-          }).filter((x): x is NonNullable<typeof x> => !!x)
-        : [];
-      const stockRefs = stockItemRefsForGI.map((x) => x.ref);
+    const doItemsWithId = items.filter((it) => it.doId);
+    const piItemsWithId = items.filter((it) => it.piId);
+    const stockItemRefsForGI = isGI
+      ? items.map((it) => {
+          const stock = getStockForProduct(it.jenisPupuk);
+          return stock ? { item: it, stock, ref: doc(db, "stockGudang", stock.id) } : null;
+        }).filter((x): x is NonNullable<typeof x> => !!x)
+      : [];
+    const stockRefs = stockItemRefsForGI.map((x) => x.ref);
 
-      const doRefs = doItemsWithId.map((it) => doc(db, "do", it.doId!));
-      const piRefs = piItemsWithId.map((it) => doc(db, "proformaInvoice", it.piId!));
+    const doRefs = doItemsWithId.map((it) => doc(db, "do", it.doId!));
+    const piRefs = piItemsWithId.map((it) => doc(db, "proformaInvoice", it.piId!));
 
-      let isMandiriCounter = false;
-      let mandiriNomorSubDO = "";
-      let mandiriPerusahaan = "";
+    let isMandiriCounter = false;
+    let mandiriNomorSubDO = "";
+    let mandiriPerusahaan = "";
 
-      if (jenisSurat === "gudangInduk") {
-        nomorSeri = await getUniqueSeriSP(now.getFullYear(), getRomanMonth(now.getMonth() + 1));
-      } else if (jenisSurat === "do") {
-        if (subJenisDO === "dikuasakan") {
-          nomorSeri = await getUniqueSeriDODikuasakan(now.getFullYear(), getRomanMonth(now.getMonth() + 1));
-        } else {
-          const perusahaan = formData.kepadaPerusahaan.trim();
-          const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
-          const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
-          if (!perusahaan || !nomorSubDO) throw new Error("Data tidak lengkap untuk generate nomor seri");
-          mandiriNomorSubDO = nomorSubDO;
-          mandiriPerusahaan = perusahaan;
-          isMandiriCounter = true;
-          nomorSeri = await getUniqueSeriDOMandiri(perusahaan, nomorSubDO);
-        }
+    if (jenisSurat === "gudangInduk") {
+      nomorSeri = await getUniqueSeriSP(now.getFullYear(), getRomanMonth(now.getMonth() + 1));
+    } else if (jenisSurat === "do") {
+      if (subJenisDO === "dikuasakan") {
+        nomorSeri = await getUniqueSeriDODikuasakan(now.getFullYear(), getRomanMonth(now.getMonth() + 1));
+      } else {
+        const perusahaan = formData.kepadaPerusahaan.trim();
+        const firstItem = items.find((it) => it.nomorSubDO.trim() !== "");
+        const nomorSubDO = firstItem?.nomorSubDO?.trim() || "";
+        if (!perusahaan || !nomorSubDO) throw new Error("Data tidak lengkap untuk generate nomor seri");
+        mandiriNomorSubDO = nomorSubDO;
+        mandiriPerusahaan = perusahaan;
+        isMandiriCounter = true;
+        nomorSeri = await getUniqueSeriDOMandiri(perusahaan, nomorSubDO);
       }
+    }
 
-      setPendingNomorSeri(nomorSeri);
+    setPendingNomorSeri(nomorSeri);
 
-      await runTransaction(db, async (transaction) => {
-        const allReads: Promise<any>[] = [];
-        doRefs.forEach((ref) => allReads.push(transaction.get(ref)));
-        piRefs.forEach((ref) => allReads.push(transaction.get(ref)));
-        stockRefs.forEach((ref) => allReads.push(transaction.get(ref)));
+    await runTransaction(db, async (transaction) => {
+      const allReads: Promise<any>[] = [];
+      doRefs.forEach((ref) => allReads.push(transaction.get(ref)));
+      piRefs.forEach((ref) => allReads.push(transaction.get(ref)));
+      stockRefs.forEach((ref) => allReads.push(transaction.get(ref)));
 
-        const allSnaps = await Promise.all(allReads);
+      const allSnaps = await Promise.all(allReads);
 
-        const doSnaps = allSnaps.slice(0, doRefs.length);
-        const piSnaps = allSnaps.slice(doRefs.length, doRefs.length + piRefs.length);
-        const stockSnaps = allSnaps.slice(doRefs.length + piRefs.length);
+      const doSnaps = allSnaps.slice(0, doRefs.length);
+      const piSnaps = allSnaps.slice(doRefs.length, doRefs.length + piRefs.length);
+      const stockSnaps = allSnaps.slice(doRefs.length + piRefs.length);
 
-        if (!nomorSeri) throw new Error("Gagal generate nomor seri");
+      if (!nomorSeri) throw new Error("Gagal generate nomor seri");
 
-        if (isMandiri) {
-          doSnaps.forEach((snap, idx) => {
-            const item = doItemsWithId[idx];
-            if (!snap.exists()) throw new Error(`DO ${item.nomorSubDO} tidak ditemukan`);
-            const doData = snap.data() as DODoc;
-            const currentLoaded = item.doLoadedKG || 0;
-            const addKG = (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
-            const party = doData.partyKG || 0;
-            if (currentLoaded + addKG > party) {
-              throw new Error(`Pengambilan melebihi party DO ${item.nomorSubDO}`);
-            }
-          });
-        }
-
-        const piDeductions: Record<string, { ref: any; piId: string; kg: number }> = {};
-        piItemsWithId.forEach((item) => {
-          if (item.piId && item.nomorPI) {
-            if (!piDeductions[item.nomorPI]) {
-              const refIdx = piRefs.findIndex((r) => r.id === item.piId);
-              piDeductions[item.nomorPI] = { ref: piRefs[refIdx], piId: item.piId, kg: 0 };
-            }
-            const isDusBotolItem = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
-        const itemBotolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
-        if (isDusBotolItem) {
-          piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0);
-        } else {
-          piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
-        }
+      if (isMandiri) {
+        doSnaps.forEach((snap, idx) => {
+          const item = doItemsWithId[idx];
+          if (!snap.exists()) throw new Error(`DO ${item.nomorSubDO} tidak ditemukan`);
+          const doData = snap.data() as DODoc;
+          const currentLoaded = item.doLoadedKG || 0;
+          const addKG = (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
+          const party = doData.partyKG || 0;
+          if (currentLoaded + addKG > party) {
+            throw new Error(`Pengambilan melebihi party DO ${item.nomorSubDO}`);
           }
         });
-        Object.entries(piDeductions).forEach(([nomorPI, { ref }]) => {
-          const snapIdx = piRefs.findIndex((r) => r.id === piDeductions[nomorPI].piId);
-          const piSnap = piSnaps[snapIdx];
-          if (!piSnap.exists()) throw new Error(`PI ${nomorPI} tidak ditemukan`);
-          const piData = piSnap.data() as PIDoc;
-          const totalOrdered = (piData.produkItems || []).reduce((sum: number, p: any) => {
+      }
+
+      const piDeductions: Record<string, { ref: any; piId: string; kg: number }> = {};
+      piItemsWithId.forEach((item) => {
+        if (item.piId && item.nomorPI) {
+          if (!piDeductions[item.nomorPI]) {
+            const refIdx = piRefs.findIndex((r) => r.id === item.piId);
+            piDeductions[item.nomorPI] = { ref: piRefs[refIdx], piId: item.piId, kg: 0 };
+          }
+          const isDusBotolItem = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
+          const itemBotolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
+          if (isDusBotolItem) {
+            piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0);
+          } else {
+            piDeductions[item.nomorPI].kg += (parseFloat(item.pengambilanZAK) || 0) * item.bobotPerUnit;
+          }
+        }
+      });
+      Object.entries(piDeductions).forEach(([nomorPI, { ref }]) => {
+        const snapIdx = piRefs.findIndex((r) => r.id === piDeductions[nomorPI].piId);
+        const piSnap = piSnaps[snapIdx];
+        if (!piSnap.exists()) throw new Error(`PI ${nomorPI} tidak ditemukan`);
+        const piData = piSnap.data() as PIDoc;
+        const totalOrdered = (piData.produkItems || []).reduce((sum: number, p: any) => {
           const prodIsDusBotol = isDusOrBotolProduct(p.namaProduk);
           const prodBotolPerDus = getBotolPerDus(p.namaProduk);
           let qty = p.kuantitas || 0;
@@ -1523,199 +1612,202 @@ export default function SuratPengangkutanPage() {
           }
           return sum + qty;
         }, 0);
-          const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : totalOrdered;
-          const kg = piDeductions[nomorPI].kg;
-          if (currentSisa - kg < 0) {
-            throw new Error(`Pengambilan melebihi sisa PI ${nomorPI}`);
-          }
-          const newSisa = currentSisa - kg;
-          transaction.update(ref, {
-            sisaPengambilanKG: newSisa,
-            statusPengangkutan: newSisa <= 0 ? "complete" : "partial",
-            updatedAt: serverTimestamp(),
-          });
-        });
-
-        if (isGI) {
-          const stockDeductions: Record<string, { ref: any; stockId: string; totalUnit: number; totalKG: number }> = {};
-          stockItemRefsForGI.forEach((x) => {
-            if (!stockDeductions[x.stock.id]) {
-              stockDeductions[x.stock.id] = { ref: x.ref, stockId: x.stock.id, totalUnit: 0, totalKG: 0 };
-            }
-            const zak = parseFloat(x.item.pengambilanZAK) || 0;
-            const stockUnit = x.stock.unit || "ZAK";
-            const isStockDus = stockUnit === "DUS";
-            const isStockBotol = stockUnit === "BOTOL";
-            const isDusBotolItem = x.item.bobotPerUnit === 1 && x.item.jenisPupuk && isDusOrBotolProduct(x.item.jenisPupuk);
-            const botolPerDus = x.item.jenisPupuk ? getBotolPerDus(x.item.jenisPupuk) : 20;
-            let unitDeduction = zak;
-            let kgDeduction = 0;
-            if (isStockDus) {
-              unitDeduction = isDusBotolItem ? zak / botolPerDus : zak;
-              kgDeduction = 0;
-            } else if (isStockBotol) {
-              unitDeduction = zak;
-              kgDeduction = 0;
-            } else {
-              kgDeduction = zak * x.item.bobotPerUnit;
-            }
-            stockDeductions[x.stock.id].totalUnit += unitDeduction;
-            stockDeductions[x.stock.id].totalKG += kgDeduction;
-          });
-          Object.entries(stockDeductions).forEach(([stockId, { ref, totalUnit, totalKG }]) => {
-            const snapIdx = stockRefs.findIndex((r) => r.id === stockId);
-            const snap = stockSnaps[snapIdx];
-            if (!snap.exists()) throw new Error(`Stok untuk produk tidak ditemukan`);
-            const currentData = snap.data() as StockDoc;
-            const currentStokUnit = currentData.stokAkhirUnit || 0;
-            const currentStokKG = currentData.stokAkhirKG || 0;
-            const stockUnit = currentData.unit || "ZAK";
-            const isStockDusBotol = stockUnit === "DUS" || stockUnit === "BOTOL";
-            if (isStockDusBotol) {
-              if (currentStokUnit - totalUnit < 0) {
-                throw new Error(`Stok gudang tidak mencukupi untuk total pengambilan`);
-              }
-              transaction.update(ref, {
-                barangKeluarUnit: (currentData.barangKeluarUnit || 0) + totalUnit,
-                barangKeluarKG: 0,
-                stokAkhirUnit: currentStokUnit - totalUnit,
-                stokAkhirKG: 0,
-                updatedAt: serverTimestamp(),
-              });
-            } else {
-              if (currentStokUnit - totalUnit < 0 || currentStokKG - totalKG < 0) {
-                throw new Error(`Stok gudang tidak mencukupi untuk total pengambilan`);
-              }
-              transaction.update(ref, {
-                barangKeluarUnit: (currentData.barangKeluarUnit || 0) + totalUnit,
-                barangKeluarKG: (currentData.barangKeluarKG || 0) + totalKG,
-                stokAkhirUnit: currentStokUnit - totalUnit,
-                stokAkhirKG: currentStokKG - totalKG,
-                updatedAt: serverTimestamp(),
-              });
-            }
-          });
+        const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : totalOrdered;
+        const kg = piDeductions[nomorPI].kg;
+        if (currentSisa - kg < 0) {
+          throw new Error(`Pengambilan melebihi sisa PI ${nomorPI}`);
         }
-
-        const totalPengambilanKG = items.reduce((sum, item) => {
-          const zak = parseFloat(item.pengambilanZAK) || 0;
-          const itemIsDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
-          const botolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
-          if (itemIsDusBotol) {
-            return sum + (zak / botolPerDus) * (item.bobotPerUnit || 50);
-          }
-          return sum + zak * item.bobotPerUnit;
-        }, 0);
-
-        const suratData: any = {
-          jenisSurat,
-          subJenisDO: subJenisDO || null,
-          tanggal: formData.tanggal,
-          namaKabupaten: formData.namaKabupaten,
-          items: items.map((item) => {
-            const itemIsDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
-            const botolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
-            const pengambilan = parseFloat(item.pengambilanZAK) || 0;
-            return {
-              nomorSubDO: item.nomorSubDO,
-              nomorPO: item.nomorPO,
-              jenisPupuk: item.jenisPupuk,
-              party: item.party,
-              pengambilanZAK: pengambilan,
-              bobotPerUnit: item.bobotPerUnit,
-              totalKG: itemIsDusBotol ? (pengambilan / botolPerDus) * (item.bobotPerUnit || 50) : pengambilan * item.bobotPerUnit,
-              sisa: item.sisa,
-              fot: item.fot,
-              nomorPI: item.nomorPI || null,
-              namaCustomer: item.namaCustomer || null,
-            };
-          }),
-          totalPengambilanKG: totalPengambilanKG,
-          nomorSeri: nomorSeri,
-          createdBy: user?.nama || "",
-          createdAt: serverTimestamp(),
+        const newSisa = currentSisa - kg;
+        transaction.update(ref, {
+          sisaPengambilanKG: newSisa,
+          statusPengangkutan: newSisa <= 0 ? "complete" : "partial",
           updatedAt: serverTimestamp(),
-        };
-
-        if (isGI || isMandiri) {
-          suratData.nomorPolisi = formData.nomorPolisi.trim();
-          suratData.driverUnit = formData.driverUnit.trim();
-          suratData.nomorSIM = formData.nomorSIM.trim() || null;
-        }
-
-        if (isMandiri) {
-          suratData.kepadaNama = formData.kepadaNama.trim();
-          suratData.kepadaPerusahaan = formData.kepadaPerusahaan.trim();
-          suratData.kepadaAlamat = formData.kepadaAlamat.trim();
-        }
-
-        const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
-        const allCustomers = items.map((it) => it.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
-        if (allPIs.length > 0) {
-          suratData.nomorPI = allPIs;
-          suratData.namaCustomer = allCustomers;
-        }
-        if (isDikuasakan) {
-          const firstItem = items.find((it) => it.nomorPI.trim() !== "");
-          if (firstItem) {
-            suratData.kepadaNama = firstItem.namaCustomer || "";
-            suratData.kepadaPerusahaan = firstItem.namaCustomer || "";
-          }
-        }
-
-        const suratRef = doc(collection(db, "suratPengangkutan"));
-        transaction.set(suratRef, suratData);
-
-        const transaksiData: any = {
-          tanggal: formData.tanggal,
-          jenis: isGI ? "suratPengangkutanGudangInduk" : "suratPengangkutanDO",
-          nomorSeri: nomorSeri,
-          items: suratData.items,
-          totalPengambilanKG: totalPengambilanKG,
-          createdBy: user?.nama || "",
-          createdAt: serverTimestamp(),
-        };
-
-        if (isGI || isMandiri) {
-          transaksiData.nomorPolisi = formData.nomorPolisi;
-          transaksiData.driverUnit = formData.driverUnit;
-          transaksiData.nomorSIM = formData.nomorSIM || null;
-        }
-
-        if (allPIs.length > 0) {
-          transaksiData.nomorPI = allPIs;
-          transaksiData.namaCustomer = allCustomers;
-        }
-
-        const transaksiRef = doc(collection(db, "transaksiBarangKeluar"));
-        transaction.set(transaksiRef, transaksiData);
+        });
       });
 
-      setPendingNomorSeri("");
-      setSuccessMessage(`Surat pengangkutan berhasil dibuat!`);
-      resetForm();
-      fetchExistingSurat();
-      fetchStockGudang();
-      fetchDO();
-      fetchSuratDO();
-      setTimeout(() => setSuccessMessage(""), 5000);
-    } catch (error: any) {
-      if (nomorSeri) {
-        if (jenisSurat === "gudangInduk") {
-          await releaseSeriSP(nomorSeri);
-        } else if (jenisSurat === "do") {
-          await releaseSeriDO(nomorSeri);
+      if (isGI) {
+        const stockDeductions: Record<string, { ref: any; stockId: string; totalUnit: number; totalKG: number }> = {};
+        stockItemRefsForGI.forEach((x) => {
+          if (!stockDeductions[x.stock.id]) {
+            stockDeductions[x.stock.id] = { ref: x.ref, stockId: x.stock.id, totalUnit: 0, totalKG: 0 };
+          }
+          const zak = parseFloat(x.item.pengambilanZAK) || 0;
+          const stockUnit = x.stock.unit || "ZAK";
+          const isStockDus = stockUnit === "DUS";
+          const isStockBotol = stockUnit === "BOTOL";
+          const isDusBotolItem = x.item.bobotPerUnit === 1 && x.item.jenisPupuk && isDusOrBotolProduct(x.item.jenisPupuk);
+          const botolPerDus = x.item.jenisPupuk ? getBotolPerDus(x.item.jenisPupuk) : 20;
+          let unitDeduction = zak;
+          let kgDeduction = 0;
+          if (isStockDus) {
+            unitDeduction = isDusBotolItem ? zak / botolPerDus : zak;
+            kgDeduction = 0;
+          } else if (isStockBotol) {
+            unitDeduction = zak;
+            kgDeduction = 0;
+          } else {
+            kgDeduction = zak * x.item.bobotPerUnit;
+          }
+          stockDeductions[x.stock.id].totalUnit += unitDeduction;
+          stockDeductions[x.stock.id].totalKG += kgDeduction;
+        });
+        Object.entries(stockDeductions).forEach(([stockId, { ref, totalUnit, totalKG }]) => {
+          const snapIdx = stockRefs.findIndex((r) => r.id === stockId);
+          const snap = stockSnaps[snapIdx];
+          if (!snap.exists()) throw new Error(`Stok untuk produk tidak ditemukan`);
+          const currentData = snap.data() as StockDoc;
+          const currentStokUnit = currentData.stokAkhirUnit || 0;
+          const currentStokKG = currentData.stokAkhirKG || 0;
+          const stockUnit = currentData.unit || "ZAK";
+          const isStockDusBotol = stockUnit === "DUS" || stockUnit === "BOTOL";
+          if (isStockDusBotol) {
+            if (currentStokUnit - totalUnit < 0) {
+              throw new Error(`Stok gudang tidak mencukupi untuk total pengambilan`);
+            }
+            transaction.update(ref, {
+              barangKeluarUnit: (currentData.barangKeluarUnit || 0) + totalUnit,
+              barangKeluarKG: 0,
+              stokAkhirUnit: currentStokUnit - totalUnit,
+              stokAkhirKG: 0,
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            if (currentStokUnit - totalUnit < 0 || currentStokKG - totalKG < 0) {
+              throw new Error(`Stok gudang tidak mencukupi untuk total pengambilan`);
+            }
+            transaction.update(ref, {
+              barangKeluarUnit: (currentData.barangKeluarUnit || 0) + totalUnit,
+              barangKeluarKG: (currentData.barangKeluarKG || 0) + totalKG,
+              stokAkhirUnit: currentStokUnit - totalUnit,
+              stokAkhirKG: currentStokKG - totalKG,
+              updatedAt: serverTimestamp(),
+            });
+          }
+        });
+      }
+
+      const totalPengambilanKG = items.reduce((sum, item) => {
+        const zak = parseFloat(item.pengambilanZAK) || 0;
+        const itemIsDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
+        const botolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
+        if (itemIsDusBotol) {
+          return sum + (zak / botolPerDus) * (item.bobotPerUnit || 50);
+        }
+        return sum + zak * item.bobotPerUnit;
+      }, 0);
+
+      const suratData: any = {
+        jenisSurat,
+        subJenisDO: subJenisDO || null,
+        tanggal: formData.tanggal,
+        namaKabupaten: formData.namaKabupaten,
+        items: items.map((item) => {
+          const itemIsDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
+          const botolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
+          const pengambilan = parseFloat(item.pengambilanZAK) || 0;
+          return {
+            nomorSubDO: item.nomorSubDO,
+            nomorPO: item.nomorPO,
+            jenisPupuk: item.jenisPupuk,
+            party: item.party,
+            pengambilanZAK: pengambilan,
+            bobotPerUnit: item.bobotPerUnit,
+            totalKG: itemIsDusBotol ? (pengambilan / botolPerDus) * (item.bobotPerUnit || 50) : pengambilan * item.bobotPerUnit,
+            sisa: item.sisa,
+            fot: item.fot,
+            nomorPI: item.nomorPI || null,
+            namaCustomer: item.namaCustomer || null,
+          };
+        }),
+        totalPengambilanKG: totalPengambilanKG,
+        nomorSeri: nomorSeri,
+        createdBy: user?.nama || "",
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      if (isGI || isMandiri) {
+        suratData.nomorPolisi = formData.nomorPolisi.trim();
+        suratData.driverUnit = formData.driverUnit.trim();
+        suratData.nomorSIM = formData.nomorSIM.trim() || null;
+      }
+
+      if (isMandiri) {
+        suratData.kepadaNama = formData.kepadaNama.trim();
+        suratData.kepadaPerusahaan = formData.kepadaPerusahaan.trim();
+        suratData.kepadaAlamat = formData.kepadaAlamat.trim();
+      }
+
+      const allPIsUnique = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+      const allCustomers = items.map((it) => it.namaCustomer).filter((v, i, a) => a.indexOf(v) === i);
+      if (allPIsUnique.length > 0) {
+        suratData.nomorPI = allPIsUnique;
+        suratData.namaCustomer = allCustomers;
+      }
+      if (isDikuasakan) {
+        const firstItem = items.find((it) => it.nomorPI.trim() !== "");
+        if (firstItem) {
+          suratData.kepadaNama = firstItem.namaCustomer || "";
+          suratData.kepadaPerusahaan = firstItem.namaCustomer || "";
         }
       }
-      setPendingNomorSeri("");
-      console.error(error);
-      setFieldError("submit", error.message || "Gagal menyimpan surat pengangkutan. Silakan coba lagi.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
-  const resetForm = () => {
+      const suratRef = doc(collection(db, "suratPengangkutan"));
+      transaction.set(suratRef, suratData);
+
+      const transaksiData: any = {
+        tanggal: formData.tanggal,
+        jenist: isGI ? "suratPengangkutanGudangInduk" : "suratPengangkutanDO",
+        nomorSeri: nomorSeri,
+        items: suratData.items,
+        totalPengambilanKG: totalPengambilanKG,
+        createdBy: user?.nama || "",
+        createdAt: serverTimestamp(),
+      };
+
+      if (isGI || isMandiri) {
+        transaksiData.nomorPolisi = formData.nomorPolisi;
+        transaksiData.driverUnit = formData.driverUnit;
+        transaksiData.nomorSIM = formData.nomorSIM || null;
+      }
+
+      if (allPIsUnique.length > 0) {
+        transaksiData.nomorPI = allPIsUnique;
+        transaksiData.namaCustomer = allCustomers;
+      }
+
+      const transaksiRef = doc(collection(db, "transaksiBarangKeluar"));
+      transaction.set(transaksiRef, transaksiData);
+    });
+
+    setPendingNomorSeri("");
+    setSuccessMessage(`Surat pengangkutan berhasil dibuat!`);
+    resetForm();
+    fetchExistingSurat();
+    fetchStockGudang();
+    fetchDO();
+    fetchSuratDO();
+    setTimeout(() => setSuccessMessage(""), 5000);
+  } catch (error: any) {
+    if (nomorSeri) {
+      if (jenisSurat === "gudangInduk") {
+        await releaseSeriSP(nomorSeri);
+      } else if (jenisSurat === "do") {
+        await releaseSeriDO(nomorSeri);
+      }
+    }
+    setPendingNomorSeri("");
+    console.error(error);
+    setFieldError("submit", error.message || "Gagal menyimpan surat pengangkutan. Silakan coba lagi.");
+  } finally {
+    for (const pl of piLocks) {
+      await releasePILock(pl.nomorPI, pl.lockId);
+    }
+    setIsSubmitting(false);
+  }
+};
+
+const resetForm = () => {
     if (pendingNomorSeri) {
       if (jenisSurat === "gudangInduk") {
         releaseSeriSP(pendingNomorSeri);

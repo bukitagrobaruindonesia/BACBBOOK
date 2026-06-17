@@ -367,6 +367,120 @@ const releaseSeriDO = async (nomorSeri: string) => {
   }
 };
 
+const getEditLock = async (collectionName: string, docId: string, userEmail?: string): Promise<string> => {
+  const lockRef = doc(db, "editLocks", `${collectionName}_${docId}`);
+  const maxRetries = 15;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const lockSnap = await transaction.get(lockRef);
+        if (lockSnap.exists()) {
+          const data = lockSnap.data();
+          const createdAt = data.createdAt?.toMillis?.() || data.createdAt || 0;
+          const staleThreshold = Date.now() - 5 * 60 * 1000;
+          if (createdAt > staleThreshold) {
+            throw new Error("Edit lock exists");
+          }
+        }
+        const lockId = `${docId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        transaction.set(lockRef, { lockId, createdAt: serverTimestamp(), collectionName, docId, userEmail: userEmail || "" });
+        return lockId;
+      });
+      return result;
+    } catch (error: any) {
+      if (error.message === "Edit lock exists") {
+        if (attempt === maxRetries - 1) throw new Error("Sedang ada proses edit untuk data ini. Silakan coba lagi dalam beberapa detik.");
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Failed to acquire edit lock");
+};
+
+const releaseEditLock = async (collectionName: string, docId: string, lockId: string) => {
+  try {
+    const lockRef = doc(db, "editLocks", `${collectionName}_${docId}`);
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists() && lockSnap.data().lockId === lockId) {
+      await deleteDoc(lockRef);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const getPaymentLock = async (nomorPI: string, userEmail?: string): Promise<string> => {
+  const lockRef = doc(db, "paymentLocks", nomorPI.replace(/\//g, "-"));
+  const maxRetries = 15;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const lockSnap = await transaction.get(lockRef);
+        if (lockSnap.exists()) {
+          const data = lockSnap.data();
+          const createdAt = data.createdAt?.toMillis?.() || data.createdAt || 0;
+          const staleThreshold = Date.now() - 5 * 60 * 1000;
+          if (createdAt > staleThreshold) {
+            throw new Error("Payment lock exists");
+          }
+        }
+        const lockId = `${nomorPI}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        transaction.set(lockRef, { lockId, createdAt: serverTimestamp(), nomorPI, userEmail: userEmail || "" });
+        return lockId;
+      });
+      return result;
+    } catch (error: any) {
+      if (error.message === "Payment lock exists") {
+        if (attempt === maxRetries - 1) throw new Error("Sedang ada proses pembayaran untuk PI ini. Silakan coba lagi dalam beberapa detik.");
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Failed to acquire payment lock");
+};
+
+const releasePaymentLock = async (nomorPI: string, lockId: string) => {
+  try {
+    const lockRef = doc(db, "paymentLocks", nomorPI.replace(/\//g, "-"));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists() && lockSnap.data().lockId === lockId) {
+      await deleteDoc(lockRef);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const cleanupStaleLocks = async () => {
+  try {
+    const editQuery = query(collection(db, "editLocks"));
+    const editSnap = await getDocs(editQuery);
+    const staleThreshold = Date.now() - 5 * 60 * 1000;
+    for (const lockDoc of editSnap.docs) {
+      const lockData = lockDoc.data();
+      const createdAt = lockData.createdAt?.toMillis?.() || lockData.createdAt || 0;
+      if (createdAt < staleThreshold) {
+        await deleteDoc(doc(db, "editLocks", lockDoc.id));
+      }
+    }
+    const paymentQuery = query(collection(db, "paymentLocks"));
+    const paymentSnap = await getDocs(paymentQuery);
+    for (const lockDoc of paymentSnap.docs) {
+      const lockData = lockDoc.data();
+      const createdAt = lockData.createdAt?.toMillis?.() || lockData.createdAt || 0;
+      if (createdAt < staleThreshold) {
+        await deleteDoc(doc(db, "paymentLocks", lockDoc.id));
+      }
+    }
+  } catch (error) {
+    console.error("Cleanup locks failed:", error);
+  }
+};
+
 export default function RekapProformaInvoicePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -455,7 +569,11 @@ export default function RekapProformaInvoicePage() {
 
   useEffect(() => {
     cleanupStalePendingLocks();
-    const interval = setInterval(cleanupStalePendingLocks, 10 * 60 * 1000);
+    cleanupStaleLocks();
+    const interval = setInterval(() => {
+      cleanupStalePendingLocks();
+      cleanupStaleLocks();
+    }, 10 * 60 * 1000);
     const handleBeforeUnload = () => {
       if (pendingInvoiceBase) {
         releaseInvoiceBase(pendingInvoiceBase);
@@ -1576,179 +1694,213 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
   };
 
   const handleUpdateFull = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedItem) return;
-    setIsSubmitting(true);
-    try {
-      let subtotal = 0;
-      const updatedProdukItems = editForm.produkItems.map((p) => {
-        const qty = parseFloat(String(p.kuantitas)) || 0;
-        const price = parseFloat(String(p.hargaSatuan)) || 0;
-        const total = qty * price;
-        subtotal += total;
-        return { ...p, totalHarga: total, hargaPerZakDus: price * (p.bobotPerUnit || 50) };
-      });
-      const uangMuka = parseFloat(editForm.uangMuka) || 0;
-      const ongkosKirim = parseFloat(editForm.ongkosKirim) || 0;
-      let ppn = 0;
-      if (editForm.produkItems.some((p) => p.includePPN)) {
-        ppn = editForm.produkItems.reduce((sum, p) => {
-          if (p.includePPN) return sum + ((parseFloat(String(p.kuantitas)) || 0) * (parseFloat(String(p.hargaSatuan)) || 0) * 0.11);
-          return sum;
-        }, 0);
-      }
-      const jumlahTertagih = subtotal - uangMuka + ppn + ongkosKirim;
-      const totalPaid = (selectedItem.riwayatPembayaran || []).reduce((sum, r) => sum + (r.jumlah || 0), 0) || selectedItem.jumlahUangDibayar || 0;
-      let statusPelunasan = "Belum Lunas";
-      if (totalPaid >= jumlahTertagih && jumlahTertagih > 0) statusPelunasan = "Lunas";
-      else if (totalPaid > 0) statusPelunasan = "Cicilan";
-      await updateDoc(doc(db, "proformaInvoice", selectedItem.id), {
-        tanggal: editForm.tanggal,
-        nomorPI: editForm.nomorPI.trim(),
-        namaCustomer: editForm.namaCustomer.trim(),
-        alamatCustomer: editForm.alamatCustomer.trim(),
-        npwp: editForm.npwp.trim(),
-        metodePembayaran: editForm.metodePembayaran,
-        produkItems: updatedProdukItems,
-        uangMuka: uangMuka,
-        includePPN: editForm.produkItems.some((p) => p.includePPN),
-        ppnNominal: ppn,
-        ongkosKirim: ongkosKirim,
-        subtotal: subtotal,
-        jumlahTertagih: jumlahTertagih,
-        statusPelunasan: statusPelunasan,
-        keterangan: editForm.keterangan.trim(),
-        updatedAt: serverTimestamp(),
-      });
-      setIsEditModalOpen(false);
-      fetchData();
-    } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
-  };
+  e.preventDefault();
+  if (!selectedItem) return;
+  const docId = selectedItem.id;
+  let lockId = "";
+  try {
+    lockId = await getEditLock("proformaInvoice", docId);
+  } catch (error: any) {
+    alert(error.message);
+    return;
+  }
+  setIsSubmitting(true);
+  try {
+    const piRef = doc(db, "proformaInvoice", docId);
+    const piSnap = await getDoc(piRef);
+    if (!piSnap.exists()) {
+      alert("Data PI tidak ditemukan.");
+      return;
+    }
+    const piData = piSnap.data() as ProformaInvoice;
+    let subtotal = 0;
+    const updatedProdukItems = editForm.produkItems.map((p) => {
+      const qty = parseFloat(String(p.kuantitas)) || 0;
+      const price = parseFloat(String(p.hargaSatuan)) || 0;
+      const total = qty * price;
+      subtotal += total;
+      return { ...p, totalHarga: total, hargaPerZakDus: price * (p.bobotPerUnit || 50) };
+    });
+    const uangMuka = parseFloat(editForm.uangMuka) || 0;
+    const ongkosKirim = parseFloat(editForm.ongkosKirim) || 0;
+    let ppn = 0;
+    if (editForm.produkItems.some((p) => p.includePPN)) {
+      ppn = editForm.produkItems.reduce((sum, p) => {
+        if (p.includePPN) return sum + ((parseFloat(String(p.kuantitas)) || 0) * (parseFloat(String(p.hargaSatuan)) || 0) * 0.11);
+        return sum;
+      }, 0);
+    }
+    const jumlahTertagih = subtotal - uangMuka + ppn + ongkosKirim;
+    const totalPaid = (piData.riwayatPembayaran || []).reduce((sum, r) => sum + (r.jumlah || 0), 0) || piData.jumlahUangDibayar || 0;
+    let statusPelunasan = "Belum Lunas";
+    if (totalPaid >= jumlahTertagih && jumlahTertagih > 0) statusPelunasan = "Lunas";
+    else if (totalPaid > 0) statusPelunasan = "Cicilan";
+    const now = new Date();
+    const waktuPerbarui = now.toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    await updateDoc(piRef, {
+      tanggal: editForm.tanggal,
+      nomorPI: editForm.nomorPI.trim(),
+      namaCustomer: editForm.namaCustomer.trim(),
+      alamatCustomer: editForm.alamatCustomer.trim(),
+      npwp: editForm.npwp.trim(),
+      metodePembayaran: editForm.metodePembayaran,
+      produkItems: updatedProdukItems,
+      uangMuka: uangMuka,
+      includePPN: editForm.produkItems.some((p) => p.includePPN),
+      ppnNominal: ppn,
+      ongkosKirim: ongkosKirim,
+      subtotal: subtotal,
+      jumlahTertagih: jumlahTertagih,
+      statusPelunasan: statusPelunasan,
+      keterangan: editForm.keterangan.trim(),
+      lastEditedBy: user?.nama || user?.email || "",
+      lastEditedAt: waktuPerbarui,
+      updatedAt: serverTimestamp(),
+    });
+    setIsEditModalOpen(false);
+    fetchData();
+  } catch (error) { console.error(error); } finally {
+    await releaseEditLock("proformaInvoice", docId, lockId);
+    setIsSubmitting(false);
+  }
+};
 
-  const handleUpdateSurat = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedSurat || !selectedItem) return;
-    setIsSubmitting(true);
-    try {
-      const oldItems = selectedSurat.items || [];
-      const newItems = editSuratForm.items.map((it) => ({
-        nomorSubDO: it.nomorSubDO,
-        nomorPO: it.nomorPO,
-        jenisPupuk: it.jenisPupuk,
-        party: it.party,
-        pengambilanZAK: parseFloat(it.pengambilanZAK) || 0,
-        bobotPerUnit: it.bobotPerUnit,
-        totalKG: (parseFloat(it.pengambilanZAK) || 0) * it.bobotPerUnit,
-        sisa: it.sisa,
-        fot: it.fot || "",
-        nomorPI: it.nomorPI || "",
-      }));
-      const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
-      const updateData: any = {
-        tanggal: editSuratForm.tanggal,
-        nomorPolisi: editSuratForm.nomorPolisi.trim(),
-        driverUnit: editSuratForm.driverUnit.trim(),
-        nomorSIM: editSuratForm.nomorSIM.trim() || null,
-        items: newItems,
-        totalPengambilanKG: totalPengambilanKG,
-        updatedAt: serverTimestamp(),
-      };
-      if (editSuratForm.jenisSurat !== "gudangInduk") {
-        updateData.jenisSurat = editSuratForm.jenisSurat;
-        updateData.subJenisDO = editSuratForm.subJenisDO || null;
-        updateData.kepadaNama = editSuratForm.kepadaNama.trim();
-        updateData.kepadaPerusahaan = editSuratForm.kepadaPerusahaan.trim();
-        updateData.kepadaAlamat = editSuratForm.kepadaAlamat.trim();
-      }
-      await updateDoc(doc(db, "suratPengangkutan", selectedSurat.id), updateData);
-      const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", selectedSurat.nomorSeri));
-      const transaksiSnapshot = await getDocs(transaksiQuery);
-      if (!transaksiSnapshot.empty) {
-        await updateDoc(doc(db, "transaksiBarangKeluar", transaksiSnapshot.docs[0].id), { ...updateData });
-      }
-      const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
-      const delta = oldTotalKG - totalPengambilanKG;
-      const piNomors = Array.isArray(selectedSurat.nomorPI) ? selectedSurat.nomorPI : [selectedSurat.nomorPI].filter(Boolean);
-      for (const piNomor of piNomors) {
-        const piRow = data.find((d) => d.nomorPI === piNomor);
-        if (!piRow) continue;
-        const piRef = doc(db, "proformaInvoice", piRow.id);
-        const piSnap = await getDoc(piRef);
-        if (piSnap.exists()) {
-          const piData = piSnap.data();
-          const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
-          const itemsForThisPI = newItems.filter((it) => {
-            const itemPI = it.nomorPI || "";
-            return !itemPI || itemPI === piNomor;
-          });
-          const oldItemsForThisPI = oldItems.filter((it) => {
-            const itemPI = it.nomorPI || "";
-            return !itemPI || itemPI === piNomor;
-          });
-          const newTotalKG = itemsForThisPI.reduce((sum, it) => sum + (it.totalKG || 0), 0);
-          const oldTotalKG = oldItemsForThisPI.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
-          const piDelta = oldTotalKG - newTotalKG;
-          const newSisa = Math.max(0, currentSisa + piDelta);
-          const totalOrdered = piRow.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
-          let newStatus = "pending";
-          if (newSisa <= 0) newStatus = "complete";
-          else if (newSisa < totalOrdered) newStatus = "partial";
-          await updateDoc(piRef, {
-            sisaPengambilanKG: newSisa,
-            statusPengangkutan: newStatus,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
-      const isGI = !selectedSurat.jenisSurat || selectedSurat.jenisSurat === "gudangInduk";
-      if (isGI) {
-        const productMapOld: Record<string, number> = {};
-        const productMapNew: Record<string, number> = {};
-        oldItems.forEach((it) => {
-          const key = it.jenisPupuk;
-          productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+const handleUpdateSurat = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!selectedSurat || !selectedItem) return;
+  const docId = selectedSurat.id;
+  let lockId = "";
+  try {
+    lockId = await getEditLock("suratPengangkutan", docId);
+  } catch (error: any) {
+    alert(error.message);
+    return;
+  }
+  setIsSubmitting(true);
+  try {
+    const oldItems = selectedSurat.items || [];
+    const newItems = editSuratForm.items.map((it) => ({
+      nomorSubDO: it.nomorSubDO,
+      nomorPO: it.nomorPO,
+      jenisPupuk: it.jenisPupuk,
+      party: it.party,
+      pengambilanZAK: parseFloat(it.pengambilanZAK) || 0,
+      bobotPerUnit: it.bobotPerUnit,
+      totalKG: (parseFloat(it.pengambilanZAK) || 0) * it.bobotPerUnit,
+      sisa: it.sisa,
+      fot: it.fot || "",
+      nomorPI: it.nomorPI || "",
+    }));
+    const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
+    const updateData: any = {
+      tanggal: editSuratForm.tanggal,
+      nomorPolisi: editSuratForm.nomorPolisi.trim(),
+      driverUnit: editSuratForm.driverUnit.trim(),
+      nomorSIM: editSuratForm.nomorSIM.trim() || null,
+      items: newItems,
+      totalPengambilanKG: totalPengambilanKG,
+      lastEditedBy: user?.nama || user?.email || "",
+      lastEditedAt: new Date().toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      updatedAt: serverTimestamp(),
+    };
+    if (editSuratForm.jenisSurat !== "gudangInduk") {
+      updateData.jenisSurat = editSuratForm.jenisSurat;
+      updateData.subJenisDO = editSuratForm.subJenisDO || null;
+      updateData.kepadaNama = editSuratForm.kepadaNama.trim();
+      updateData.kepadaPerusahaan = editSuratForm.kepadaPerusahaan.trim();
+      updateData.kepadaAlamat = editSuratForm.kepadaAlamat.trim();
+    }
+    await updateDoc(doc(db, "suratPengangkutan", selectedSurat.id), updateData);
+    const transaksiQuery = query(collection(db, "transaksiBarangKeluar"), where("nomorSeri", "==", selectedSurat.nomorSeri));
+    const transaksiSnapshot = await getDocs(transaksiQuery);
+    if (!transaksiSnapshot.empty) {
+      await updateDoc(doc(db, "transaksiBarangKeluar", transaksiSnapshot.docs[0].id), { ...updateData });
+    }
+    const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+    const piNomors = Array.isArray(selectedSurat.nomorPI) ? selectedSurat.nomorPI : [selectedSurat.nomorPI].filter(Boolean);
+    for (const piNomor of piNomors) {
+      const piRow = data.find((d) => d.nomorPI === piNomor);
+      if (!piRow) continue;
+      const piRef = doc(db, "proformaInvoice", piRow.id);
+      const piSnap = await getDoc(piRef);
+      if (piSnap.exists()) {
+        const piData = piSnap.data();
+        const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
+        const itemsForThisPI = newItems.filter((it) => {
+          const itemPI = it.nomorPI || "";
+          return !itemPI || itemPI === piNomor;
         });
-        newItems.forEach((it) => {
-          const key = it.jenisPupuk;
-          productMapNew[key] = (productMapNew[key] || 0) + (it.totalKG || 0);
+        const oldItemsForThisPI = oldItems.filter((it) => {
+          const itemPI = it.nomorPI || "";
+          return !itemPI || itemPI === piNomor;
         });
-        const allProducts = new Set([...Object.keys(productMapOld), ...Object.keys(productMapNew)]);
-        for (const prod of allProducts) {
-          const oldKG = productMapOld[prod] || 0;
-          const newKG = productMapNew[prod] || 0;
-          const deltaKG = oldKG - newKG;
-          const stock = getStockForProduct(prod);
-          if (stock && deltaKG !== 0) {
-            const stockRef = doc(db, "stockGudang", stock.id);
-            const stockSnap = await getDoc(stockRef);
-            if (stockSnap.exists()) {
-              const sData = stockSnap.data();
-              const currentUnit = sData.stokAkhirUnit || 0;
-              const currentKG = sData.stokAkhirKG || 0;
-              const currentKeluarUnit = sData.barangKeluarUnit || 0;
-              const currentKeluarKG = sData.barangKeluarKG || 0;
-              const bobot = stock.bobotPerUnit || 50;
-              const deltaUnit = deltaKG / bobot;
-              await updateDoc(stockRef, {
-                stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
-                stokAkhirKG: Math.max(0, currentKG + deltaKG),
-                barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
-                barangKeluarKG: Math.max(0, currentKeluarKG - deltaKG),
-                updatedAt: serverTimestamp(),
-              });
-            }
+        const newTotalKG = itemsForThisPI.reduce((sum, it) => sum + (it.totalKG || 0), 0);
+        const oldTotalKG = oldItemsForThisPI.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+        const piDelta = oldTotalKG - newTotalKG;
+        const newSisa = Math.max(0, currentSisa + piDelta);
+        const totalOrdered = piRow.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+        let newStatus = "pending";
+        if (newSisa <= 0) newStatus = "complete";
+        else if (newSisa < totalOrdered) newStatus = "partial";
+        await updateDoc(piRef, {
+          sisaPengambilanKG: newSisa,
+          statusPengangkutan: newStatus,
+          updatedAt: serverTimestamp(),
+        });
+      }
+    }
+    const isGI = !selectedSurat.jenisSurat || selectedSurat.jenisSurat === "gudangInduk";
+    if (isGI) {
+      const productMapOld: Record<string, number> = {};
+      const productMapNew: Record<string, number> = {};
+      oldItems.forEach((it) => {
+        const key = it.jenisPupuk;
+        productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+      });
+      newItems.forEach((it) => {
+        const key = it.jenisPupuk;
+        productMapNew[key] = (productMapNew[key] || 0) + (it.totalKG || 0);
+      });
+      const allProducts = new Set([...Object.keys(productMapOld), ...Object.keys(productMapNew)]);
+      for (const prod of allProducts) {
+        const oldKG = productMapOld[prod] || 0;
+        const newKG = productMapNew[prod] || 0;
+        const deltaKG = oldKG - newKG;
+        const stock = getStockForProduct(prod);
+        if (stock && deltaKG !== 0) {
+          const stockRef = doc(db, "stockGudang", stock.id);
+          const stockSnap = await getDoc(stockRef);
+          if (stockSnap.exists()) {
+            const sData = stockSnap.data();
+            const currentUnit = sData.stokAkhirUnit || 0;
+            const currentKG = sData.stokAkhirKG || 0;
+            const currentKeluarUnit = sData.barangKeluarUnit || 0;
+            const currentKeluarKG = sData.barangKeluarKG || 0;
+            const bobot = stock.bobotPerUnit || 50;
+            const deltaUnit = deltaKG / bobot;
+            await updateDoc(stockRef, {
+              stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
+              stokAkhirKG: Math.max(0, currentKG + deltaKG),
+              barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
+              barangKeluarKG: Math.max(0, currentKeluarKG - deltaKG),
+              updatedAt: serverTimestamp(),
+            });
           }
         }
       }
-      setIsEditSuratModalOpen(false);
-      fetchData();
-      fetchSuratMuat();
-      fetchStockGudang();
-      fetchExistingSurat();
-    } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
-  };
+    }
+    setIsEditSuratModalOpen(false);
+    fetchData();
+    fetchSuratMuat();
+    fetchStockGudang();
+    fetchExistingSurat();
+  } catch (error) { console.error(error); } finally {
+    await releaseEditLock("suratPengangkutan", docId, lockId);
+    setIsSubmitting(false);
+  }
+};
 
-  const handleDeleteSurat = async (surat: SuratMuatInfo) => {
+const handleDeleteSurat = async (surat: SuratMuatInfo) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus surat pengangkutan ${surat.nomorSeri}?`)) return;
     try {
       if (surat.nomorSeri) {
@@ -2047,41 +2199,64 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
   };
 
   const handleUpdatePayment = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedItem) return;
-    setIsSubmitting(true);
-    try {
-      const newJumlah = parseFloat(paymentForm.jumlahUangDibayar) || 0;
-      const newTanggal = paymentForm.tanggalPembayaran.trim();
-      let updatedRiwayat: RiwayatPembayaran[];
-      if (editingPaymentIndex !== null) {
-        updatedRiwayat = (selectedItem.riwayatPembayaran || []).map((r, i) =>
-          i === editingPaymentIndex ? { tanggal: newTanggal, jumlah: newJumlah, fotoBukti: paymentForm.fotoBukti || [] } : r
-        );
-      } else {
-        updatedRiwayat = [...(selectedItem.riwayatPembayaran || []), { tanggal: newTanggal, jumlah: newJumlah, fotoBukti: paymentForm.fotoBukti || [] }];
-      }
-      const totalPaid = updatedRiwayat.reduce((sum, r) => sum + r.jumlah, 0);
-      const total = selectedItem.jumlahTertagih || 0;
-      let status = "Belum Lunas";
-      if (totalPaid >= total && total > 0) status = "Lunas";
-      else if (totalPaid > 0) status = "Cicilan";
-      const lastTanggal = updatedRiwayat.length > 0 ? updatedRiwayat[updatedRiwayat.length - 1].tanggal : "";
-      await updateDoc(doc(db, "proformaInvoice", selectedItem.id), {
-        riwayatPembayaran: updatedRiwayat,
-        jumlahUangDibayar: totalPaid,
-        tanggalPembayaran: lastTanggal,
-        statusPelunasan: status,
-        updatedAt: serverTimestamp(),
-      });
-      setIsPaymentModalOpen(false);
-      setEditingPaymentIndex(null);
-      setPaymentForm({ jumlahUangDibayar: "", tanggalPembayaran: "", statusPelunasan: "", fotoBukti: [] });
-      fetchData();
-    } catch (error) { console.error(error); } finally { setIsSubmitting(false); }
-  };
+  e.preventDefault();
+  if (!selectedItem) return;
+  const nomorPI = selectedItem.nomorPI;
+  let lockId = "";
+  try {
+    lockId = await getPaymentLock(nomorPI);
+  } catch (error: any) {
+    alert(error.message);
+    return;
+  }
+  setIsSubmitting(true);
+  try {
+    const piRef = doc(db, "proformaInvoice", selectedItem.id);
+    const piSnap = await getDoc(piRef);
+    if (!piSnap.exists()) {
+      alert("Data PI tidak ditemukan.");
+      return;
+    }
+    const piData = piSnap.data() as ProformaInvoice;
+    const newJumlah = parseFloat(paymentForm.jumlahUangDibayar) || 0;
+    const newTanggal = paymentForm.tanggalPembayaran.trim();
+    let updatedRiwayat: RiwayatPembayaran[];
+    if (editingPaymentIndex !== null) {
+      updatedRiwayat = (piData.riwayatPembayaran || []).map((r, i) =>
+        i === editingPaymentIndex ? { tanggal: newTanggal, jumlah: newJumlah, fotoBukti: paymentForm.fotoBukti || [] } : r
+      );
+    } else {
+      updatedRiwayat = [...(piData.riwayatPembayaran || []), { tanggal: newTanggal, jumlah: newJumlah, fotoBukti: paymentForm.fotoBukti || [] }];
+    }
+    const totalPaid = updatedRiwayat.reduce((sum, r) => sum + r.jumlah, 0);
+    const total = piData.jumlahTertagih || 0;
+    let status = "Belum Lunas";
+    if (totalPaid >= total && total > 0) status = "Lunas";
+    else if (totalPaid > 0) status = "Cicilan";
+    const lastTanggal = updatedRiwayat.length > 0 ? updatedRiwayat[updatedRiwayat.length - 1].tanggal : "";
+    await updateDoc(piRef, {
+      riwayatPembayaran: updatedRiwayat,
+      jumlahUangDibayar: totalPaid,
+      tanggalPembayaran: lastTanggal,
+      statusPelunasan: status,
+      lastPaymentBy: user?.nama || user?.email || "",
+      lastPaymentAt: new Date().toLocaleString("id-ID", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+      updatedAt: serverTimestamp(),
+    });
+    setIsPaymentModalOpen(false);
+    setEditingPaymentIndex(null);
+    setPaymentForm({ jumlahUangDibayar: "", tanggalPembayaran: "", statusPelunasan: "", fotoBukti: [] });
+    fetchData();
+  } catch (error) {
+    console.error(error);
+    alert("Gagal menyimpan pembayaran. Silakan coba lagi.");
+  } finally {
+    await releasePaymentLock(nomorPI, lockId);
+    setIsSubmitting(false);
+  }
+};
 
-  const handleExportExcel = () => {
+const handleExportExcel = () => {
     const exportData: any[] = [];
     filteredData.forEach((item) => {
       const produkRows = item.produkItems.map((p, idx) => ({
