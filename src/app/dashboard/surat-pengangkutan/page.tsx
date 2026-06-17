@@ -188,7 +188,7 @@ const getUniqueSeriSP = async (year: number, roman: string): Promise<string> => 
         const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(candidateSeri));
         const lockDoc = await transaction.get(lockRef);
         if (lockDoc.exists()) {
-          let searchNum = 1;
+          let searchNum = candidateNum + 1;
           let found = false;
           while (searchNum <= lastNumber + 1000 && !found) {
             const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
@@ -247,7 +247,7 @@ const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<s
         const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(candidateSeri));
         const lockDoc = await transaction.get(lockRef);
         if (lockDoc.exists()) {
-          let searchNum = 1;
+          let searchNum = candidateNum + 1;
           let found = false;
           while (searchNum <= lastNumber + 1000 && !found) {
             const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
@@ -306,7 +306,7 @@ const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): P
         const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(candidateSeri));
         const lockDoc = await transaction.get(lockRef);
         if (lockDoc.exists()) {
-          let searchNum = 1;
+          let searchNum = candidateNum + 1;
           let found = false;
           while (searchNum <= lastNumber + 1000 && !found) {
             const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
