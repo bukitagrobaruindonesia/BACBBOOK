@@ -164,7 +164,7 @@ const sanitizeLockDocId = (nomorSeri: string) => {
 const getUniqueSeriSP = async (year: number, roman: string): Promise<string> => {
   const prefix = `BAGB-SP/${year}/${roman}`;
   const poolRef = doc(db, "counters", `suratPengangkutanSP_${year}_${roman}`);
-  const maxRetries = 10;
+  const maxRetries = 15;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const result = await runTransaction(db, async (transaction) => {
@@ -213,6 +213,11 @@ const getUniqueSeriSP = async (year: number, roman: string): Promise<string> => 
       });
       return result;
     } catch (error: any) {
+      if (error.message === "No available SP number found" || error.code === "aborted") {
+        const jitter = Math.random() * 200;
+        await new Promise((resolve) => setTimeout(resolve, 150 * Math.pow(2, attempt) + jitter));
+        continue;
+      }
       if (attempt === maxRetries - 1) throw error;
       await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
     }
@@ -223,7 +228,7 @@ const getUniqueSeriSP = async (year: number, roman: string): Promise<string> => 
 const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<string> => {
   const prefix = `BAGB-SP-DO/${year}/${roman}`;
   const poolRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
-  const maxRetries = 10;
+  const maxRetries = 15;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const result = await runTransaction(db, async (transaction) => {
@@ -272,6 +277,11 @@ const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<s
       });
       return result;
     } catch (error: any) {
+      if (error.message === "No available DO Dikuasakan number found" || error.code === "aborted") {
+        const jitter = Math.random() * 200;
+        await new Promise((resolve) => setTimeout(resolve, 150 * Math.pow(2, attempt) + jitter));
+        continue;
+      }
       if (attempt === maxRetries - 1) throw error;
       await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
     }
@@ -282,7 +292,7 @@ const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<s
 const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): Promise<string> => {
   const prefix = `BAGB-DO-${nomorSubDO}-${perusahaan}-SP`;
   const poolRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nomorSubDO}`);
-  const maxRetries = 10;
+  const maxRetries = 15;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       const result = await runTransaction(db, async (transaction) => {
@@ -331,6 +341,11 @@ const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): P
       });
       return result;
     } catch (error: any) {
+      if (error.message === "No available DO Mandiri number found" || error.code === "aborted") {
+        const jitter = Math.random() * 200;
+        await new Promise((resolve) => setTimeout(resolve, 150 * Math.pow(2, attempt) + jitter));
+        continue;
+      }
       if (attempt === maxRetries - 1) throw error;
       await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
     }

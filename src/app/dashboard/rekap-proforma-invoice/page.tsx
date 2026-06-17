@@ -291,6 +291,82 @@ const compressImage = async (file: File): Promise<string> => {
   });
 };
 
+const releaseSeriSP = async (nomorSeri: string) => {
+  try {
+    const lockRef = doc(db, "suratPengangkutanLocks", nomorSeri.replace(/\//g, "-"));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists()) {
+      await deleteDoc(lockRef);
+    }
+    const parts = nomorSeri.split("/");
+    if (parts.length === 4 && parts[0] === "BAGB-SP") {
+      const year = parseInt(parts[1]);
+      const roman = parts[2];
+      const num = parseInt(parts[3]);
+      const poolRef = doc(db, "counters", `suratPengangkutanSP_${year}_${roman}`);
+      await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        if (!poolSnap.exists()) return;
+        let gaps = (poolSnap.data().gaps || []) as number[];
+        if (!gaps.includes(num)) {
+          gaps.push(num);
+          gaps.sort((a, b) => a - b);
+        }
+        transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+      });
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const releaseSeriDO = async (nomorSeri: string) => {
+  try {
+    const lockRef = doc(db, "suratPengangkutanLocks", nomorSeri.replace(/\//g, "-"));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists()) {
+      await deleteDoc(lockRef);
+    }
+    const parts = nomorSeri.split("/");
+    if (parts.length === 4 && parts[0] === "BAGB-SP-DO") {
+      const year = parseInt(parts[1]);
+      const roman = parts[2];
+      const num = parseInt(parts[3]);
+      const poolRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+      await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        if (!poolSnap.exists()) return;
+        let gaps = (poolSnap.data().gaps || []) as number[];
+        if (!gaps.includes(num)) {
+          gaps.push(num);
+          gaps.sort((a, b) => a - b);
+        }
+        transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+      });
+    } else if (nomorSeri.startsWith("BAGB-DO-")) {
+      const match = nomorSeri.match(/^BAGB-DO-(.+?)-(.+?)-SP\/(\d{4})$/);
+      if (match) {
+        const nsub = match[1];
+        const perusahaan = match[2];
+        const num = parseInt(match[3]);
+        const poolRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nsub}`);
+        await runTransaction(db, async (transaction) => {
+          const poolSnap = await transaction.get(poolRef);
+          if (!poolSnap.exists()) return;
+          let gaps = (poolSnap.data().gaps || []) as number[];
+          if (!gaps.includes(num)) {
+            gaps.push(num);
+            gaps.sort((a, b) => a - b);
+          }
+          transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+        });
+      }
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
 export default function RekapProformaInvoicePage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -1675,6 +1751,14 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
   const handleDeleteSurat = async (surat: SuratMuatInfo) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus surat pengangkutan ${surat.nomorSeri}?`)) return;
     try {
+      if (surat.nomorSeri) {
+        if (!surat.jenisSurat || surat.jenisSurat === "gudangInduk") {
+          await releaseSeriSP(surat.nomorSeri);
+        } else if (surat.jenisSurat === "do") {
+          await releaseSeriDO(surat.nomorSeri);
+        }
+      }
+
       const totalKG = (surat.items || []).reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const piNomors = Array.isArray(surat.nomorPI) ? surat.nomorPI : [surat.nomorPI].filter(Boolean);
       for (const piNomor of piNomors) {

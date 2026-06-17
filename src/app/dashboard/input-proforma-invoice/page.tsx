@@ -397,10 +397,13 @@ const fetchStockGudang = async () => {
 const ensureCustomerExists = async (nama: string, alamat: string, npwp: string): Promise<CustomerData | undefined> => {
     if (!nama.trim() || !alamat.trim()) return;
     const normalizedName = nama.trim().toLowerCase();
-    const existing = customerList.find((c) => c.namaCustomer.trim().toLowerCase() === normalizedName);
+    const normalizedAddress = alamat.trim().toLowerCase();
+    const existing = customerList.find((c) => 
+      c.namaCustomer.trim().toLowerCase() === normalizedName &&
+      c.alamatCustomer.trim().toLowerCase() === normalizedAddress
+    );
     if (existing) {
       const updateData: any = { updatedAt: serverTimestamp() };
-      if (existing.alamatCustomer.trim() !== alamat.trim()) updateData.alamatCustomer = alamat.trim();
       if (npwp.trim() && (!existing.npwp || existing.npwp.trim() !== npwp.trim())) updateData.npwp = npwp.trim();
       if (Object.keys(updateData).length > 1) {
         try {

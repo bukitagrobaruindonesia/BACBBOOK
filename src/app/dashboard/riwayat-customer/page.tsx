@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp, addDoc, runTransaction, where } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp, addDoc, runTransaction, onSnapshot } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
 import Button from "@/app/components/ui/Button";
@@ -32,6 +32,7 @@ interface ProformaInvoiceData {
   nomorPI: string;
   tanggal: string;
   createdAt: any;
+  statusPemesanan?: string;
 }
 
 interface PIDetail {
@@ -69,43 +70,53 @@ export default function RiwayatCustomerPage() {
   const [addCustomerIdError, setAddCustomerIdError] = useState("");
 
   useEffect(() => {
-    fetchData();
+    const unsubscribeCustomers = onSnapshot(
+      query(collection(db, "customers"), orderBy("namaCustomer", "asc")),
+      (snapshot) => {
+        const customers = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+          createdAt: doc.data().createdAt?.toDate(),
+          updatedAt: doc.data().updatedAt?.toDate(),
+        } as CustomerData));
+        setCustomerList(customers);
+      },
+      (error) => console.error(error)
+    );
+
+    const unsubscribePI = onSnapshot(
+      query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc")),
+      (snapshot) => {
+        const pis = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          namaCustomer: doc.data().namaCustomer || "",
+          produkItems: doc.data().produkItems || [],
+          nomorPI: doc.data().nomorPI || "",
+          tanggal: doc.data().tanggal || "",
+          statusPemesanan: doc.data().statusPemesanan || "Aktif",
+          createdAt: doc.data().createdAt?.toDate(),
+        } as ProformaInvoiceData));
+        setPiList(pis);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error(error);
+        setIsLoading(false);
+      }
+    );
+
+    return () => {
+      unsubscribeCustomers();
+      unsubscribePI();
+    };
   }, []);
 
-  const fetchData = async () => {
-    setIsLoading(true);
-    try {
-      const [customerSnap, piSnap] = await Promise.all([
-        getDocs(query(collection(db, "customers"), orderBy("namaCustomer", "asc"))),
-        getDocs(query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc"))),
-      ]);
-
-      const customers = customerSnap.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate(),
-        updatedAt: doc.data().updatedAt?.toDate(),
-      } as CustomerData));
-
-      const pis = piSnap.docs.map((doc) => ({
-        id: doc.id,
-        namaCustomer: doc.data().namaCustomer || "",
-        produkItems: doc.data().produkItems || [],
-        nomorPI: doc.data().nomorPI || "",
-        tanggal: doc.data().tanggal || "",
-        createdAt: doc.data().createdAt?.toDate(),
-      } as ProformaInvoiceData));
-
-      setCustomerList(customers);
-      setPiList(pis);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setIsLoading(false);
-    }
+  const fetchData = () => {
+    // Real-time update handled by onSnapshot
   };
 
-  const getCustomerRows = (): CustomerRow[] => {
+
+const getCustomerRows = (): CustomerRow[] => {
     return customerList.map((customer) => {
       let customerPIs = piList.filter((pi) => pi.namaCustomer.trim().toLowerCase() === customer.namaCustomer.trim().toLowerCase());
       if (filterTahun) {
@@ -171,7 +182,7 @@ export default function RiwayatCustomerPage() {
   });
 
   const getUniqueCustomerId = async (): Promise<string> => {
-    const maxRetries = 15;
+    const maxRetries = 10;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const result = await runTransaction(db, async (transaction) => {
@@ -208,11 +219,6 @@ export default function RiwayatCustomerPage() {
         });
         return result;
       } catch (error: any) {
-        if (error.message === "No available customer ID found" || error.code === "aborted") {
-          const jitter = Math.random() * 200;
-          await new Promise((resolve) => setTimeout(resolve, 150 * Math.pow(2, attempt) + jitter));
-          continue;
-        }
         if (attempt === maxRetries - 1) throw error;
         await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
       }
@@ -220,22 +226,10 @@ export default function RiwayatCustomerPage() {
     throw new Error("Failed to generate unique customer ID after retries");
   };
 
-const handleAddCustomer = async () => {
+  const handleAddCustomer = async () => {
     if (!newCustomerName.trim() || !newCustomerAddress.trim()) return;
     setAddCustomerIdError("");
     try {
-      const normalizedName = newCustomerName.trim().toLowerCase();
-      const normalizedAddress = newCustomerAddress.trim().toLowerCase();
-      const existingQuery = query(
-        collection(db, "customers"),
-        where("namaCustomer", "==", newCustomerName.trim()),
-        where("alamatCustomer", "==", newCustomerAddress.trim())
-      );
-      const existingSnap = await getDocs(existingQuery);
-      if (!existingSnap.empty) {
-        setAddCustomerIdError("Customer dengan nama dan alamat yang sama sudah terdaftar.");
-        return;
-      }
       const customerId = await getUniqueCustomerId();
       await addDoc(collection(db, "customers"), {
         customerId,
@@ -255,7 +249,7 @@ const handleAddCustomer = async () => {
     }
   };
 
-const handleEditCustomer = (customer: CustomerData) => {
+  const handleEditCustomer = (customer: CustomerData) => {
     setEditingCustomer(customer);
     setEditCustomerName(customer.namaCustomer);
     setEditCustomerAddress(customer.alamatCustomer);
