@@ -126,7 +126,7 @@ export default function InputProformaInvoicePage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [pendingPI, setPendingPI] = useState("");
-  const [focusedRow, setFocusedRow] = useState<string | null>(null);
+  const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<CustomerData | null>(null);
@@ -908,20 +908,15 @@ const fetchStockGudang = async () => {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {produkItems.map((item, index) => (
-                    <tr 
-                      key={item.id} 
-                      className={`transition-all duration-300 ${focusedRow === item.id ? 'bg-green-50 shadow-lg scale-[1.01] z-10 relative' : 'hover:bg-gray-50'}`}
-                      onMouseEnter={() => setFocusedRow(item.id)}
-                      onMouseLeave={() => setFocusedRow(null)}
-                    >
+                    <tr key={item.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">{index + 1}</td>
                       <td className="px-4 py-3">
                         <select 
                           value={item.namaProduk} 
                           onChange={(e) => handleProdukChange(item.id, "namaProduk", e.target.value)} 
-                          onFocus={() => setFocusedRow(item.id)}
-                          onBlur={() => setFocusedRow(null)}
-                          className={`w-full px-3 py-2 border rounded-lg text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`produk_${index}`] ? "border-red-500" : "border-gray-300"} ${focusedRow === item.id ? 'shadow-md scale-[1.02] min-w-[200px]' : ''}`}
+                          onFocus={() => setFocusedInput(`${item.id}-namaProduk`)}
+                          onBlur={() => setFocusedInput(null)}
+                          className={`w-full px-3 py-2 border rounded-lg text-sm transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`produk_${index}`] ? "border-red-500" : "border-gray-300"} ${focusedInput === `${item.id}-namaProduk` ? 'shadow-lg scale-[1.05] py-3 px-4 text-base min-w-[240px] z-20 relative' : focusedInput && focusedInput.startsWith(item.id) ? 'scale-[0.97] opacity-70' : ''}`}
                         >
                           {stockOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                         </select>
@@ -931,9 +926,9 @@ const fetchStockGudang = async () => {
                         <select 
                           value={item.fot} 
                           onChange={(e) => handleProdukChange(item.id, "fot", e.target.value)} 
-                          onFocus={() => setFocusedRow(item.id)}
-                          onBlur={() => setFocusedRow(null)}
-                          className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 ${focusedRow === item.id ? 'shadow-md scale-[1.02] min-w-[150px]' : ''}`}
+                          onFocus={() => setFocusedInput(`${item.id}-fot`)}
+                          onBlur={() => setFocusedInput(null)}
+                          className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 ${focusedInput === `${item.id}-fot` ? 'shadow-lg scale-[1.05] py-3 px-4 text-base min-w-[180px] z-20 relative' : focusedInput && focusedInput.startsWith(item.id) ? 'scale-[0.97] opacity-70' : ''}`}
                         >
                           <option value="">Pilih FOT...</option>
                           {fotList.map((fot) => (<option key={fot.id} value={fot.namaFOT}>{fot.namaFOT}</option>))}
@@ -945,7 +940,7 @@ const fetchStockGudang = async () => {
                           value={item.produsen} 
                           readOnly 
                           placeholder="Produsen" 
-                          className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600 transition-all duration-300 ${focusedRow === item.id ? 'shadow-sm' : ''}`} 
+                          className={`w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-50 text-gray-600 transition-all duration-300 ease-in-out ${focusedInput && focusedInput.startsWith(item.id) && focusedInput !== `${item.id}-produsen` ? 'scale-[0.97] opacity-70' : ''}`} 
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -954,10 +949,10 @@ const fetchStockGudang = async () => {
                           inputMode="decimal" 
                           value={item.kuantitas} 
                           onChange={(e) => handleProdukChange(item.id, "kuantitas", e.target.value)} 
-                          onFocus={() => setFocusedRow(item.id)}
-                          onBlur={() => setFocusedRow(null)}
+                          onFocus={() => setFocusedInput(`${item.id}-kuantitas`)}
+                          onBlur={() => setFocusedInput(null)}
                           placeholder="0.00" 
-                          className={`w-full px-3 py-2 border rounded-lg text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`kuantitas_${index}`] ? "border-red-500" : "border-gray-300"} ${focusedRow === item.id ? 'shadow-md scale-[1.02] min-w-[120px]' : ''}`} 
+                          className={`w-full px-3 py-2 border rounded-lg text-sm transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`kuantitas_${index}`] ? "border-red-500" : "border-gray-300"} ${focusedInput === `${item.id}-kuantitas` ? 'shadow-lg scale-[1.05] py-3 px-4 text-base min-w-[140px] z-20 relative' : focusedInput && focusedInput.startsWith(item.id) ? 'scale-[0.97] opacity-70' : ''}`} 
                         />
                         {errors[`kuantitas_${index}`] && <p className="mt-1 text-xs text-red-600">{errors[`kuantitas_${index}`]}</p>}
                       </td>
@@ -965,9 +960,9 @@ const fetchStockGudang = async () => {
                         <select 
                           value={item.satuan} 
                           onChange={(e) => handleProdukChange(item.id, "satuan", e.target.value)} 
-                          onFocus={() => setFocusedRow(item.id)}
-                          onBlur={() => setFocusedRow(null)}
-                          className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 ${focusedRow === item.id ? 'shadow-md scale-[1.02] min-w-[100px]' : ''}`}
+                          onFocus={() => setFocusedInput(`${item.id}-satuan`)}
+                          onBlur={() => setFocusedInput(null)}
+                          className={`w-full px-3 py-2 border border-gray-300 rounded-lg text-sm transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 ${focusedInput === `${item.id}-satuan` ? 'shadow-lg scale-[1.05] py-3 px-4 text-base min-w-[120px] z-20 relative' : focusedInput && focusedInput.startsWith(item.id) ? 'scale-[0.97] opacity-70' : ''}`}
                         >
                           {satuanOptions.map((opt) => (<option key={opt.value} value={opt.value}>{opt.label}</option>))}
                         </select>
@@ -978,14 +973,14 @@ const fetchStockGudang = async () => {
                           inputMode="decimal" 
                           value={item.hargaSatuan} 
                           onChange={(e) => handleProdukChange(item.id, "hargaSatuan", e.target.value)} 
-                          onFocus={() => setFocusedRow(item.id)}
-                          onBlur={() => setFocusedRow(null)}
+                          onFocus={() => setFocusedInput(`${item.id}-hargaSatuan`)}
+                          onBlur={() => setFocusedInput(null)}
                           placeholder="0.00" 
-                          className={`w-full px-3 py-2 border rounded-lg text-sm transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`harga_${index}`] ? "border-red-500" : "border-gray-300"} ${focusedRow === item.id ? 'shadow-md scale-[1.02] min-w-[140px]' : ''}`} 
+                          className={`w-full px-3 py-2 border rounded-lg text-sm transition-all duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-green-500 ${errors[`harga_${index}`] ? "border-red-500" : "border-gray-300"} ${focusedInput === `${item.id}-hargaSatuan` ? 'shadow-lg scale-[1.05] py-3 px-4 text-base min-w-[160px] z-20 relative' : focusedInput && focusedInput.startsWith(item.id) ? 'scale-[0.97] opacity-70' : ''}`} 
                         />
                         {errors[`harga_${index}`] && <p className="mt-1 text-xs text-red-600">{errors[`harga_${index}`]}</p>}
                       </td>
-                      <td className={`px-4 py-3 text-sm font-mono text-gray-700 transition-all duration-300 ${focusedRow === item.id ? 'bg-green-50 rounded-lg p-3' : ''}`}>
+                      <td className={`px-4 py-3 text-sm font-mono text-gray-700 transition-all duration-300 ease-in-out ${focusedInput && focusedInput.startsWith(item.id) && !focusedInput.endsWith('hargaPerZakDus') ? 'scale-[0.97] opacity-70' : ''}`}>
                         {item.hargaPerZakDus ? formatRupiah(parseFloat(item.hargaPerZakDus)) : "-"}
                         {(() => {
                           const stock = stockList.find((s) => s.namaBarang === item.namaProduk);
@@ -999,20 +994,20 @@ const fetchStockGudang = async () => {
                           return null;
                         })()}
                       </td>
-                      <td className={`px-4 py-3 text-center transition-all duration-300 ${focusedRow === item.id ? 'bg-green-50 rounded-lg' : ''}`}>
+                      <td className={`px-4 py-3 text-center transition-all duration-300 ease-in-out ${focusedInput && focusedInput.startsWith(item.id) && !focusedInput.endsWith('includePPN') ? 'scale-[0.97] opacity-70' : ''}`}>
                         <input 
                           type="checkbox" 
                           checked={item.includePPN} 
                           onChange={(e) => handleProdukChange(item.id, "includePPN", e.target.checked)} 
-                          className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer transition-all duration-300" 
+                          className="w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer" 
                         />
                       </td>
-                      <td className={`px-4 py-3 text-sm font-mono font-medium text-gray-900 transition-all duration-300 ${focusedRow === item.id ? 'bg-green-50 rounded-lg p-3 font-bold text-green-700' : ''}`}>{formatRupiah(getItemTotal(item))}</td>
+                      <td className={`px-4 py-3 text-sm font-mono font-medium text-gray-900 transition-all duration-300 ease-in-out ${focusedInput && focusedInput.startsWith(item.id) && !focusedInput.endsWith('total') ? 'scale-[0.97] opacity-70' : ''}`}>{formatRupiah(getItemTotal(item))}</td>
                       <td className="px-4 py-3 text-center">
                         <button 
                           type="button" 
                           onClick={() => removeProdukItem(item.id)} 
-                          className={`p-1.5 rounded-lg transition-all duration-300 ${focusedRow === item.id ? 'bg-red-100 text-red-600 hover:bg-red-200 scale-110' : 'text-red-500 hover:bg-red-50'}`} 
+                          className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors" 
                           disabled={produkItems.length === 1}
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
