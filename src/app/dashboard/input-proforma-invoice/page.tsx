@@ -40,6 +40,7 @@ interface CustomerData {
   alamatCustomer: string;
   npwp: string;
   createdAt: any;
+  updatedAt?: any;
 }
 
 interface FOTData {
@@ -126,6 +127,7 @@ export default function InputProformaInvoicePage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [pendingPI, setPendingPI] = useState("");
+  const pendingPIRef = useRef("");
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
@@ -176,6 +178,20 @@ export default function InputProformaInvoicePage() {
   }, []);
 
   useEffect(() => {
+    const generateNomor = async () => {
+      try {
+        const nomor = await getUniquePINumber();
+        pendingPIRef.current = nomor;
+        setPendingPI(nomor);
+      } catch (err) {
+        console.error("Gagal generate nomor PI:", err);
+      }
+    };
+    generateNomor();
+  }, []);
+
+
+  useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (customerInputRef.current && !customerInputRef.current.contains(event.target as Node)) {
         setShowCustomerDropdown(false);
@@ -189,19 +205,21 @@ export default function InputProformaInvoicePage() {
     cleanupStalePILocks();
     const interval = setInterval(cleanupStalePILocks, 10 * 60 * 1000);
     const handleBeforeUnload = () => {
-      if (pendingPI) {
-        releasePINumber(pendingPI);
+      if (pendingPIRef.current) {
+        releasePINumber(pendingPIRef.current);
       }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
       clearInterval(interval);
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      if (pendingPI) {
-        releasePINumber(pendingPI);
+      if (pendingPIRef.current) {
+        releasePINumber(pendingPIRef.current);
+        pendingPIRef.current = "";
       }
     };
-  }, [pendingPI]);
+  }, []);
+
 
   const generateTanggalJatuhTempo = () => {
     const today = new Date();
@@ -211,47 +229,48 @@ export default function InputProformaInvoicePage() {
   };
 
   const getUniquePINumber = async (): Promise<string> => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const shortYear = String(year).slice(-2);
-    const roman = getRomanMonth(now.getMonth() + 1);
-    const prefix = "BAGB-PI-(W)";
-    const counterRef = doc(db, "counters", `piCounter_${year}_${roman}`);
-    const maxRetries = 10;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const result = await runTransaction(db, async (transaction) => {
-          const counterDoc = await transaction.get(counterRef);
-          let lastNum = 0;
-          if (counterDoc.exists()) {
-            lastNum = counterDoc.data().lastNumber || 0;
-          }
-          let candidateNum = lastNum + 1;
-          let candidatePI = `${prefix}/${roman}/${shortYear}-${String(candidateNum).padStart(3, "0")}`;
-          const safeLockId = candidatePI.replace(/\//g, "_");
-          let lockRef = doc(db, "piNumberLocks", safeLockId);
-          let lockDoc = await transaction.get(lockRef);
-          while (lockDoc.exists()) {
-            candidateNum++;
-            candidatePI = `${prefix}/${roman}/${shortYear}-${String(candidateNum).padStart(3, "0")}`;
-            const safeId = candidatePI.replace(/\//g, "_");
-            lockRef = doc(db, "piNumberLocks", safeId);
-            lockDoc = await transaction.get(lockRef);
-          }
-          transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
-          transaction.set(counterRef, { lastNumber: candidateNum });
-          return candidatePI;
-        });
-        return result;
-      } catch (error: any) {
-        if (attempt === maxRetries - 1) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
+  const now = new Date();
+  const year = now.getFullYear();
+  const shortYear = String(year).slice(-2);
+  const roman = getRomanMonth(now.getMonth() + 1);
+  const prefix = "BAGB-PI-(W)";
+  const counterRef = doc(db, "counters", `piCounter_${year}_${roman}`);
+  const maxRetries = 15;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const counterDoc = await transaction.get(counterRef);
+        let lastNum = 0;
+        if (counterDoc.exists()) {
+          lastNum = counterDoc.data().lastNumber || 0;
+        }
+        let candidateNum = lastNum + 1;
+        let candidatePI = `${prefix}/${roman}/${shortYear}-${String(candidateNum).padStart(3, "0")}`;
+        const safeLockId = candidatePI.replace(/\//g, "_");
+        const lockRef = doc(db, "piNumberLocks", safeLockId);
+        const lockDoc = await transaction.get(lockRef);
+        if (lockDoc.exists()) {
+          throw new Error("LOCK_EXISTS");
+        }
+        transaction.set(lockRef, { createdAt: serverTimestamp(), used: true, lockedBy: user?.email || "unknown" });
+        transaction.set(counterRef, { lastNumber: candidateNum });
+        return candidatePI;
+      });
+      return result;
+    } catch (error: any) {
+      if (error.message === "LOCK_EXISTS" || error.code === "aborted") {
+        const jitter = Math.random() * 200;
+        await new Promise((resolve) => setTimeout(resolve, 150 * Math.pow(2, attempt) + jitter));
+        continue;
       }
+      if (attempt === maxRetries - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
     }
-    throw new Error("Failed to generate unique PI number after retries");
-  };
+  }
+  throw new Error("Failed to generate unique PI number after retries");
+};
 
-  const releasePINumber = async (nomorPI: string) => {
+const releasePINumber = async (nomorPI: string) => {
   try {
     const safeLockId = nomorPI.replace(/\//g, "_");
     const lockRef = doc(db, "piNumberLocks", safeLockId);
@@ -349,30 +368,33 @@ const fetchStockGudang = async () => {
 
   const generateCustomerId = async (): Promise<string> => {
     try {
-      const q = query(collection(db, "customers"), orderBy("customerId", "asc"));
-      const snapshot = await getDocs(q);
-      const ids = snapshot.docs
-        .map((d) => d.data().customerId)
-        .filter((id): id is string => typeof id === "string" && id.startsWith("BAGB-CS-"))
-        .map((id) => parseInt(id.replace("BAGB-CS-", ""), 10))
-        .filter((n) => !isNaN(n))
-        .sort((a, b) => a - b);
-      if (ids.length === 0) return "BAGB-CS-001";
-      let nextId = 1;
-      for (const id of ids) {
-        if (id !== nextId) {
-          return `BAGB-CS-${String(nextId).padStart(3, "0")}`;
+      const result = await runTransaction(db, async (transaction) => {
+        const q = query(collection(db, "customers"), orderBy("customerId", "asc"));
+        const snapshot = await getDocs(q);
+        const ids = snapshot.docs
+          .map((d) => d.data().customerId)
+          .filter((id): id is string => typeof id === "string" && id.startsWith("BAGB-CS-"))
+          .map((id) => parseInt(id.replace("BAGB-CS-", ""), 10))
+          .filter((n) => !isNaN(n))
+          .sort((a, b) => a - b);
+        if (ids.length === 0) return "BAGB-CS-001";
+        let nextId = 1;
+        for (const id of ids) {
+          if (id !== nextId) {
+            return `BAGB-CS-${String(nextId).padStart(3, "0")}`;
+          }
+          nextId++;
         }
-        nextId++;
-      }
-      return `BAGB-CS-${String(nextId).padStart(3, "0")}`;
+        return `BAGB-CS-${String(nextId).padStart(3, "0")}`;
+      });
+      return result;
     } catch (error) {
       console.error(error);
       return "BAGB-CS-001";
     }
   };
 
-  const ensureCustomerExists = async (nama: string, alamat: string, npwp: string) => {
+const ensureCustomerExists = async (nama: string, alamat: string, npwp: string): Promise<CustomerData | undefined> => {
     if (!nama.trim() || !alamat.trim()) return;
     const normalizedName = nama.trim().toLowerCase();
     const existing = customerList.find((c) => c.namaCustomer.trim().toLowerCase() === normalizedName);
@@ -386,11 +408,22 @@ const fetchStockGudang = async () => {
           fetchCustomers();
         } catch (error) { console.error(error); }
       }
-      return;
+      return existing;
     }
     try {
+      const q = query(
+        collection(db, "customers"),
+        where("namaCustomer", "==", nama.trim()),
+        where("alamatCustomer", "==", alamat.trim())
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const data = snap.docs[0].data() as CustomerData;
+        fetchCustomers();
+        return { ...data, id: snap.docs[0].id };
+      }
       const customerId = await generateCustomerId();
-      await addDoc(collection(db, "customers"), {
+      const newDoc = await addDoc(collection(db, "customers"), {
         customerId,
         namaCustomer: nama.trim(),
         alamatCustomer: alamat.trim(),
@@ -399,10 +432,11 @@ const fetchStockGudang = async () => {
         updatedAt: serverTimestamp(),
       });
       fetchCustomers();
+      return { id: newDoc.id, customerId, namaCustomer: nama.trim(), alamatCustomer: alamat.trim(), npwp: npwp.trim() || "", createdAt: new Date(), updatedAt: new Date() };
     } catch (error) { console.error(error); }
   };
 
-  const handleDeleteCustomer = async (id: string) => {
+const handleDeleteCustomer = async (id: string) => {
     if (!confirm("Apakah Anda yakin ingin menghapus customer ini?")) return;
     try {
       await deleteDoc(doc(db, "customers", id));
@@ -693,12 +727,16 @@ const fetchStockGudang = async () => {
     try {
       await ensureCustomerExists(formData.namaCustomer, formData.alamatCustomer, formData.npwp);
       const selectedTTD = ttdList.find((t) => t.id === formData.selectedTTD);
-      const finalNomorPI = await getUniquePINumber();
+
+      const finalNomorPI = pendingPIRef.current || await getUniquePINumber();
+      pendingPIRef.current = "";
       setPendingPI(finalNomorPI);
+
       const jumlahBayar = parseFloat(formData.jumlahUangDibayar) || 0;
       const riwayatPembayaran = jumlahBayar > 0
         ? [{ tanggal: formData.tanggalPembayaran || formData.tanggal, jumlah: jumlahBayar, fotoBukti: formData.fotoBukti }]
         : [];
+
       await addDoc(collection(db, "proformaInvoice"), {
         tanggal: formData.tanggal,
         nomorPI: finalNomorPI,
@@ -746,7 +784,7 @@ const fetchStockGudang = async () => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
-      setPendingPI("");
+
       setSuccessMessage(`Proforma Invoice ${finalNomorPI} berhasil disimpan!`);
       setFormData({
         tanggal: new Date().toISOString().split("T")[0],
@@ -762,19 +800,19 @@ const fetchStockGudang = async () => {
       setProdukItems([{ id: "1", namaProduk: "", fot: "", produsen: "", kuantitas: "", satuan: "KG", hargaSatuan: "", hargaPerZakDus: "", bobotPerUnit: 50, jumlahIsiBotol: 1, includePPN: false }]);
       generateTanggalJatuhTempo();
       setTimeout(() => setSuccessMessage(""), 5000);
+
+      const newNomor = await getUniquePINumber();
+      pendingPIRef.current = newNomor;
+      setPendingPI(newNomor);
+
     } catch (error) {
-      if (pendingPI) {
-        await releasePINumber(pendingPI);
-        setPendingPI("");
-      }
       console.error(error);
-      setErrors({ submit: "Gagal menyimpan data. Nomor PI mungkin sedang digunakan akun lain. Silakan coba lagi." });
+      setErrors({ submit: "Gagal menyimpan data. Silakan coba lagi." });
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  const stockOptions = [
+const stockOptions = [
     { value: "", label: "Pilih produk..." },
     ...stockList.map((stock) => ({ value: stock.namaBarang, label: `${stock.namaBarang} (${stock.kodeBarang})` })),
   ];
@@ -1117,8 +1155,9 @@ const fetchStockGudang = async () => {
         </div>
         <div className="flex items-center justify-end gap-4 pt-4">
           <Button type="button" variant="outline" onClick={() => {
-            if (pendingPI) {
-              releasePINumber(pendingPI);
+            if (pendingPIRef.current) {
+              releasePINumber(pendingPIRef.current);
+              pendingPIRef.current = "";
               setPendingPI("");
             }
             setFormData({

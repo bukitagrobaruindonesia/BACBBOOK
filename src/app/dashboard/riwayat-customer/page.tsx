@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp, addDoc, runTransaction } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, doc, deleteDoc, updateDoc, serverTimestamp, addDoc, runTransaction, where } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
 import Button from "@/app/components/ui/Button";
@@ -171,7 +171,7 @@ export default function RiwayatCustomerPage() {
   });
 
   const getUniqueCustomerId = async (): Promise<string> => {
-    const maxRetries = 10;
+    const maxRetries = 15;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const result = await runTransaction(db, async (transaction) => {
@@ -208,6 +208,11 @@ export default function RiwayatCustomerPage() {
         });
         return result;
       } catch (error: any) {
+        if (error.message === "No available customer ID found" || error.code === "aborted") {
+          const jitter = Math.random() * 200;
+          await new Promise((resolve) => setTimeout(resolve, 150 * Math.pow(2, attempt) + jitter));
+          continue;
+        }
         if (attempt === maxRetries - 1) throw error;
         await new Promise((resolve) => setTimeout(resolve, 100 * (attempt + 1)));
       }
@@ -215,10 +220,22 @@ export default function RiwayatCustomerPage() {
     throw new Error("Failed to generate unique customer ID after retries");
   };
 
-  const handleAddCustomer = async () => {
+const handleAddCustomer = async () => {
     if (!newCustomerName.trim() || !newCustomerAddress.trim()) return;
     setAddCustomerIdError("");
     try {
+      const normalizedName = newCustomerName.trim().toLowerCase();
+      const normalizedAddress = newCustomerAddress.trim().toLowerCase();
+      const existingQuery = query(
+        collection(db, "customers"),
+        where("namaCustomer", "==", newCustomerName.trim()),
+        where("alamatCustomer", "==", newCustomerAddress.trim())
+      );
+      const existingSnap = await getDocs(existingQuery);
+      if (!existingSnap.empty) {
+        setAddCustomerIdError("Customer dengan nama dan alamat yang sama sudah terdaftar.");
+        return;
+      }
       const customerId = await getUniqueCustomerId();
       await addDoc(collection(db, "customers"), {
         customerId,
@@ -238,7 +255,7 @@ export default function RiwayatCustomerPage() {
     }
   };
 
-  const handleEditCustomer = (customer: CustomerData) => {
+const handleEditCustomer = (customer: CustomerData) => {
     setEditingCustomer(customer);
     setEditCustomerName(customer.namaCustomer);
     setEditCustomerAddress(customer.alamatCustomer);
