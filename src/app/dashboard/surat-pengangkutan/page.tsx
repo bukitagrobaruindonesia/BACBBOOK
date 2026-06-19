@@ -537,6 +537,10 @@ export default function SuratPengangkutanPage() {
   });
 
   const [items, setItems] = useState<SuratPengangkutanItem[]>([]);
+  const itemsRef = useRef<SuratPengangkutanItem[]>([]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
   const [piProductStatus, setPiProductStatus] = useState<Record<string, Record<string, { loaded: number; ordered: number; status: string }>>>({});
   const [piFullyLoadedMap, setPiFullyLoadedMap] = useState<Record<string, boolean>>({});
   const [piSearchMap, setPiSearchMap] = useState<Record<number, string>>({});
@@ -829,7 +833,8 @@ export default function SuratPengangkutanPage() {
 
   const getAllocatedInOtherItems = (doItem: DOItem, currentItemId: number) => {
     let allocated = 0;
-    items.forEach((it) => {
+    const currentItems = itemsRef.current;
+    currentItems.forEach((it) => {
       if (it.id !== currentItemId && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO && it.jenisPupuk === doItem.namaProduk) {
         const zak = parseFloat(it.pengambilanZAK) || 0;
         const isDusBotol = it.bobotPerUnit === 1 && it.jenisPupuk && isDusOrBotolProduct(it.jenisPupuk);
