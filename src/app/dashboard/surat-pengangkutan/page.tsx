@@ -440,6 +440,9 @@ const isDOExpired = (tanggalKadaluarsa: string) => {
 };
 
 const getPILock = async (nomorPI: string, userEmail?: string): Promise<string> => {
+  if (!nomorPI || nomorPI.trim() === "") {
+    throw new Error("Nomor PI tidak valid");
+  }
   const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
   const maxRetries = 15;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -473,6 +476,7 @@ const getPILock = async (nomorPI: string, userEmail?: string): Promise<string> =
 
 const releasePILock = async (nomorPI: string, lockId: string) => {
   try {
+    if (!nomorPI || nomorPI.trim() === "") return;
     const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
     const lockSnap = await getDoc(lockRef);
     if (lockSnap.exists() && lockSnap.data().lockId === lockId) {
@@ -574,17 +578,6 @@ export default function SuratPengangkutanPage() {
   useEffect(() => {
     const unsubscribers: (() => void)[] = [];
 
-    const handleEscapeKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setPiShowMap((prev) => {
-          const next: Record<number, boolean> = {};
-          Object.keys(prev).forEach((k) => { next[Number(k)] = false; });
-          return next;
-        });
-      }
-    };
-    document.addEventListener("keydown", handleEscapeKey);
-
     const qPI = query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc"));
     const unsubPI = onSnapshot(qPI, (snapshot) => {
       const data = snapshot.docs.map((doc) => ({
@@ -665,7 +658,6 @@ export default function SuratPengangkutanPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleEscapeKey);
       unsubscribers.forEach((unsub) => unsub());
     };
   }, []);
@@ -689,7 +681,7 @@ export default function SuratPengangkutanPage() {
           releaseSeriDO(pendingNomorSeri);
         }
       }
-      const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+      const allPIs = items.map((it) => it.nomorPI).filter((v) => v && v.trim() !== "").filter((v, i, a) => a.indexOf(v) === i);
       allPIs.forEach((nomorPI) => {
         const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
         deleteDoc(lockRef).catch(() => {});
@@ -706,7 +698,7 @@ export default function SuratPengangkutanPage() {
           releaseSeriDO(pendingNomorSeri);
         }
       }
-      const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+      const allPIs = items.map((it) => it.nomorPI).filter((v) => v && v.trim() !== "").filter((v, i, a) => a.indexOf(v) === i);
       allPIs.forEach((nomorPI) => {
         const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
         deleteDoc(lockRef).catch(() => {});
@@ -738,11 +730,7 @@ export default function SuratPengangkutanPage() {
       }
     });
     if (!clickedInsideAny) {
-      setPiShowMap((prev) => {
-        const next: Record<number, boolean> = {};
-        Object.keys(prev).forEach((k) => { next[Number(k)] = false; });
-        return next;
-      });
+      setPiShowMap({});
     }
   };
 
@@ -1120,12 +1108,7 @@ export default function SuratPengangkutanPage() {
   };
 
   const handlePISelectForItem = async (itemId: number, pi: ProformaInvoice) => {
-    // Tutup semua dropdown PI
-    setPiShowMap((prev) => {
-      const next: Record<number, boolean> = {};
-      Object.keys(prev).forEach((k) => { next[Number(k)] = false; });
-      return next;
-    });
+    setPiShowMap((prev) => ({ ...prev, [itemId]: false }));
     setPiSearchMap((prev) => ({ ...prev, [itemId]: pi.nomorPI }));
     clearFieldError(`nomorPI_${itemId}`);
     clearFieldError(`jenisPupuk_${itemId}`);
@@ -1273,14 +1256,6 @@ export default function SuratPengangkutanPage() {
 
   const addItem = () => {
     const newId = items.length > 0 ? Math.max(...items.map((i) => i.id)) + 1 : 1;
-    // Tutup semua dropdown PI yang sedang terbuka
-    setPiShowMap((prev) => {
-      const next: Record<number, boolean> = {};
-      Object.keys(prev).forEach((k) => { next[Number(k)] = false; });
-      next[newId] = false;
-      return next;
-    });
-    setPiSearchMap((prev) => ({ ...prev, [newId]: "" }));
     setItems((prev) => [
       ...prev,
       {
@@ -1302,6 +1277,8 @@ export default function SuratPengangkutanPage() {
         piLoadedKG: 0,
       },
     ]);
+    setPiSearchMap((prev) => ({ ...prev, [newId]: "" }));
+    setPiShowMap((prev) => ({ ...prev, [newId]: false }));
   };
 
   const addItemWithPI = async (pi: ProformaInvoice) => {
@@ -1601,7 +1578,7 @@ export default function SuratPengangkutanPage() {
   setIsSubmitting(true);
   setSuccessMessage("");
   let nomorSeri = "";
-  const allPIs = items.map((it) => it.nomorPI).filter((v, i, a) => a.indexOf(v) === i);
+  const allPIs = items.map((it) => it.nomorPI).filter((v) => v && v.trim() !== "").filter((v, i, a) => a.indexOf(v) === i);
   const piLocks: Array<{ nomorPI: string; lockId: string }> = [];
   try {
     for (const nomorPI of allPIs) {
@@ -2317,28 +2294,12 @@ const resetForm = () => {
                           value={searchVal}
                           onChange={(e) => {
                             setPiSearchMap((prev) => ({ ...prev, [item.id]: e.target.value }));
-                            setPiShowMap((prev) => {
-                              const next: Record<number, boolean> = {};
-                              Object.keys(prev).forEach((k) => { next[Number(k)] = false; });
-                              next[item.id] = true;
-                              return next;
-                            });
+                            setPiShowMap((prev) => ({ ...prev, [item.id]: true }));
                           }}
-                          onFocus={() => {
-                            setPiShowMap((prev) => {
-                              const next: Record<number, boolean> = {};
-                              Object.keys(prev).forEach((k) => { next[Number(k)] = false; });
-                              next[item.id] = true;
-                              return next;
-                            });
-                          }}
+                          onFocus={() => setPiShowMap((prev) => ({ ...prev, [item.id]: true }))}
                           onBlur={() => {
                             setTimeout(() => {
-                              setPiShowMap((prev) => {
-                                const next: Record<number, boolean> = {};
-                                Object.keys(prev).forEach((k) => { next[Number(k)] = false; });
-                                return next;
-                              });
+                              setPiShowMap((prev) => ({ ...prev, [item.id]: false }));
                             }, 200);
                           }}
                           placeholder="Ketik nomor PI atau nama customer..."
