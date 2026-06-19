@@ -17,6 +17,7 @@ import {
   deleteDoc,
   runTransaction,
   Timestamp,
+  onSnapshot,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -571,14 +572,90 @@ export default function SuratPengangkutanPage() {
   };
 
   useEffect(() => {
-    fetchProformaInvoice();
-    fetchStockGudang();
-    fetchExistingSurat();
-    fetchFOT();
-    fetchDO();
-    fetchSuratDO();
+    const unsubscribers: (() => void)[] = [];
+
+    const qPI = query(collection(db, "proformaInvoice"), orderBy("createdAt", "desc"));
+    const unsubPI = onSnapshot(qPI, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        nomorPI: doc.data().nomorPI || "",
+        namaCustomer: doc.data().namaCustomer || "",
+        alamatCustomer: doc.data().alamatCustomer || "",
+        tanggal: doc.data().tanggal || "",
+        produkItems: doc.data().produkItems || [],
+        jumlahTertagih: doc.data().jumlahTertagih || 0,
+        sisaPengambilanKG: doc.data().sisaPengambilanKG,
+        statusPengangkutan: doc.data().statusPengangkutan || "pending",
+      } as ProformaInvoice));
+      setPiList(data);
+    }, (error) => console.error(error));
+    unsubscribers.push(unsubPI);
+
+    const qStock = query(collection(db, "stockGudang"), orderBy("namaBarang", "asc"));
+    const unsubStock = onSnapshot(qStock, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        kodeBarang: doc.data().kodeBarang || "",
+        namaBarang: doc.data().namaBarang || "",
+        unit: doc.data().unit || "ZAK",
+        fot: doc.data().fot || "",
+        bobotPerUnit: doc.data().bobotPerUnit || 50,
+        botolPerDus: doc.data().botolPerDus || doc.data().jumlahIsiBotol || 20,
+        stokAkhirUnit: doc.data().stokAkhirUnit || 0,
+        stokAkhirKG: doc.data().stokAkhirKG || 0,
+        barangKeluarUnit: doc.data().barangKeluarUnit || 0,
+        barangKeluarKG: doc.data().barangKeluarKG || 0,
+      } as StockItem));
+      setStockList(data);
+    }, (error) => console.error(error));
+    unsubscribers.push(unsubStock);
+
+    const qSurat = query(collection(db, "suratPengangkutan"), orderBy("createdAt", "desc"));
+    const unsubSurat = onSnapshot(qSurat, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        nomorSeri: doc.data().nomorSeri || "",
+      } as ExistingSurat));
+      setExistingSuratList(data);
+    }, (error) => console.error(error));
+    unsubscribers.push(unsubSurat);
+
+    const qFOT = query(collection(db, "fot"), orderBy("namaFOT", "asc"));
+    const unsubFOT = onSnapshot(qFOT, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        namaFOT: doc.data().namaFOT || "",
+        alamatFOT: doc.data().alamatFOT || "",
+      } as FOTData));
+      setFotList(data);
+    }, (error) => console.error(error));
+    unsubscribers.push(unsubFOT);
+
+    const qDO = query(collection(db, "do"), orderBy("createdAt", "desc"));
+    const unsubDO = onSnapshot(qDO, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      } as DOItem));
+      setDoList(data);
+    }, (error) => console.error(error));
+    unsubscribers.push(unsubDO);
+
+    const qSuratDO = query(collection(db, "suratPengangkutan"), where("jenisSurat", "==", "do"));
+    const unsubSuratDO = onSnapshot(qSuratDO, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        items: doc.data().items || [],
+      } as SuratDODoc));
+      setSuratDOList(data);
+    }, (error) => console.error(error));
+    unsubscribers.push(unsubSuratDO);
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      unsubscribers.forEach((unsub) => unsub());
+    };
   }, []);
 
   useEffect(() => {
