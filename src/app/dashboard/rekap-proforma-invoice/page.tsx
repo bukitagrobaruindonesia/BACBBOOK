@@ -1147,6 +1147,22 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
+      if (!row.customerId) {
+        const q = query(collection(db, "customers"), where("namaCustomer", "==", row.namaCustomer.trim()));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          setCustomerId(snapshot.docs[0].data().customerId || "");
+        } else {
+          const q2 = query(collection(db, "customers"));
+          const snapshot2 = await getDocs(q2);
+          const found = snapshot2.docs.find((d) =>
+            d.data().namaCustomer?.trim().toLowerCase() === row.namaCustomer.trim().toLowerCase()
+          );
+          if (found) {
+            setCustomerId(found.data().customerId || "");
+          }
+        }
+      }
       const piRef = doc(db, "proformaInvoice", row.id);
       const piSnap = await getDoc(piRef);
       let baseNumber = piSnap.data()?.invoiceBaseNumber;
@@ -1252,6 +1268,22 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
+      if (!pi.customerId) {
+        const q = query(collection(db, "customers"), where("namaCustomer", "==", pi.namaCustomer.trim()));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          setCustomerId(snapshot.docs[0].data().customerId || "");
+        } else {
+          const q2 = query(collection(db, "customers"));
+          const snapshot2 = await getDocs(q2);
+          const found = snapshot2.docs.find((d) =>
+            d.data().namaCustomer?.trim().toLowerCase() === pi.namaCustomer.trim().toLowerCase()
+          );
+          if (found) {
+            setCustomerId(found.data().customerId || "");
+          }
+        }
+      }
       const nomor = await generateInvoiceNumber(surat, pi);
       setInvoiceNomor(nomor);
       const parsed = parseInvoiceNumber(nomor);
@@ -2490,10 +2522,31 @@ const handleExportExcel = () => {
     printWindow.document.close();
   };
 
-  const handlePrintInvoice = () => {
+  const handlePrintInvoice = async () => {
     if (!selectedItem || !invoiceNomor) return;
     const pi = selectedItem;
     if (!pi) return;
+
+    let resolvedCustomerId = pi.customerId || "";
+    if (!resolvedCustomerId) {
+      try {
+        const q = query(collection(db, "customers"), where("namaCustomer", "==", pi.namaCustomer.trim()));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          resolvedCustomerId = snapshot.docs[0].data().customerId || "";
+        } else {
+          const q2 = query(collection(db, "customers"));
+          const snapshot2 = await getDocs(q2);
+          const found = snapshot2.docs.find((d) =>
+            d.data().namaCustomer?.trim().toLowerCase() === pi.namaCustomer.trim().toLowerCase()
+          );
+          if (found) {
+            resolvedCustomerId = found.data().customerId || "";
+          }
+        }
+      } catch {}
+    }
+
     const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
     const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
     const tanggalInvoice = invoiceDate || pi.tanggal;
@@ -2634,7 +2687,7 @@ const handleExportExcel = () => {
             <div class="meta-box">
               <p><span style="font-weight: 600;">INVOICE NO. :</span> ${invoiceNomor}</p>
               <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(tanggalInvoice).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
-              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${pi.customerId || "-"}</p>
+              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${resolvedCustomerId || "-"}</p>
               <p><span style="font-weight: 600;">NOMOR PI :</span> ${pi.nomorPI || ""}</p>
             </div></div>
           <table class="data-table"><thead><tr><th style="width: 24px;">NO</th><th style="text-align: left; padding-left: 4px;">NAMA PRODUK</th><th style="text-align: left; padding-left: 4px;">PRODUSEN</th><th style="width: 50px;">KEMASAN</th><th style="width: 40px;">FOT</th><th style="width: 60px;">KUANTITAS</th><th style="width: 80px;">HARGA SATUAN<br>PER KG</th><th style="width: 80px;">PER ZAK</th><th style="width: 90px;">SUB TOTAL</th></tr></thead><tbody>${itemsHtml}${emptyRows}</tbody></table>
