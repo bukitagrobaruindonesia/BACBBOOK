@@ -1142,7 +1142,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     setSelectedOrderTTD("");
     setInvoiceNomor("");
     setInvoiceDate("");
-    setCustomerId("");
+    setCustomerId(row.customerId || "");
     setPendingInvoiceBase("");
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
@@ -1161,7 +1161,9 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       const sortedSurat = [...allSurat].sort((a, b) => new Date(b.tanggal).getTime() - new Date(a.tanggal).getTime());
       const tanggal = sortedSurat[0] ? sortedSurat[0].tanggal : row.tanggal;
       setInvoiceDate(tanggal);
-      await fetchCustomerByName(row.namaCustomer);
+      if (!row.customerId) {
+        await fetchCustomerByName(row.namaCustomer);
+      }
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
   };
 
@@ -1245,7 +1247,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     setSelectedOrderTTD("");
     setInvoiceNomor("");
     setInvoiceDate(surat.tanggal);
-    setCustomerId("");
+    setCustomerId(pi.customerId || "");
     setPendingInvoiceBase("");
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
@@ -1257,7 +1259,9 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
         const baseNumber = String(parsed.baseNum).padStart(3, "0");
         setPendingInvoiceBase(baseNumber);
       }
-      await fetchCustomerByName(pi.namaCustomer);
+      if (!pi.customerId) {
+        await fetchCustomerByName(pi.namaCustomer);
+      }
       const allSurat = getSuratMuatForPI(pi.nomorPI);
       const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
       if (parsed && parsed.isPartial && sortedSurat.length > 0) {
@@ -2630,7 +2634,7 @@ const handleExportExcel = () => {
             <div class="meta-box">
               <p><span style="font-weight: 600;">INVOICE NO. :</span> ${invoiceNomor}</p>
               <p><span style="font-weight: 600;">TANGGAL :</span> ${new Date(tanggalInvoice).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
-              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${customerId || "-"}</p>
+              <p><span style="font-weight: 600;">CUSTOMER ID :</span> ${pi.customerId || "-"}</p>
               <p><span style="font-weight: 600;">NOMOR PI :</span> ${pi.nomorPI || ""}</p>
             </div></div>
           <table class="data-table"><thead><tr><th style="width: 24px;">NO</th><th style="text-align: left; padding-left: 4px;">NAMA PRODUK</th><th style="text-align: left; padding-left: 4px;">PRODUSEN</th><th style="width: 50px;">KEMASAN</th><th style="width: 40px;">FOT</th><th style="width: 60px;">KUANTITAS</th><th style="width: 80px;">HARGA SATUAN<br>PER KG</th><th style="width: 80px;">PER ZAK</th><th style="width: 90px;">SUB TOTAL</th></tr></thead><tbody>${itemsHtml}${emptyRows}</tbody></table>
