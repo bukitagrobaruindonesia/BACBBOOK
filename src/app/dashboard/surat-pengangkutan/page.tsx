@@ -747,8 +747,10 @@ export default function SuratPengangkutanPage() {
       if (!doItem) return item;
       const loadedDO = getLoadedKGForDOFromSurat(doItem);
       const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id, items);
+      const allocatedInPrevious = getAllocatedInPreviousItems(doItem, item.id, items);
       const effectiveLoaded = loadedDO + allocatedInOtherItems;
       const sisaDO = Math.max(0, (doItem.partyKG || 0) - effectiveLoaded);
+      const partyBefore = Math.max(0, (doItem.partyKG || 0) - loadedDO - allocatedInPrevious);
       const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
       let maxZAKPI = 0;
       let maxZAKDO = 0;
@@ -799,7 +801,7 @@ export default function SuratPengangkutanPage() {
         ...item,
         doLoadedKG: effectiveLoaded,
         maxZAK: finalMaxZAK,
-        party: formatParty(sisaDO),
+        party: formatParty(partyBefore),
         sisa: newSisa,
         pengambilanZAK: newPengambilan,
       };
@@ -922,6 +924,24 @@ export default function SuratPengangkutanPage() {
     });
     return allocated;
   };
+
+  const getAllocatedInPreviousItems = (doItem: DOItem, currentItemId: number, currentItems: SuratPengangkutanItem[]) => {
+    let allocated = 0;
+    const currentIndex = currentItems.findIndex((it) => it.id === currentItemId);
+    currentItems.forEach((it, idx) => {
+      if (idx < currentIndex && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO && it.jenisPupuk === doItem.namaProduk) {
+        const zak = parseFloat(it.pengambilanZAK) || 0;
+        const isDusBotol = it.bobotPerUnit === 1 && it.jenisPupuk && isDusOrBotolProduct(it.jenisPupuk);
+        const botolPerDus = it.jenisPupuk ? getBotolPerDus(it.jenisPupuk) : 20;
+        if (isDusBotol) {
+          allocated += (zak / botolPerDus) * (it.bobotPerUnit || 50);
+        } else {
+          allocated += zak * it.bobotPerUnit;
+        }
+      }
+    });
+    return allocated;
+  };
   const handleSubDOSelect = (itemId: number, nomorSubDO: string) => {
     clearFieldError(`nomorSubDO_${itemId}`);
     clearFieldError(`jenisPupuk_${itemId}`);
@@ -982,7 +1002,7 @@ export default function SuratPengangkutanPage() {
           doLoadedKG: effectiveLoaded,
           doId: doItem.id,
           maxZAK: finalMaxZAK,
-          party: formatParty(sisaDO),
+          party: formatParty(doItem.partyKG),
           sisa: formatParty(sisaDO),
           pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
         };
@@ -1514,8 +1534,11 @@ export default function SuratPengangkutanPage() {
           const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
           const doItem = hasDO ? doList.find((d) => d.nomorSubDO === item.nomorSubDO) : null;
           const allocatedInOtherItems = doItem ? getAllocatedInOtherItems(doItem, id, prev) : 0;
+          const allocatedInPrevious = doItem ? getAllocatedInPreviousItems(doItem, id, prev) : 0;
+          const loadedDO = doItem ? getLoadedKGForDOFromSurat(doItem) : 0;
           const effectiveDoLoaded = hasDO ? (item.doLoadedKG + allocatedInOtherItems) : 0;
           const doSisa = hasDO ? Math.max(0, item.doPartyKG - effectiveDoLoaded) : 0;
+          const partyBefore = hasDO ? Math.max(0, item.doPartyKG - loadedDO - allocatedInPrevious) : 0;
           const isDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
           const botolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
           let maxPI = 0;
@@ -1536,6 +1559,7 @@ export default function SuratPengangkutanPage() {
           }
           const finalMax = hasDO ? Math.min(maxPI, maxDO) : maxPI;
           updated.maxZAK = finalMax;
+          updated.party = formatParty(partyBefore);
           if (finalMax > 0 && zak > finalMax) {
             updated.pengambilanZAK = String(finalMax);
             const zakFinal = finalMax;
@@ -1548,8 +1572,10 @@ export default function SuratPengangkutanPage() {
             }
           } else if (finalMax === 0) {
             updated.pengambilanZAK = "";
+            updated.party = formatParty(partyBefore);
             updated.sisa = hasDO ? formatParty(doSisa) : (isDusBotol ? `${piSisa.toLocaleString()} BOTOL` : formatSisaKG(piSisa));
           } else {
+            updated.party = formatParty(partyBefore);
             if (hasDO) {
               const doSisaAfter = Math.max(0, doSisa - (isDusBotol ? (zak / botolPerDus) * (item.bobotPerUnit || 50) : zak * item.bobotPerUnit));
               updated.sisa = formatParty(doSisaAfter);
