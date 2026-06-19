@@ -799,6 +799,7 @@ export default function SuratPengangkutanPage() {
         ...item,
         doLoadedKG: effectiveLoaded,
         maxZAK: finalMaxZAK,
+        party: formatParty(sisaDO),
         sisa: newSisa,
         pengambilanZAK: newPengambilan,
       };
@@ -981,7 +982,7 @@ export default function SuratPengangkutanPage() {
           doLoadedKG: effectiveLoaded,
           doId: doItem.id,
           maxZAK: finalMaxZAK,
-          party: formatParty(doItem.partyKG),
+          party: formatParty(sisaDO),
           sisa: formatParty(sisaDO),
           pengambilanZAK: finalMaxZAK > 0 ? String(finalMaxZAK) : "",
         };
@@ -2384,7 +2385,13 @@ export default function SuratPengangkutanPage() {
                             <option value="">Pilih DO...</option>
                             {getAvailableDO(item.id).map((doItem) => (
                               <option key={doItem.id} value={doItem.nomorSubDO}>
-                                {doItem.nomorSubDO} - {doItem.nomorPO} - {doItem.namaProduk} (Sisa: {getSisaDO(doItem).toLocaleString()} KG)
+                                {(() => {
+                                  const loadedDO = getLoadedKGForDOFromSurat(doItem);
+                                  const allocatedInForm = getAllocatedInOtherItems(doItem, item.id, items);
+                                  const effectiveLoaded = loadedDO + allocatedInForm;
+                                  const sisaRealtime = Math.max(0, (doItem.partyKG || 0) - effectiveLoaded);
+                                  return `${doItem.nomorSubDO} - ${doItem.nomorPO} - ${doItem.namaProduk} (Sisa: ${sisaRealtime.toLocaleString()} KG${loadedDO > 0 ? ` | Sudah dimuat: ${loadedDO.toLocaleString()} KG` : ""}${allocatedInForm > 0 ? ` | Form ini: ${allocatedInForm.toLocaleString()} KG` : ""})`;
+                                })()}
                               </option>
                             ))}
                           </select>
@@ -2535,25 +2542,35 @@ export default function SuratPengangkutanPage() {
                     </div>
                     {item.nomorSubDO && item.doPartyKG > 0 && (
                       <div className="md:col-span-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                        <p className="text-xs font-semibold text-green-800 mb-1">Info DO</p>
-                        <div className="flex justify-between text-xs text-green-700">
-                          <span>Party DO: <strong>{item.doPartyKG.toLocaleString()} KG</strong></span>
-                          <span>Sudah Dimuat DO: <strong>{(() => {
-                            const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
-                            if (!doItem) return item.doLoadedKG.toLocaleString();
-                            const loaded = getLoadedKGForDOFromSurat(doItem);
-                            const allocated = getAllocatedInOtherItems(doItem, item.id, items);
-                            return (loaded + allocated).toLocaleString();
-                          })()} KG</strong></span>
-                          <span>Sisa DO: <strong>{(() => {
-                            const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
-                            if (!doItem) return Math.max(0, item.doPartyKG - item.doLoadedKG).toLocaleString();
-                            const loaded = getLoadedKGForDOFromSurat(doItem);
-                            const allocated = getAllocatedInOtherItems(doItem, item.id, items);
-                            const effectiveLoaded = loaded + allocated;
-                            return Math.max(0, item.doPartyKG - effectiveLoaded).toLocaleString();
-                          })()} KG</strong></span>
-                        </div>
+                        <p className="text-xs font-semibold text-green-800 mb-1">Info DO (Realtime)</p>
+                        {(() => {
+                          const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+                          if (!doItem) return null;
+                          const loaded = getLoadedKGForDOFromSurat(doItem);
+                          const allocated = getAllocatedInOtherItems(doItem, item.id, items);
+                          const effectiveLoaded = loaded + allocated;
+                          const sisa = Math.max(0, item.doPartyKG - effectiveLoaded);
+                          return (
+                            <div className="space-y-1">
+                              <div className="flex justify-between text-xs text-green-700">
+                                <span>Party DO: <strong>{item.doPartyKG.toLocaleString()} KG</strong></span>
+                                <span>Total Sudah Dimuat (Semua Akun): <strong>{loaded.toLocaleString()} KG</strong></span>
+                              </div>
+                              <div className="flex justify-between text-xs text-green-700">
+                                <span>Dalam Form Ini: <strong>{allocated.toLocaleString()} KG</strong></span>
+                                <span className={sisa < (item.doPartyKG * 0.2) ? "text-red-600 font-bold" : "text-green-700"}>
+                                  Sisa Tersedia: <strong>{sisa.toLocaleString()} KG</strong>
+                                  {sisa < (item.doPartyKG * 0.2) && " (Hampir Habis!)"}
+                                </span>
+                              </div>
+                              {loaded > 0 && (
+                                <p className="text-xs text-amber-600 mt-1">
+                                  DO ini sedang digunakan oleh akun lain. Sisa diperbarui secara realtime.
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                     {item.nomorPI && item.piKuantitas > 0 && (

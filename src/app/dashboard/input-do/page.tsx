@@ -14,6 +14,7 @@ import {
   deleteDoc,
   updateDoc,
   where,
+  onSnapshot,
 } from "firebase/firestore";
 import Header from "@/app/components/ui/Header";
 import Input from "@/app/components/ui/Input";
@@ -91,7 +92,25 @@ export default function InputDOPage() {
   useEffect(() => {
     fetchDO();
     fetchStock();
-    fetchSurat();
+
+    const q = query(collection(db, "suratPengangkutan"), where("jenisSurat", "==", "do"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        nomorSeri: doc.data().nomorSeri || "",
+        tanggal: doc.data().tanggal || "",
+        jenisSurat: doc.data().jenisSurat || "",
+        subJenisDO: doc.data().subJenisDO || "",
+        nomorPolisi: doc.data().nomorPolisi || "",
+        driverUnit: doc.data().driverUnit || "",
+        items: doc.data().items || [],
+        createdBy: doc.data().createdBy || "",
+        nomorPI: doc.data().nomorPI || [],
+      } as SuratDoc));
+      setSuratList(data);
+    }, (error) => console.error(error));
+
+    return () => unsubscribe();
   }, []);
 
   const fetchDO = async () => {
