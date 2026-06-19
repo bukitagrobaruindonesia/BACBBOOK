@@ -118,7 +118,7 @@ export default function RiwayatCustomerPage() {
 
 const getCustomerRows = (): CustomerRow[] => {
     return customerList.map((customer) => {
-      let customerPIs = piList.filter((pi) => pi.namaCustomer.trim().toLowerCase() === customer.namaCustomer.trim().toLowerCase());
+      let customerPIs = piList.filter((pi) => pi.namaCustomer.trim().toLowerCase() === customer.namaCustomer.trim().toLowerCase() && pi.statusPemesanan !== "Batal");
       if (filterTahun) {
         customerPIs = customerPIs.filter((pi) => {
           if (!pi.tanggal) return false;
