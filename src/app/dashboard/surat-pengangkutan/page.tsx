@@ -538,7 +538,6 @@ export default function SuratPengangkutanPage() {
   });
 
   const [items, setItems] = useState<SuratPengangkutanItem[]>([]);
-  const isUpdatingItemsRef = useRef(false);
   const [piProductStatus, setPiProductStatus] = useState<Record<string, Record<string, { loaded: number; ordered: number; status: string }>>>({});
   const [piFullyLoadedMap, setPiFullyLoadedMap] = useState<Record<string, boolean>>({});
   const [piSearchMap, setPiSearchMap] = useState<Record<number, string>>({});
@@ -740,7 +739,7 @@ export default function SuratPengangkutanPage() {
   }, [urlNomorPI, piList, jenisSurat, subJenisDO, showJenisModal, showSubJenisModal]);
 
   useEffect(() => {
-    if (items.length === 0 || isUpdatingItemsRef.current) return;
+    if (items.length === 0) return;
     let needsUpdate = false;
     const updatedItems = items.map((item) => {
       if (!item.nomorSubDO.trim() || !item.jenisPupuk.trim()) return item;
@@ -805,9 +804,7 @@ export default function SuratPengangkutanPage() {
       };
     });
     if (!needsUpdate) return;
-    isUpdatingItemsRef.current = true;
     setItems(updatedItems);
-    setTimeout(() => { isUpdatingItemsRef.current = false; }, 0);
   }, [items, doList, doUsageRealtime]);
 
   const handleClickOutside = (e: MouseEvent) => {
@@ -1508,7 +1505,6 @@ export default function SuratPengangkutanPage() {
   const handleItemChange = (id: number, field: keyof SuratPengangkutanItem, value: string) => {
     if (field === "pengambilanZAK") {
       setItems((prev) => {
-        const currentItems = prev;
         return prev.map((item) => {
           if (item.id !== id) return item;
           const updated = { ...item, [field]: value };
@@ -1516,7 +1512,7 @@ export default function SuratPengangkutanPage() {
           const hasDO = item.nomorSubDO.trim() !== "";
           const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
           const doItem = hasDO ? doList.find((d) => d.nomorSubDO === item.nomorSubDO) : null;
-          const allocatedInOtherItems = doItem ? getAllocatedInOtherItems(doItem, id, currentItems) : 0;
+          const allocatedInOtherItems = doItem ? getAllocatedInOtherItems(doItem, id, prev) : 0;
           const effectiveDoLoaded = hasDO ? (item.doLoadedKG + allocatedInOtherItems) : 0;
           const doSisa = hasDO ? Math.max(0, item.doPartyKG - effectiveDoLoaded) : 0;
           const isDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
