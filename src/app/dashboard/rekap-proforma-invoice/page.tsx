@@ -1038,34 +1038,27 @@ export default function RekapProformaInvoicePage() {
 
   
 const releaseInvoiceBase = async (baseNumber: string) => {
-  try {
-    const baseNum = parseInt(baseNumber);
-    if (isNaN(baseNum)) return;
-    const poolRef = doc(db, "counters", "invoiceBasePool");
-    await runTransaction(db, async (transaction) => {
-      const poolSnap = await transaction.get(poolRef);
-      let lastNumber = poolSnap.data()?.lastNumber || 0;
-      let gaps = (poolSnap.data()?.gaps || []) as number[];
-      if (!gaps.includes(baseNum)) {
-        gaps.push(baseNum);
-        gaps.sort((a, b) => a - b);
-      }
-      if (baseNum === lastNumber) {
-        let newLast = lastNumber - 1;
-        while (newLast > 0 && gaps.includes(newLast)) {
-          newLast--;
-        }
-        lastNumber = Math.max(0, newLast);
-      }
-      transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
-    });
     try {
-      await updateDoc(doc(db, "invoiceBaseLocks", baseNumber), { released: true, releasedAt: serverTimestamp() });
-    } catch {}
-  } catch (error) {
-    console.error("Failed to release invoice base:", error);
-  }
-};
+      const baseNum = parseInt(baseNumber);
+      if (isNaN(baseNum)) return;
+      const poolRef = doc(db, "counters", "invoiceBasePool");
+      await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        let lastNumber = poolSnap.data()?.lastNumber || 0;
+        let gaps = (poolSnap.data()?.gaps || []) as number[];
+        if (!gaps.includes(baseNum)) {
+          gaps.push(baseNum);
+          gaps.sort((a, b) => a - b);
+        }
+        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
+      });
+      try {
+        await updateDoc(doc(db, "invoiceBaseLocks", baseNumber), { released: true, releasedAt: serverTimestamp() });
+      } catch {}
+    } catch (error) {
+      console.error("Failed to release invoice base:", error);
+    }
+  };
 
 const cleanupStalePendingLocks = async () => {
   try {
@@ -1311,46 +1304,17 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     setIsSubmitting(true);
     try {
       const pi = selectedItem;
-      const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
-      const groupedItems = pi.produkItems.reduce((acc, produk) => {
-        const key = produk.namaProduk;
-        if (!acc[key]) {
-          acc[key] = {
-            namaProduk: produk.namaProduk,
-            fot: produk.fot || "",
-            produsen: produk.produsen || "",
-            bobotPerUnit: produk.bobotPerUnit || 50,
-            hargaSatuan: produk.hargaSatuan || 0,
-            hargaPerZakDus: produk.hargaPerZakDus || 0,
-            kuantitas: 0,
-          };
-        }
-        let loadedQty = 0;
-        allSuratForPI.forEach((surat) => {
-          (surat.items || []).forEach((it) => {
-            const itemPI = it.nomorPI || "";
-            if (itemPI && itemPI !== pi.nomorPI) return;
-            const match = it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) || produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
-            if (match) {
-              const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
-              loadedQty += (it.pengambilanZAK || 0) * bobot;
-            }
-          });
-        });
-        acc[key].kuantitas += loadedQty;
-        return acc;
-      }, {} as Record<string, any>);
-      const invoiceItems = Object.values(groupedItems).map((item: any, idx: number) => ({
+      const invoiceItems = pi.produkItems.map((produk, idx) => ({
         no: idx + 1,
-        namaProduk: item.namaProduk,
-        produsen: item.produsen,
-        kemasan: item.bobotPerUnit ? `${item.bobotPerUnit} KG` : "-",
-        fot: item.fot,
-        kuantitas: item.kuantitas,
-        satuan: "KG",
-        hargaSatuan: item.hargaSatuan,
-        hargaPerZakDus: item.hargaPerZakDus,
-        subTotal: item.kuantitas * item.hargaSatuan,
+        namaProduk: produk.namaProduk,
+        produsen: produk.produsen || "",
+        kemasan: produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
+        fot: produk.fot || "",
+        kuantitas: produk.kuantitas || 0,
+        satuan: produk.satuan || "KG",
+        hargaSatuan: produk.hargaSatuan || 0,
+        hargaPerZakDus: produk.hargaPerZakDus || 0,
+        subTotal: (produk.kuantitas || 0) * (produk.hargaSatuan || 0),
       })).filter((it) => it.kuantitas > 0);
       const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
       const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
@@ -1370,7 +1334,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
         ongkosKirim: pi.ongkosKirim || 0,
         jumlahTertagih: totalPembayaran,
         terbilang: numberToWords(Math.round(totalPembayaran)),
-        riwayatPengangkutan: allSuratForPI.map((s) => ({
+        riwayatPengangkutan: getSuratMuatForPI(pi.nomorPI).map((s) => ({
           nomorSeri: s.nomorSeri,
           tanggal: s.tanggal,
           driverUnit: s.driverUnit,
@@ -1490,46 +1454,17 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     setIsSubmitting(true);
     try {
       const pi = selectedItem;
-      const allSuratForPI = getSuratMuatForPI(pi.nomorPI);
-      const groupedItems = pi.produkItems.reduce((acc, produk) => {
-        const key = produk.namaProduk;
-        if (!acc[key]) {
-          acc[key] = {
-            namaProduk: produk.namaProduk,
-            fot: produk.fot || "",
-            produsen: produk.produsen || "",
-            bobotPerUnit: produk.bobotPerUnit || 50,
-            hargaSatuan: produk.hargaSatuan || 0,
-            hargaPerZakDus: produk.hargaPerZakDus || 0,
-            kuantitas: 0,
-          };
-        }
-        let loadedQty = 0;
-        allSuratForPI.forEach((surat) => {
-          (surat.items || []).forEach((it) => {
-            const itemPI = it.nomorPI || "";
-            if (itemPI && itemPI !== pi.nomorPI) return;
-            const match = it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) || produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
-            if (match) {
-              const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
-              loadedQty += (it.pengambilanZAK || 0) * bobot;
-            }
-          });
-        });
-        acc[key].kuantitas = loadedQty;
-        return acc;
-      }, {} as Record<string, any>);
-      const invoiceItems = Object.values(groupedItems).map((item: any, idx: number) => ({
+      const invoiceItems = pi.produkItems.map((produk, idx) => ({
         no: idx + 1,
-        namaProduk: item.namaProduk,
-        produsen: item.produsen,
-        kemasan: item.bobotPerUnit ? `${item.bobotPerUnit} KG` : "-",
-        fot: item.fot,
-        kuantitas: item.kuantitas,
-        satuan: "KG",
-        hargaSatuan: item.hargaSatuan,
-        hargaPerZakDus: item.hargaPerZakDus,
-        subTotal: item.kuantitas * item.hargaSatuan,
+        namaProduk: produk.namaProduk,
+        produsen: produk.produsen || "",
+        kemasan: produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
+        fot: produk.fot || "",
+        kuantitas: produk.kuantitas || 0,
+        satuan: produk.satuan || "KG",
+        hargaSatuan: produk.hargaSatuan || 0,
+        hargaPerZakDus: produk.hargaPerZakDus || 0,
+        subTotal: (produk.kuantitas || 0) * (produk.hargaSatuan || 0),
       })).filter((it) => it.kuantitas > 0);
       const totalKuantitas = invoiceItems.reduce((sum, it) => sum + it.kuantitas, 0);
       const subtotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
@@ -1996,13 +1931,6 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
           if (!gaps.includes(baseNum)) {
             gaps.push(baseNum);
             gaps.sort((a, b) => a - b);
-          }
-          if (baseNum === lastNumber) {
-            let newLast = lastNumber - 1;
-            while (newLast > 0 && gaps.includes(newLast)) {
-              newLast--;
-            }
-            lastNumber = Math.max(0, newLast);
           }
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
@@ -2596,45 +2524,17 @@ const handleExportExcel = () => {
         };
       }).filter((it) => it.kuantitas > 0);
     } else {
-      const groupedItems = pi.produkItems.reduce((acc, produk) => {
-        const key = produk.namaProduk;
-        if (!acc[key]) {
-          acc[key] = {
-            namaProduk: produk.namaProduk,
-            fot: produk.fot || "",
-            produsen: produk.produsen || "",
-            bobotPerUnit: produk.bobotPerUnit || 50,
-            hargaSatuan: produk.hargaSatuan || 0,
-            hargaPerZakDus: produk.hargaPerZakDus || 0,
-            kuantitas: 0,
-          };
-        }
-        let loadedQty = 0;
-        allSuratForPI.forEach((surat: SuratMuatInfo) => {
-          (surat.items || []).forEach((it: SuratMuatItem) => {
-            const itemPI = it.nomorPI || "";
-            if (itemPI && itemPI !== pi.nomorPI) return;
-            const match = it.jenisPupuk.toUpperCase().includes(produk.namaProduk.toUpperCase()) || produk.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase());
-            if (match) {
-              const bobot = it.bobotPerUnit || produk.bobotPerUnit || 50;
-              loadedQty += (it.pengambilanZAK || 0) * bobot;
-            }
-          });
-        });
-        acc[key].kuantitas += loadedQty;
-        return acc;
-      }, {} as Record<string, any>);
-      invoiceItems = Object.values(groupedItems).map((item: any, idx: number) => ({
+      invoiceItems = pi.produkItems.map((produk, idx) => ({
         no: idx + 1,
-        namaProduk: item.namaProduk,
-        produsen: item.produsen,
-        kemasan: item.bobotPerUnit ? `${item.bobotPerUnit} KG` : "-",
-        fot: item.fot,
-        kuantitas: item.kuantitas,
-        satuan: "KG",
-        hargaSatuan: item.hargaSatuan,
-        hargaPerZakDus: item.hargaPerZakDus,
-        subTotal: item.kuantitas * item.hargaSatuan,
+        namaProduk: produk.namaProduk,
+        produsen: produk.produsen || "",
+        kemasan: produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
+        fot: produk.fot || "",
+        kuantitas: produk.kuantitas || 0,
+        satuan: produk.satuan || "KG",
+        hargaSatuan: produk.hargaSatuan || 0,
+        hargaPerZakDus: produk.hargaPerZakDus || 0,
+        subTotal: (produk.kuantitas || 0) * (produk.hargaSatuan || 0),
       })).filter((it) => it.kuantitas > 0);
     }
     const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
