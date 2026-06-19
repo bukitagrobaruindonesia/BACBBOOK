@@ -516,6 +516,7 @@ export default function SuratPengangkutanPage() {
   const [fotList, setFotList] = useState<FOTData[]>([]);
   const [doList, setDoList] = useState<DOItem[]>([]);
   const [suratDOList, setSuratDOList] = useState<SuratDODoc[]>([]);
+  const [doUsageRealtime, setDoUsageRealtime] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -656,6 +657,23 @@ export default function SuratPengangkutanPage() {
         items: doc.data().items || [],
       } as SuratDODoc));
       setSuratDOList(data);
+      const usageMap: Record<string, number> = {};
+      snapshot.docs.forEach((doc) => {
+        const suratItems = doc.data().items || [];
+        suratItems.forEach((item: any) => {
+          const key = `${item.nomorSubDO}|${item.nomorPO}|${item.jenisPupuk}`;
+          const zak = item.pengambilanZAK || 0;
+          const bobot = item.bobotPerUnit || 50;
+          const isDusBotol = bobot === 1;
+          const botolPerDus = 20;
+          if (isDusBotol) {
+            usageMap[key] = (usageMap[key] || 0) + (zak / botolPerDus) * bobot;
+          } else {
+            usageMap[key] = (usageMap[key] || 0) + zak * bobot;
+          }
+        });
+      });
+      setDoUsageRealtime(usageMap);
     }, (error) => console.error(error));
     unsubscribers.push(unsubSuratDO);
 
@@ -795,19 +813,8 @@ export default function SuratPengangkutanPage() {
   };
 
   const getLoadedKGForDOFromSurat = (doItem: DOItem) => {
-    let total = 0;
-    suratDOList.forEach((surat) => {
-      surat.items.forEach((item) => {
-        if (
-          item.nomorSubDO === doItem.nomorSubDO &&
-          item.nomorPO === doItem.nomorPO &&
-          item.jenisPupuk === doItem.namaProduk
-        ) {
-          total += (item.pengambilanZAK || 0) * (item.bobotPerUnit || 50);
-        }
-      });
-    });
-    return total;
+    const key = `${doItem.nomorSubDO}|${doItem.nomorPO}|${doItem.namaProduk}`;
+    return doUsageRealtime[key] || 0;
   };
 
   const getSisaDO = (doItem: DOItem) => {
@@ -818,8 +825,10 @@ export default function SuratPengangkutanPage() {
   const getAvailableDO = (currentItemId: number) => {
     return doList.filter((doItem) => {
       if (isDOExpired(doItem.tanggalKadaluarsa)) return false;
-      const sisa = getSisaDO(doItem);
-      if (sisa <= 0) return false;
+      const loaded = getLoadedKGForDOFromSurat(doItem);
+      const allocatedInForm = getAllocatedInOtherItems(doItem, currentItemId);
+      const effectiveSisa = Math.max(0, (doItem.partyKG || 0) - loaded - allocatedInForm);
+      if (effectiveSisa <= 0) return false;
       const currentItem = items.find((it) => it.id === currentItemId);
       if (currentItem && currentItem.jenisPupuk.trim()) {
         if (doItem.namaProduk !== currentItem.jenisPupuk) return false;
