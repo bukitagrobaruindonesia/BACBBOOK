@@ -538,10 +538,7 @@ export default function SuratPengangkutanPage() {
   });
 
   const [items, setItems] = useState<SuratPengangkutanItem[]>([]);
-  const itemsRef = useRef<SuratPengangkutanItem[]>([]);
-  useEffect(() => {
-    itemsRef.current = items;
-  }, [items]);
+  const isUpdatingItemsRef = useRef(false);
   const [piProductStatus, setPiProductStatus] = useState<Record<string, Record<string, { loaded: number; ordered: number; status: string }>>>({});
   const [piFullyLoadedMap, setPiFullyLoadedMap] = useState<Record<string, boolean>>({});
   const [piSearchMap, setPiSearchMap] = useState<Record<number, string>>({});
@@ -742,6 +739,77 @@ export default function SuratPengangkutanPage() {
     }
   }, [urlNomorPI, piList, jenisSurat, subJenisDO, showJenisModal, showSubJenisModal]);
 
+  useEffect(() => {
+    if (items.length === 0 || isUpdatingItemsRef.current) return;
+    let needsUpdate = false;
+    const updatedItems = items.map((item) => {
+      if (!item.nomorSubDO.trim() || !item.jenisPupuk.trim()) return item;
+      const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+      if (!doItem) return item;
+      const loadedDO = getLoadedKGForDOFromSurat(doItem);
+      const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id, items);
+      const effectiveLoaded = loadedDO + allocatedInOtherItems;
+      const sisaDO = Math.max(0, (doItem.partyKG || 0) - effectiveLoaded);
+      const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
+      let maxZAKPI = 0;
+      let maxZAKDO = 0;
+      const isDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
+      const botolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
+      if (isDusBotol) {
+        maxZAKPI = piSisa;
+        const itemBobot = item.bobotPerUnit || 50;
+        if (itemBobot === 1) {
+          maxZAKDO = Math.floor(sisaDO);
+        } else {
+          maxZAKDO = Math.floor(sisaDO / itemBobot) * botolPerDus;
+        }
+      } else {
+        maxZAKPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
+        maxZAKDO = item.bobotPerUnit > 0 ? Math.floor(sisaDO / item.bobotPerUnit) : 0;
+      }
+      const finalMaxZAK = Math.min(maxZAKPI, maxZAKDO);
+      if (item.maxZAK !== finalMaxZAK || item.doLoadedKG !== effectiveLoaded) {
+        needsUpdate = true;
+      }
+      const currentPengambilan = parseFloat(item.pengambilanZAK) || 0;
+      let newPengambilan = item.pengambilanZAK;
+      let newSisa = item.sisa;
+      if (finalMaxZAK === 0) {
+        newPengambilan = "";
+        newSisa = formatParty(sisaDO);
+      } else if (currentPengambilan > finalMaxZAK) {
+        newPengambilan = String(finalMaxZAK);
+        if (isDusBotol) {
+          const zakFinal = finalMaxZAK;
+          const doSisaAfter = Math.max(0, sisaDO - (zakFinal / botolPerDus) * (item.bobotPerUnit || 50));
+          newSisa = formatParty(doSisaAfter);
+        } else {
+          const doSisaAfter = Math.max(0, sisaDO - finalMaxZAK * item.bobotPerUnit);
+          newSisa = formatParty(doSisaAfter);
+        }
+      } else {
+        if (isDusBotol) {
+          const doSisaAfter = Math.max(0, sisaDO - (currentPengambilan / botolPerDus) * (item.bobotPerUnit || 50));
+          newSisa = formatParty(doSisaAfter);
+        } else {
+          const doSisaAfter = Math.max(0, sisaDO - currentPengambilan * item.bobotPerUnit);
+          newSisa = formatParty(doSisaAfter);
+        }
+      }
+      return {
+        ...item,
+        doLoadedKG: effectiveLoaded,
+        maxZAK: finalMaxZAK,
+        sisa: newSisa,
+        pengambilanZAK: newPengambilan,
+      };
+    });
+    if (!needsUpdate) return;
+    isUpdatingItemsRef.current = true;
+    setItems(updatedItems);
+    setTimeout(() => { isUpdatingItemsRef.current = false; }, 0);
+  }, [items, doList, doUsageRealtime]);
+
   const handleClickOutside = (e: MouseEvent) => {
     const target = e.target as Node;
     let clickedInsideAny = false;
@@ -826,7 +894,7 @@ export default function SuratPengangkutanPage() {
     return doList.filter((doItem) => {
       if (isDOExpired(doItem.tanggalKadaluarsa)) return false;
       const loaded = getLoadedKGForDOFromSurat(doItem);
-      const allocatedInForm = getAllocatedInOtherItems(doItem, currentItemId);
+      const allocatedInForm = getAllocatedInOtherItems(doItem, currentItemId, items);
       const effectiveSisa = Math.max(0, (doItem.partyKG || 0) - loaded - allocatedInForm);
       if (effectiveSisa <= 0) return false;
       const currentItem = items.find((it) => it.id === currentItemId);
@@ -840,9 +908,8 @@ export default function SuratPengangkutanPage() {
     });
   };
 
-  const getAllocatedInOtherItems = (doItem: DOItem, currentItemId: number) => {
+  const getAllocatedInOtherItems = (doItem: DOItem, currentItemId: number, currentItems: SuratPengangkutanItem[]) => {
     let allocated = 0;
-    const currentItems = itemsRef.current;
     currentItems.forEach((it) => {
       if (it.id !== currentItemId && it.nomorSubDO === doItem.nomorSubDO && it.nomorPO === doItem.nomorPO && it.jenisPupuk === doItem.namaProduk) {
         const zak = parseFloat(it.pengambilanZAK) || 0;
@@ -881,7 +948,7 @@ export default function SuratPengangkutanPage() {
     const stock = getStockForProduct(doItem.namaProduk);
     const bobot = stock ? stock.bobotPerUnit : 50;
     const loadedDO = getLoadedKGForDOFromSurat(doItem);
-    const allocatedInOtherItems = getAllocatedInOtherItems(doItem, itemId);
+    const allocatedInOtherItems = getAllocatedInOtherItems(doItem, itemId, items);
     const effectiveLoaded = loadedDO + allocatedInOtherItems;
     const sisaDO = Math.max(0, (doItem.partyKG || 0) - effectiveLoaded);
 
@@ -1439,16 +1506,17 @@ export default function SuratPengangkutanPage() {
   };
 
   const handleItemChange = (id: number, field: keyof SuratPengangkutanItem, value: string) => {
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        const updated = { ...item, [field]: value };
-        if (field === "pengambilanZAK") {
+    if (field === "pengambilanZAK") {
+      setItems((prev) => {
+        const currentItems = prev;
+        return prev.map((item) => {
+          if (item.id !== id) return item;
+          const updated = { ...item, [field]: value };
           const zak = parseFloat(value) || 0;
           const hasDO = item.nomorSubDO.trim() !== "";
           const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
           const doItem = hasDO ? doList.find((d) => d.nomorSubDO === item.nomorSubDO) : null;
-          const allocatedInOtherItems = doItem ? getAllocatedInOtherItems(doItem, id) : 0;
+          const allocatedInOtherItems = doItem ? getAllocatedInOtherItems(doItem, id, currentItems) : 0;
           const effectiveDoLoaded = hasDO ? (item.doLoadedKG + allocatedInOtherItems) : 0;
           const doSisa = hasDO ? Math.max(0, item.doPartyKG - effectiveDoLoaded) : 0;
           const isDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
@@ -1501,8 +1569,15 @@ export default function SuratPengangkutanPage() {
           } else if (finalMax === 0) {
             setFieldError(`pengambilan_${id}`, "Sisa PI atau DO sudah habis");
           }
-        }
-        return updated;
+          return updated;
+        });
+      });
+      return;
+    }
+    setItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== id) return item;
+        return { ...item, [field]: value };
       })
     );
   };
@@ -1567,7 +1642,7 @@ export default function SuratPengangkutanPage() {
         if (isMandiri && item.nomorSubDO.trim()) {
           const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
           if (doItem) {
-            const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id);
+            const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id, items);
             const doSisa = Math.max(0, doItem.partyKG - getLoadedKGForDOFromSurat(doItem) - allocatedInOtherItems);
             let maxDO = 0;
             if (itemIsDusBotol) {
