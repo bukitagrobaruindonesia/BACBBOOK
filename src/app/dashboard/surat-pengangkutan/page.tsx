@@ -801,7 +801,7 @@ export default function SuratPengangkutanPage() {
         ...item,
         doLoadedKG: effectiveLoaded,
         maxZAK: finalMaxZAK,
-        party: formatParty(partyBefore),
+        party: formatParty(doItem.partyKG),
         sisa: newSisa,
         pengambilanZAK: newPengambilan,
       };
@@ -1559,7 +1559,7 @@ export default function SuratPengangkutanPage() {
           }
           const finalMax = hasDO ? Math.min(maxPI, maxDO) : maxPI;
           updated.maxZAK = finalMax;
-          updated.party = formatParty(partyBefore);
+          updated.party = formatParty(item.doPartyKG);
           if (finalMax > 0 && zak > finalMax) {
             updated.pengambilanZAK = String(finalMax);
             const zakFinal = finalMax;
@@ -1572,10 +1572,10 @@ export default function SuratPengangkutanPage() {
             }
           } else if (finalMax === 0) {
             updated.pengambilanZAK = "";
-            updated.party = formatParty(partyBefore);
+            updated.party = formatParty(item.doPartyKG);
             updated.sisa = hasDO ? formatParty(doSisa) : (isDusBotol ? `${piSisa.toLocaleString()} BOTOL` : formatSisaKG(piSisa));
           } else {
-            updated.party = formatParty(partyBefore);
+            updated.party = formatParty(item.doPartyKG);
             if (hasDO) {
               const doSisaAfter = Math.max(0, doSisa - (isDusBotol ? (zak / botolPerDus) * (item.bobotPerUnit || 50) : zak * item.bobotPerUnit));
               updated.sisa = formatParty(doSisaAfter);
