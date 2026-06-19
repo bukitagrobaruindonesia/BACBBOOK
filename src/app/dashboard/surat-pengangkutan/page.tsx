@@ -2538,8 +2538,21 @@ export default function SuratPengangkutanPage() {
                         <p className="text-xs font-semibold text-green-800 mb-1">Info DO</p>
                         <div className="flex justify-between text-xs text-green-700">
                           <span>Party DO: <strong>{item.doPartyKG.toLocaleString()} KG</strong></span>
-                          <span>Sudah Dimuat DO: <strong>{item.doLoadedKG.toLocaleString()} KG</strong></span>
-                          <span>Sisa DO: <strong>{Math.max(0, item.doPartyKG - item.doLoadedKG).toLocaleString()} KG</strong></span>
+                          <span>Sudah Dimuat DO: <strong>{(() => {
+                            const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+                            if (!doItem) return item.doLoadedKG.toLocaleString();
+                            const loaded = getLoadedKGForDOFromSurat(doItem);
+                            const allocated = getAllocatedInOtherItems(doItem, item.id, items);
+                            return (loaded + allocated).toLocaleString();
+                          })()} KG</strong></span>
+                          <span>Sisa DO: <strong>{(() => {
+                            const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
+                            if (!doItem) return Math.max(0, item.doPartyKG - item.doLoadedKG).toLocaleString();
+                            const loaded = getLoadedKGForDOFromSurat(doItem);
+                            const allocated = getAllocatedInOtherItems(doItem, item.id, items);
+                            const effectiveLoaded = loaded + allocated;
+                            return Math.max(0, item.doPartyKG - effectiveLoaded).toLocaleString();
+                          })()} KG</strong></span>
                         </div>
                       </div>
                     )}
