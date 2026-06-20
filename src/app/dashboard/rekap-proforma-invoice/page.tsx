@@ -1051,13 +1051,6 @@ const releaseInvoiceBase = async (baseNumber: string) => {
 const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoice): Promise<string> => {
     const pi = piRow || selectedItem;
     if (!pi) return "";
-    const suratRef = doc(db, "suratPengangkutan", surat.id);
-    const suratSnap = await getDoc(suratRef);
-    const existingNomor = suratSnap.data()?.nomorInvoice;
-    if (existingNomor) {
-      const parsed = parseInvoiceNumber(existingNomor);
-      if (parsed) return existingNomor;
-    }
     const piRef = doc(db, "proformaInvoice", pi.id);
     const piSnap = await getDoc(piRef);
     let baseNumber = piSnap.data()?.invoiceBaseNumber;
@@ -1070,7 +1063,6 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     const sIndex = sortedSurat.findIndex((s) => s.id === surat.id);
     const sNum = sIndex >= 0 ? sIndex + 1 : 1;
     const nomor = `BAGB-INV-S${sNum}-${baseNumber}`;
-    await updateDoc(suratRef, { nomorInvoice: nomor });
     return nomor;
   };
 
