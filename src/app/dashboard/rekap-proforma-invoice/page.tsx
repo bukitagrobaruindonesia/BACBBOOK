@@ -487,9 +487,30 @@ const getNextAvailableBaseNumber = async (): Promise<string> => {
   return String(candidate).padStart(3, "0");
 };
 
-const isBaseNumberUsed = async (baseNumber: string): Promise<boolean> => {
+const isBaseNumberUsed = async (baseNumber: string, nomorPI?: string): Promise<boolean> => {
   const used = await getUsedBaseNumbers();
-  return used.includes(parseInt(baseNumber));
+  const baseNum = parseInt(baseNumber);
+  if (!used.includes(baseNum)) return false;
+  if (!nomorPI) return true;
+  const fullSnap = await getDocs(query(collection(db, "arsipInvoice")));
+  for (const d of fullSnap.docs) {
+    const data = d.data();
+    const nomor = data.nomorInvoice || "";
+    const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
+    if (match && parseInt(match[1]) === baseNum && data.nomorPI === nomorPI) {
+      return false;
+    }
+  }
+  const sementaraSnap = await getDocs(query(collection(db, "arsipInvoiceSementara")));
+  for (const d of sementaraSnap.docs) {
+    const data = d.data();
+    const nomor = data.nomorInvoice || "";
+    const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
+    if (match && parseInt(match[1]) === baseNum && data.nomorPI === nomorPI) {
+      return false;
+    }
+  }
+  return true;
 };
 
 const cleanupStaleLocks = async () => {
@@ -1141,7 +1162,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
         baseNumber = await getNextAvailableBaseNumber();
         await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
       } else {
-        const isUsed = await isBaseNumberUsed(baseNumber);
+        const isUsed = await isBaseNumberUsed(baseNumber, row.nomorPI);
         if (isUsed) {
           baseNumber = await getNextAvailableBaseNumber();
           await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
@@ -1308,9 +1329,9 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       return;
     }
     const baseNumber = invoiceNomor.replace("BAGB-INV-", "");
-    const isUsed = await isBaseNumberUsed(baseNumber);
+    const isUsed = await isBaseNumberUsed(baseNumber, selectedItem.nomorPI);
     if (isUsed) {
-      alert("Nomor invoice base sudah terpakai. Silakan reset atau gunakan nomor lain.");
+      alert("Nomor invoice base sudah terpakai oleh PI lain. Silakan reset atau gunakan nomor lain.");
       return;
     }
     const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
