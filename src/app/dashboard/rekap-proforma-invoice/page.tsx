@@ -1247,18 +1247,35 @@ export default function RekapProformaInvoicePage() {
     setIsSubmitting(true);
     try {
       const pi = selectedItem;
-      const invoiceItems = pi.produkItems.map((produk, idx) => ({
-        no: idx + 1,
-        namaProduk: produk.namaProduk,
-        produsen: produk.produsen || "",
-        kemasan: produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
-        fot: produk.fot || "",
-        kuantitas: produk.kuantitas || 0,
-        satuan: produk.satuan || "KG",
-        hargaSatuan: produk.hargaSatuan || 0,
-        hargaPerZakDus: produk.hargaPerZakDus || 0,
-        subTotal: (produk.kuantitas || 0) * (produk.hargaSatuan || 0),
-      })).filter((it) => it.kuantitas > 0);
+      const invoiceItems = pi.produkItems.map((produk, idx) => {
+        const satuan = produk.satuan || "ZAK";
+        const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const bobot = produk.bobotPerUnit || 50;
+        let kemasan: string;
+        let kuantitas: number;
+        let displaySatuan: string;
+        if (isBotolOrDus) {
+          kemasan = bobot ? `${bobot} ML` : "-";
+          kuantitas = produk.kuantitas || 0;
+          displaySatuan = satuan === "DUS" ? "DUS" : "BOTOL";
+        } else {
+          kemasan = bobot ? `${bobot} KG` : "-";
+          kuantitas = produk.kuantitas || 0;
+          displaySatuan = satuan;
+        }
+        return {
+          no: idx + 1,
+          namaProduk: produk.namaProduk,
+          produsen: produk.produsen || "",
+          kemasan,
+          fot: produk.fot || "",
+          kuantitas,
+          satuan: displaySatuan,
+          hargaSatuan: produk.hargaSatuan || 0,
+          hargaPerZakDus: produk.hargaPerZakDus || 0,
+          subTotal: kuantitas * (produk.hargaSatuan || 0),
+        };
+      }).filter((it) => it.kuantitas > 0);
       const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
       const ppn = pi.includePPN ? totalSubTotal * 0.11 : 0;
       const totalPembayaran = totalSubTotal + ppn + (pi.ongkosKirim || 0);
@@ -1410,18 +1427,35 @@ export default function RekapProformaInvoicePage() {
     setIsSubmitting(true);
     try {
       const pi = selectedItem;
-      const invoiceItems = pi.produkItems.map((produk, idx) => ({
-        no: idx + 1,
-        namaProduk: produk.namaProduk,
-        produsen: produk.produsen || "",
-        kemasan: produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
-        fot: produk.fot || "",
-        kuantitas: produk.kuantitas || 0,
-        satuan: produk.satuan || "KG",
-        hargaSatuan: produk.hargaSatuan || 0,
-        hargaPerZakDus: produk.hargaPerZakDus || 0,
-        subTotal: (produk.kuantitas || 0) * (produk.hargaSatuan || 0),
-      })).filter((it) => it.kuantitas > 0);
+      const invoiceItems = pi.produkItems.map((produk, idx) => {
+        const satuan = produk.satuan || "ZAK";
+        const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const bobot = produk.bobotPerUnit || 50;
+        let kemasan: string;
+        let kuantitas: number;
+        let displaySatuan: string;
+        if (isBotolOrDus) {
+          kemasan = bobot ? `${bobot} ML` : "-";
+          kuantitas = produk.kuantitas || 0;
+          displaySatuan = satuan === "DUS" ? "DUS" : "BOTOL";
+        } else {
+          kemasan = bobot ? `${bobot} KG` : "-";
+          kuantitas = produk.kuantitas || 0;
+          displaySatuan = satuan;
+        }
+        return {
+          no: idx + 1,
+          namaProduk: produk.namaProduk,
+          produsen: produk.produsen || "",
+          kemasan,
+          fot: produk.fot || "",
+          kuantitas,
+          satuan: displaySatuan,
+          hargaSatuan: produk.hargaSatuan || 0,
+          hargaPerZakDus: produk.hargaPerZakDus || 0,
+          subTotal: kuantitas * (produk.hargaSatuan || 0),
+        };
+      }).filter((it) => it.kuantitas > 0);
       const totalKuantitas = invoiceItems.reduce((sum, it) => sum + it.kuantitas, 0);
       const subtotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
       const dppNilaiLain = 0;
@@ -2609,37 +2643,69 @@ const handleExportExcel = () => {
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
           it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
         );
+        const satuan = produk?.satuan || "ZAK";
+        const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
         const bobot = it.bobotPerUnit || produk?.bobotPerUnit || 50;
-        const loadedQty = (it.pengambilanZAK || 0) * bobot;
         const hargaSatuan = produk?.hargaSatuan || 0;
         const hargaPerZakDus = produk?.hargaPerZakDus || 0;
-        const subTotal = loadedQty * hargaSatuan;
+        let kemasan: string;
+        let kuantitas: number;
+        let displaySatuan: string;
+        let subTotal: number;
+        if (isBotolOrDus) {
+          kemasan = bobot ? `${bobot} ML` : "-";
+          kuantitas = it.pengambilanZAK || 0;
+          displaySatuan = satuan === "DUS" ? "DUS" : "BTL";
+          subTotal = kuantitas * hargaSatuan;
+        } else {
+          kemasan = bobot ? `${bobot} KG` : "-";
+          kuantitas = (it.pengambilanZAK || 0) * bobot;
+          displaySatuan = "KG";
+          subTotal = kuantitas * hargaSatuan;
+        }
         return {
           no: idx + 1,
           namaProduk: it.jenisPupuk || "",
           produsen: produk?.produsen || "",
-          kemasan: bobot ? `${bobot} KG` : "-",
+          kemasan,
           fot: it.fot || produk?.fot || "",
-          kuantitas: loadedQty,
-          satuan: "KG",
+          kuantitas,
+          satuan: displaySatuan,
           hargaSatuan,
           hargaPerZakDus,
           subTotal,
         };
       }).filter((it) => it.kuantitas > 0);
     } else {
-      invoiceItems = pi.produkItems.map((produk, idx) => ({
-        no: idx + 1,
-        namaProduk: produk.namaProduk,
-        produsen: produk.produsen || "",
-        kemasan: produk.bobotPerUnit ? `${produk.bobotPerUnit} KG` : "-",
-        fot: produk.fot || "",
-        kuantitas: produk.kuantitas || 0,
-        satuan: produk.satuan || "KG",
-        hargaSatuan: produk.hargaSatuan || 0,
-        hargaPerZakDus: produk.hargaPerZakDus || 0,
-        subTotal: (produk.kuantitas || 0) * (produk.hargaSatuan || 0),
-      })).filter((it) => it.kuantitas > 0);
+      invoiceItems = pi.produkItems.map((produk, idx) => {
+        const satuan = produk.satuan || "ZAK";
+        const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const bobot = produk.bobotPerUnit || 50;
+        let kemasan: string;
+        let kuantitas: number;
+        let displaySatuan: string;
+        if (isBotolOrDus) {
+          kemasan = bobot ? `${bobot} ML` : "-";
+          kuantitas = produk.kuantitas || 0;
+          displaySatuan = satuan === "DUS" ? "DUS" : "BTL";
+        } else {
+          kemasan = bobot ? `${bobot} KG` : "-";
+          kuantitas = produk.kuantitas || 0;
+          displaySatuan = satuan;
+        }
+        return {
+          no: idx + 1,
+          namaProduk: produk.namaProduk,
+          produsen: produk.produsen || "",
+          kemasan,
+          fot: produk.fot || "",
+          kuantitas,
+          satuan: displaySatuan,
+          hargaSatuan: produk.hargaSatuan || 0,
+          hargaPerZakDus: produk.hargaPerZakDus || 0,
+          subTotal: kuantitas * (produk.hargaSatuan || 0),
+        };
+      }).filter((it) => it.kuantitas > 0);
     }
     const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
     const dppNilaiLain = 0;
