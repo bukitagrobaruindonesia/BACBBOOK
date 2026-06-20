@@ -521,7 +521,7 @@ export default function RekapProformaInvoicePage() {
   const [bastExists, setBastExists] = useState(false);
   const [invoiceExists, setInvoiceExists] = useState(false);
   const [invoiceSementaraExists, setInvoiceSementaraExists] = useState(false);
-  const [pendingInvoiceBase, setPendingInvoiceBase] = useState("");
+  
   const [editForm, setEditForm] = useState({
     tanggal: "",
     nomorPI: "",
@@ -568,26 +568,14 @@ export default function RekapProformaInvoicePage() {
   }, [selectedItem]);
 
   useEffect(() => {
-    cleanupStalePendingLocks();
     cleanupStaleLocks();
     const interval = setInterval(() => {
-      cleanupStalePendingLocks();
       cleanupStaleLocks();
     }, 10 * 60 * 1000);
-    const handleBeforeUnload = () => {
-      if (pendingInvoiceBase) {
-        releaseInvoiceBase(pendingInvoiceBase);
-      }
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
     return () => {
       clearInterval(interval);
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      if (pendingInvoiceBase) {
-        releaseInvoiceBase(pendingInvoiceBase);
-      }
     };
-  }, [pendingInvoiceBase]);
+  }, []);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -1060,24 +1048,6 @@ const releaseInvoiceBase = async (baseNumber: string) => {
     }
   };
 
-const cleanupStalePendingLocks = async () => {
-  try {
-    const locksQuery = query(collection(db, "invoiceBaseLocks"), where("nomorPI", "==", "pending"));
-    const locksSnap = await getDocs(locksQuery);
-    const staleThreshold = Date.now() - 30 * 60 * 1000;
-    for (const lockDoc of locksSnap.docs) {
-      const lockData = lockDoc.data();
-      const createdAt = lockData.createdAt?.toMillis?.() || lockData.createdAt || 0;
-      if (createdAt < staleThreshold) {
-        const baseNumber = lockDoc.id;
-        await releaseInvoiceBase(baseNumber);
-      }
-    }
-  } catch (error) {
-    console.error("Cleanup failed:", error);
-  }
-};
-
 const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoice): Promise<string> => {
     const pi = piRow || selectedItem;
     if (!pi) return "";
@@ -1143,7 +1113,6 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     setInvoiceNomor("");
     setInvoiceDate("");
     setCustomerId(row.customerId || "");
-    setPendingInvoiceBase("");
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
@@ -1170,7 +1139,6 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
         baseNumber = await getUniqueInvoiceBaseNumber();
         await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
       }
-      setPendingInvoiceBase(baseNumber);
       const nomor = `BAGB-INV-${baseNumber}`;
       setInvoiceNomor(nomor);
       const allSurat = getSuratMuatForPI(row.nomorPI);
@@ -1264,7 +1232,6 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     setInvoiceNomor("");
     setInvoiceDate(surat.tanggal);
     setCustomerId(pi.customerId || "");
-    setPendingInvoiceBase("");
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
@@ -1289,7 +1256,6 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       const parsed = parseInvoiceNumber(nomor);
       if (parsed) {
         const baseNumber = String(parsed.baseNum).padStart(3, "0");
-        setPendingInvoiceBase(baseNumber);
       }
       if (!pi.customerId) {
         await fetchCustomerByName(pi.namaCustomer);
@@ -3703,7 +3669,7 @@ const handleExportExcel = () => {
         </form>
       </Modal>
 
-      <Modal isOpen={isInvoiceModalOpen} onClose={() => { if (pendingInvoiceBase) { releaseInvoiceBase(pendingInvoiceBase); setPendingInvoiceBase(""); } setIsInvoiceModalOpen(false); }} title={invoiceSurat ? "Print Invoice Sementara" : "Print Invoice"} size="md" footer={
+      <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title={invoiceSurat ? "Print Invoice Sementara" : "Print Invoice"} size="md" footer={
         <div className="flex justify-end gap-3 flex-wrap">
           <Button variant="outline" onClick={() => setIsInvoiceModalOpen(false)}>Batal</Button>
           {invoiceSurat ? (
