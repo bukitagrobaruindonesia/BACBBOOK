@@ -106,6 +106,8 @@ interface StockItem {
   fot: string;
   namaProdusen: string;
   bobotPerUnit: number;
+  unit: string;
+  botolPerDus: number;
   stokAkhirUnit: number;
   stokAkhirKG: number;
   barangKeluarUnit: number;
@@ -711,6 +713,8 @@ export default function RekapProformaInvoicePage() {
         fot: docSnap.data().fot || "",
         namaProdusen: docSnap.data().namaProdusen || "",
         bobotPerUnit: docSnap.data().bobotPerUnit || 50,
+        unit: docSnap.data().unit || "ZAK",
+        botolPerDus: docSnap.data().botolPerDus || docSnap.data().jumlahIsiBotol || 20,
         stokAkhirUnit: docSnap.data().stokAkhirUnit || 0,
         stokAkhirKG: docSnap.data().stokAkhirKG || 0,
         barangKeluarUnit: docSnap.data().barangKeluarUnit || 0,
@@ -1533,18 +1537,34 @@ export default function RekapProformaInvoicePage() {
               (it.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
             );
             if (piProduk) {
-              const totalOrdered = piProduk.kuantitas || 0;
+              const satuan = piProduk.satuan || "ZAK";
+              const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+              const botolPerDus = piProduk.jumlahIsiBotol || 20;
+              let totalOrdered = piProduk.kuantitas || 0;
+              if (satuan === "DUS" && isBotolOrDus) {
+                totalOrdered = totalOrdered * botolPerDus;
+              }
               const otherSuratLoaded = getSuratMuatForPI(itemPI).reduce((sum, s) => {
                 if (s.id === surat.id) return sum;
                 return sum + (s.items || []).reduce((itemSum, si) => {
                   if (si.nomorPI && si.nomorPI !== itemPI) return itemSum;
                   const match = (si.jenisPupuk || "").toUpperCase().includes((it.jenisPupuk || "").toUpperCase()) ||
                     (it.jenisPupuk || "").toUpperCase().includes((si.jenisPupuk || "").toUpperCase());
-                  if (match) return itemSum + (si.pengambilanZAK || 0);
-                  return itemSum;
+                  if (!match) return itemSum;
+                  const siBobot = si.bobotPerUnit || piProduk.bobotPerUnit || 50;
+                  if (isBotolOrDus) {
+                    return itemSum + (si.pengambilanZAK || 0);
+                  } else {
+                    return itemSum + ((si.pengambilanZAK || 0) * siBobot);
+                  }
                 }, 0);
               }, 0);
-              maxZAK = Math.max(0, totalOrdered - otherSuratLoaded);
+              if (isBotolOrDus) {
+                maxZAK = Math.max(0, totalOrdered - otherSuratLoaded);
+              } else {
+                const bobot = piProduk.bobotPerUnit || 50;
+                maxZAK = Math.max(0, Math.floor((totalOrdered - otherSuratLoaded) / bobot));
+              }
             }
           }
           return {
@@ -1690,7 +1710,6 @@ const handleUpdateSurat = async (e: React.FormEvent) => {
     if (!transaksiSnapshot.empty) {
       await updateDoc(doc(db, "transaksiBarangKeluar", transaksiSnapshot.docs[0].id), { ...updateData });
     }
-    const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
     const piNomors = Array.isArray(selectedSurat.nomorPI) ? selectedSurat.nomorPI : [selectedSurat.nomorPI].filter(Boolean);
     for (const piNomor of piNomors) {
       const piRow = data.find((d) => d.nomorPI === piNomor);
@@ -1699,7 +1718,6 @@ const handleUpdateSurat = async (e: React.FormEvent) => {
       const piSnap = await getDoc(piRef);
       if (piSnap.exists()) {
         const piData = piSnap.data();
-        const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
         const itemsForThisPI = newItems.filter((it) => {
           const itemPI = it.nomorPI || "";
           return !itemPI || itemPI === piNomor;
@@ -1708,11 +1726,49 @@ const handleUpdateSurat = async (e: React.FormEvent) => {
           const itemPI = it.nomorPI || "";
           return !itemPI || itemPI === piNomor;
         });
-        const newTotalKG = itemsForThisPI.reduce((sum, it) => sum + (it.totalKG || 0), 0);
-        const oldTotalKG = oldItemsForThisPI.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+        let newTotalKG = 0;
+        let oldTotalKG = 0;
+        itemsForThisPI.forEach((it) => {
+          const piProduk = piRow.produkItems.find((p) =>
+            p.namaProduk.toUpperCase().includes((it.jenisPupuk || "").toUpperCase()) ||
+            (it.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+          );
+          const satuan = piProduk?.satuan || "ZAK";
+          const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+          const bobot = piProduk?.bobotPerUnit || 50;
+          if (isBotolOrDus) {
+            newTotalKG += (it.pengambilanZAK || 0);
+          } else {
+            newTotalKG += (it.pengambilanZAK || 0) * bobot;
+          }
+        });
+        oldItemsForThisPI.forEach((it) => {
+          const piProduk = piRow.produkItems.find((p) =>
+            p.namaProduk.toUpperCase().includes((it.jenisPupuk || "").toUpperCase()) ||
+            (it.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+          );
+          const satuan = piProduk?.satuan || "ZAK";
+          const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+          const bobot = piProduk?.bobotPerUnit || 50;
+          if (isBotolOrDus) {
+            oldTotalKG += (it.pengambilanZAK || 0);
+          } else {
+            oldTotalKG += (it.pengambilanZAK || 0) * bobot;
+          }
+        });
+        const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
         const piDelta = oldTotalKG - newTotalKG;
         const newSisa = Math.max(0, currentSisa + piDelta);
-        const totalOrdered = piRow.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+        const totalOrdered = piRow.produkItems.reduce((sum, p) => {
+          const satuan = p.satuan || "ZAK";
+          const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+          const botolPerDus = p.jumlahIsiBotol || 20;
+          let qty = p.kuantitas || 0;
+          if (satuan === "DUS" && isBotolOrDus) {
+            qty = qty * botolPerDus;
+          }
+          return sum + qty;
+        }, 0);
         let newStatus = "pending";
         if (newSisa <= 0) newStatus = "complete";
         else if (newSisa < totalOrdered) newStatus = "partial";
@@ -1733,7 +1789,15 @@ const handleUpdateSurat = async (e: React.FormEvent) => {
       });
       newItems.forEach((it) => {
         const key = it.jenisPupuk;
-        productMapNew[key] = (productMapNew[key] || 0) + (it.totalKG || 0);
+        const stock = getStockForProduct(it.jenisPupuk);
+        const unit = stock?.unit || "ZAK";
+        const isDusBotol = unit === "DUS" || unit === "BOTOL";
+        const botolPerDus = stock?.botolPerDus || 20;
+        if (isDusBotol) {
+          productMapNew[key] = (productMapNew[key] || 0) + ((it.pengambilanZAK || 0) / botolPerDus);
+        } else {
+          productMapNew[key] = (productMapNew[key] || 0) + (it.totalKG || 0);
+        }
       });
       const allProducts = new Set([...Object.keys(productMapOld), ...Object.keys(productMapNew)]);
       for (const prod of allProducts) {
@@ -1750,15 +1814,29 @@ const handleUpdateSurat = async (e: React.FormEvent) => {
             const currentKG = sData.stokAkhirKG || 0;
             const currentKeluarUnit = sData.barangKeluarUnit || 0;
             const currentKeluarKG = sData.barangKeluarKG || 0;
-            const bobot = stock.bobotPerUnit || 50;
-            const deltaUnit = deltaKG / bobot;
-            await updateDoc(stockRef, {
-              stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
-              stokAkhirKG: Math.max(0, currentKG + deltaKG),
-              barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
-              barangKeluarKG: Math.max(0, currentKeluarKG - deltaKG),
-              updatedAt: serverTimestamp(),
-            });
+            const unit = stock.unit || "ZAK";
+            const isDusBotol = unit === "DUS" || unit === "BOTOL";
+            const botolPerDus = stock.botolPerDus || 20;
+            if (isDusBotol) {
+              const deltaUnit = deltaKG;
+              await updateDoc(stockRef, {
+                stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
+                stokAkhirKG: 0,
+                barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
+                barangKeluarKG: 0,
+                updatedAt: serverTimestamp(),
+              });
+            } else {
+              const bobot = stock.bobotPerUnit || 50;
+              const deltaUnit = deltaKG / bobot;
+              await updateDoc(stockRef, {
+                stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
+                stokAkhirKG: Math.max(0, currentKG + deltaKG),
+                barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
+                barangKeluarKG: Math.max(0, currentKeluarKG - deltaKG),
+                updatedAt: serverTimestamp(),
+              });
+            }
           }
         }
       }
@@ -1785,7 +1863,6 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
         }
       }
 
-      const totalKG = (surat.items || []).reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
       const piNomors = Array.isArray(surat.nomorPI) ? surat.nomorPI : [surat.nomorPI].filter(Boolean);
       for (const piNomor of piNomors) {
         const piRow = data.find((d) => d.nomorPI === piNomor);
@@ -1795,8 +1872,34 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
         if (piSnap.exists()) {
           const piData = piSnap.data();
           const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
+          let totalKG = 0;
+          (surat.items || []).forEach((it: SuratMuatItem) => {
+            const itemPI = it.nomorPI || "";
+            if (itemPI && itemPI !== piNomor) return;
+            const piProduk = piRow.produkItems.find((p) =>
+              p.namaProduk.toUpperCase().includes((it.jenisPupuk || "").toUpperCase()) ||
+              (it.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+            );
+            const satuan = piProduk?.satuan || "ZAK";
+            const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+            const bobot = piProduk?.bobotPerUnit || 50;
+            if (isBotolOrDus) {
+              totalKG += (it.pengambilanZAK || 0);
+            } else {
+              totalKG += (it.pengambilanZAK || 0) * bobot;
+            }
+          });
           const newSisa = currentSisa + totalKG;
-          const totalOrdered = piRow.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+          const totalOrdered = piRow.produkItems.reduce((sum, p) => {
+            const satuan = p.satuan || "ZAK";
+            const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+            const botolPerDus = p.jumlahIsiBotol || 20;
+            let qty = p.kuantitas || 0;
+            if (satuan === "DUS" && isBotolOrDus) {
+              qty = qty * botolPerDus;
+            }
+            return sum + qty;
+          }, 0);
           let newStatus = "pending";
           if (newSisa >= totalOrdered) newStatus = "pending";
           else if (newSisa > 0) newStatus = "partial";
@@ -1813,7 +1916,15 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
         const productMap: Record<string, number> = {};
         (surat.items || []).forEach((it: SuratMuatItem) => {
           const key = it.jenisPupuk;
-          productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+          const stock = getStockForProduct(it.jenisPupuk);
+          const unit = stock?.unit || "ZAK";
+          const isDusBotol = unit === "DUS" || unit === "BOTOL";
+          const botolPerDus = stock?.botolPerDus || 20;
+          if (isDusBotol) {
+            productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) / botolPerDus);
+          } else {
+            productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+          }
         });
         for (const prod of Object.keys(productMap)) {
           const kg = productMap[prod];
@@ -1827,15 +1938,27 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
               const currentKG = sData.stokAkhirKG || 0;
               const currentKeluarUnit = sData.barangKeluarUnit || 0;
               const currentKeluarKG = sData.barangKeluarKG || 0;
-              const bobot = stock.bobotPerUnit || 50;
-              const unit = kg / bobot;
-              await updateDoc(stockRef, {
-                stokAkhirUnit: currentUnit + unit,
-                stokAkhirKG: currentKG + kg,
-                barangKeluarUnit: Math.max(0, currentKeluarUnit - unit),
-                barangKeluarKG: Math.max(0, currentKeluarKG - kg),
-                updatedAt: serverTimestamp(),
-              });
+              const unit = stock.unit || "ZAK";
+              const isDusBotol = unit === "DUS" || unit === "BOTOL";
+              if (isDusBotol) {
+                await updateDoc(stockRef, {
+                  stokAkhirUnit: currentUnit + kg,
+                  stokAkhirKG: 0,
+                  barangKeluarUnit: Math.max(0, currentKeluarUnit - kg),
+                  barangKeluarKG: 0,
+                  updatedAt: serverTimestamp(),
+                });
+              } else {
+                const bobot = stock.bobotPerUnit || 50;
+                const unitVal = kg / bobot;
+                await updateDoc(stockRef, {
+                  stokAkhirUnit: currentUnit + unitVal,
+                  stokAkhirKG: currentKG + kg,
+                  barangKeluarUnit: Math.max(0, currentKeluarUnit - unitVal),
+                  barangKeluarKG: Math.max(0, currentKeluarKG - kg),
+                  updatedAt: serverTimestamp(),
+                });
+              }
             }
           }
         }
@@ -1888,18 +2011,38 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
                 const sData = stockSnap.data();
                 const zak = parseFloat(String(item.pengambilanZAK)) || 0;
                 const bobot = item.bobotPerUnit || stock.bobotPerUnit || 50;
-                const kg = zak * bobot;
+                const unit = stock.unit || "ZAK";
+                const isDusBotol = unit === "DUS" || unit === "BOTOL";
+                const botolPerDus = stock.botolPerDus || 20;
+                let unitRestore = zak;
+                let kgRestore = 0;
+                if (isDusBotol) {
+                  unitRestore = zak / botolPerDus;
+                  kgRestore = 0;
+                } else {
+                  kgRestore = zak * bobot;
+                }
                 const currentUnit = sData.stokAkhirUnit || 0;
                 const currentKG = sData.stokAkhirKG || 0;
                 const currentKeluarUnit = sData.barangKeluarUnit || 0;
                 const currentKeluarKG = sData.barangKeluarKG || 0;
-                await updateDoc(stockRef, {
-                  stokAkhirUnit: currentUnit + zak,
-                  stokAkhirKG: currentKG + kg,
-                  barangKeluarUnit: Math.max(0, currentKeluarUnit - zak),
-                  barangKeluarKG: Math.max(0, currentKeluarKG - kg),
-                  updatedAt: serverTimestamp(),
-                });
+                if (isDusBotol) {
+                  await updateDoc(stockRef, {
+                    stokAkhirUnit: currentUnit + unitRestore,
+                    stokAkhirKG: 0,
+                    barangKeluarUnit: Math.max(0, currentKeluarUnit - unitRestore),
+                    barangKeluarKG: 0,
+                    updatedAt: serverTimestamp(),
+                  });
+                } else {
+                  await updateDoc(stockRef, {
+                    stokAkhirUnit: currentUnit + unitRestore,
+                    stokAkhirKG: currentKG + kgRestore,
+                    barangKeluarUnit: Math.max(0, currentKeluarUnit - unitRestore),
+                    barangKeluarKG: Math.max(0, currentKeluarKG - kgRestore),
+                    updatedAt: serverTimestamp(),
+                  });
+                }
               }
             }
           }
@@ -2788,6 +2931,25 @@ const handleExportExcel = () => {
       if (field === "pengambilanZAK") {
         const qty = parseFloat(value) || 0;
         const maxQty = item.maxZAK || 0;
+        const itemPI = item.nomorPI || "";
+        const piData = data.find((d) => d.nomorPI === itemPI);
+        let piProduk = null;
+        let satuan = "ZAK";
+        let isBotolOrDus = false;
+        let botolPerDus = 20;
+        let bobot = 50;
+        if (piData) {
+          piProduk = piData.produkItems.find((p) =>
+            p.namaProduk.toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) ||
+            (item.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
+          );
+          if (piProduk) {
+            satuan = piProduk.satuan || "ZAK";
+            isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+            botolPerDus = piProduk.jumlahIsiBotol || 20;
+            bobot = piProduk.bobotPerUnit || 50;
+          }
+        }
         if (maxQty > 0) {
           if (qty >= maxQty) { item.pengambilanZAK = String(maxQty); item.sisa = "0"; }
           else { item.sisa = String(Math.max(0, maxQty - qty)); }
@@ -2802,25 +2964,42 @@ const handleExportExcel = () => {
             (item.jenisPupuk || "").toUpperCase().includes(p.namaProduk.toUpperCase())
           );
           if (piProduk) {
-            const totalOrdered = piProduk.kuantitas || 0;
+            const satuan = piProduk.satuan || "ZAK";
+            const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+            const botolPerDus = piProduk.jumlahIsiBotol || 20;
+            let totalOrdered = piProduk.kuantitas || 0;
+            if (satuan === "DUS" && isBotolOrDus) {
+              totalOrdered = totalOrdered * botolPerDus;
+            }
             const otherSuratLoaded = getSuratMuatForPI(itemPI).reduce((sum, s) => {
               if (selectedSurat && s.id === selectedSurat.id) return sum;
               return sum + (s.items || []).reduce((itemSum, si) => {
                 if (si.nomorPI && si.nomorPI !== itemPI) return itemSum;
                 const match = (si.jenisPupuk || "").toUpperCase().includes((item.jenisPupuk || "").toUpperCase()) ||
                   (item.jenisPupuk || "").toUpperCase().includes((si.jenisPupuk || "").toUpperCase());
-                if (match) return itemSum + (si.pengambilanZAK || 0);
-                return itemSum;
+                if (!match) return itemSum;
+                const siBobot = si.bobotPerUnit || piProduk.bobotPerUnit || 50;
+                if (isBotolOrDus) {
+                  return itemSum + (si.pengambilanZAK || 0);
+                } else {
+                  return itemSum + ((si.pengambilanZAK || 0) * siBobot);
+                }
               }, 0);
             }, 0);
+            if (isBotolOrDus) {
+              const newMaxZAK = Math.max(0, totalOrdered - otherSuratLoaded);
+              item.maxZAK = newMaxZAK;
+            } else {
+              const bobot = piProduk.bobotPerUnit || 50;
+              const newMaxZAK = Math.max(0, Math.floor((totalOrdered - otherSuratLoaded) / bobot));
+              item.maxZAK = newMaxZAK;
+            }
             const currentLoaded = parseFloat(item.pengambilanZAK) || 0;
-            const newMaxZAK = Math.max(0, totalOrdered - otherSuratLoaded);
-            item.maxZAK = newMaxZAK;
-            if (currentLoaded > newMaxZAK) {
-              item.pengambilanZAK = String(newMaxZAK);
+            if (currentLoaded > item.maxZAK) {
+              item.pengambilanZAK = String(item.maxZAK);
               item.sisa = "0";
             } else {
-              item.sisa = String(Math.max(0, newMaxZAK - currentLoaded));
+              item.sisa = String(Math.max(0, item.maxZAK - currentLoaded));
             }
           }
         }
