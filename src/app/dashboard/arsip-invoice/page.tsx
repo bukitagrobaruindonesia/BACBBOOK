@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
-import { collection, getDocs, query, doc, deleteDoc, updateDoc, Timestamp } from "firebase/firestore";
+import { collection, getDocs, query, doc, deleteDoc, updateDoc, deleteField, where, serverTimestamp, Timestamp } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Header from "@/app/components/ui/Header";
 import Table from "@/app/components/ui/Table";
@@ -249,6 +249,14 @@ export default function ArsipInvoicePage() {
     if (!deleteItem) return;
     setIsDeleting(true);
     try {
+      const piQuery = query(collection(db, "proformaInvoice"), where("nomorPI", "==", deleteItem.nomorPI));
+      const piSnap = await getDocs(piQuery);
+      for (const piDoc of piSnap.docs) {
+        await updateDoc(doc(db, "proformaInvoice", piDoc.id), {
+          invoiceBaseNumber: deleteField(),
+          updatedAt: serverTimestamp()
+        });
+      }
       await deleteDoc(doc(db, "arsipInvoice", deleteItem.id));
       setData((prev) => prev.filter((i) => i.id !== deleteItem.id));
       setIsDeleteModalOpen(false);
