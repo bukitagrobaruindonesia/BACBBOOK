@@ -826,7 +826,7 @@ export default function RekapProformaInvoicePage() {
     }
   };
 
-  const isBaseNumberUsedByOtherPI = async (baseNumber: string, nomorPI: string): Promise<boolean> => {
+  const isBaseNumberUsed = async (baseNumber: string, nomorPI: string): Promise<boolean> => {
   const piMap = await getAllPIBaseNumbers();
   const baseNum = parseInt(baseNumber);
   for (const [pi, base] of Object.entries(piMap)) {
@@ -1386,7 +1386,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       return;
     }
     const baseNumber = invoiceNomor.replace("BAGB-INV-", "");
-    const isUsedByOther = await isBaseNumberUsedByOtherPI(baseNumber, selectedItem.nomorPI);
+    const isUsedByOther = await isBaseNumberUsed(baseNumber, selectedItem.nomorPI);
     if (isUsedByOther) {
       alert("Nomor invoice base sudah terpakai oleh PI lain. Silakan reset atau gunakan nomor lain.");
       return;
