@@ -456,7 +456,7 @@ const releasePaymentLock = async (nomorPI: string, lockId: string) => {
 };
 
 
-const getUsedBaseNumbers = async (): Promise<number[]> => {
+const getAllUsedBaseNumbers = async (): Promise<Set<number>> => {
   const used = new Set<number>();
   try {
     const fullSnap = await getDocs(query(collection(db, "arsipInvoice")));
@@ -465,98 +465,68 @@ const getUsedBaseNumbers = async (): Promise<number[]> => {
       const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
       if (match) used.add(parseInt(match[1]));
     });
+  } catch (error) { console.error(error); }
+  try {
     const sementaraSnap = await getDocs(query(collection(db, "arsipInvoiceSementara")));
     sementaraSnap.docs.forEach((d) => {
       const nomor = d.data().nomorInvoice || "";
       const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
       if (match) used.add(parseInt(match[1]));
     });
-  } catch (error) {
-    console.error(error);
-  }
-  return Array.from(used).sort((a, b) => a - b);
-};
-
-const getBaseNumbersForPI = async (nomorPI: string): Promise<number[]> => {
-  const used = new Set<number>();
+  } catch (error) { console.error(error); }
   try {
-    const sementaraQuery = query(collection(db, "arsipInvoiceSementara"), where("nomorPI", "==", nomorPI));
-    const sementaraSnap = await getDocs(sementaraQuery);
-    sementaraSnap.docs.forEach((d) => {
-      const nomor = d.data().nomorInvoice || "";
-      const match = nomor.match(/^BAGB-INV-S\d+-(\d{3})$/);
-      if (match) used.add(parseInt(match[1]));
-    });
-  } catch (error) {
-    console.error(error);
-  }
-  return Array.from(used).sort((a, b) => a - b);
-};
-
-const getNextAvailableBaseNumber = async (): Promise<string> => {
-  const used = await getUsedBaseNumbers();
-  if (used.length === 0) return "001";
-  let candidate = 1;
-  while (used.includes(candidate)) {
-    candidate++;
-  }
-  return String(candidate).padStart(3, "0");
-};
-
-const getAllPIBaseNumbers = async (): Promise<Record<string, number>> => {
-  const map: Record<string, number> = {};
-  try {
-    const piQuery = query(collection(db, "proformaInvoice"));
-    const piSnap = await getDocs(piQuery);
+    const piSnap = await getDocs(query(collection(db, "proformaInvoice")));
     piSnap.docs.forEach((d) => {
-      const data = d.data();
-      if (data.invoiceBaseNumber) {
-        map[data.nomorPI] = parseInt(data.invoiceBaseNumber);
-      }
+      const base = d.data().invoiceBaseNumber;
+      if (base) used.add(parseInt(base));
     });
-  } catch (error) {
-    console.error(error);
-  }
-  return map;
+  } catch (error) { console.error(error); }
+  return used;
 };
 
-const getNextBaseForPI = async (nomorPI: string): Promise<string> => {
-  const piBases = await getBaseNumbersForPI(nomorPI);
-  const allUsed = await getUsedBaseNumbers();
-  for (const base of piBases) {
-    if (!allUsed.includes(base)) return String(base).padStart(3, "0");
-  }
+const getNextAvailableBaseNumberUnified = async (): Promise<string> => {
+  const used = await getAllUsedBaseNumbers();
   let candidate = 1;
-  while (allUsed.includes(candidate)) {
+  while (used.has(candidate)) {
     candidate++;
   }
   return String(candidate).padStart(3, "0");
 };
 
-const isBaseNumberUsed = async (baseNumber: string, nomorPI?: string): Promise<boolean> => {
-  const used = await getUsedBaseNumbers();
+const isBaseNumberUsedByOtherPI = async (baseNumber: string, nomorPI: string): Promise<boolean> => {
   const baseNum = parseInt(baseNumber);
-  if (!used.includes(baseNum)) return false;
-  if (!nomorPI) return true;
-  const fullSnap = await getDocs(query(collection(db, "arsipInvoice")));
-  for (const d of fullSnap.docs) {
-    const data = d.data();
-    const nomor = data.nomorInvoice || "";
-    const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
-    if (match && parseInt(match[1]) === baseNum && data.nomorPI === nomorPI) {
-      return false;
+  try {
+    const fullSnap = await getDocs(query(collection(db, "arsipInvoice")));
+    for (const d of fullSnap.docs) {
+      const data = d.data();
+      const nomor = data.nomorInvoice || "";
+      const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
+      if (match && parseInt(match[1]) === baseNum && data.nomorPI !== nomorPI) {
+        return true;
+      }
     }
-  }
-  const sementaraSnap = await getDocs(query(collection(db, "arsipInvoiceSementara")));
-  for (const d of sementaraSnap.docs) {
-    const data = d.data();
-    const nomor = data.nomorInvoice || "";
-    const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
-    if (match && parseInt(match[1]) === baseNum && data.nomorPI === nomorPI) {
-      return false;
+  } catch (error) { console.error(error); }
+  try {
+    const sementaraSnap = await getDocs(query(collection(db, "arsipInvoiceSementara")));
+    for (const d of sementaraSnap.docs) {
+      const data = d.data();
+      const nomor = data.nomorInvoice || "";
+      const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
+      if (match && parseInt(match[1]) === baseNum && data.nomorPI !== nomorPI) {
+        return true;
+      }
     }
-  }
-  return true;
+  } catch (error) { console.error(error); }
+  try {
+    const piSnap = await getDocs(query(collection(db, "proformaInvoice")));
+    for (const d of piSnap.docs) {
+      const data = d.data();
+      if (data.invoiceBaseNumber === baseNumber && data.nomorPI !== nomorPI) {
+        return true;
+      }
+    }
+  } catch (error) { console.error(error); }
+  return false;
 };
 
 const cleanupStaleLocks = async () => {
@@ -826,18 +796,7 @@ export default function RekapProformaInvoicePage() {
     }
   };
 
-  const isBaseNumberUsed = async (baseNumber: string, nomorPI: string): Promise<boolean> => {
-  const piMap = await getAllPIBaseNumbers();
-  const baseNum = parseInt(baseNumber);
-  for (const [pi, base] of Object.entries(piMap)) {
-    if (base === baseNum && pi !== nomorPI) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const getUniqueBastNumber = async (): Promise<string> => {
+  const getUniqueBastNumber = async (): Promise<string> => {
     const now = new Date();
     const year = now.getFullYear();
     const roman = getRomanMonth(now.getMonth() + 1);
@@ -1074,61 +1033,7 @@ const getUniqueBastNumber = async (): Promise<string> => {
     });
   };
 
-  const getUniqueInvoiceBaseNumber = async (): Promise<string> => {
-  const poolRef = doc(db, "counters", "invoiceBasePool");
-  const maxRetries = 15;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const result = await runTransaction(db, async (transaction) => {
-        const poolSnap = await transaction.get(poolRef);
-        let lastNumber = 0;
-        let gaps: number[] = [];
-        if (poolSnap.exists()) {
-          lastNumber = poolSnap.data().lastNumber || 0;
-          gaps = poolSnap.data().gaps || [];
-        }
-        gaps.sort((a, b) => a - b);
-        let candidateNum: number;
-        if (gaps.length > 0) {
-          candidateNum = gaps[0];
-          gaps = gaps.filter((g) => g !== candidateNum);
-        } else {
-          candidateNum = lastNumber + 1;
-          lastNumber = candidateNum;
-        }
-        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
-        return String(candidateNum).padStart(3, "0");
-      });
-      return result;
-    } catch (error: any) {
-      if (attempt === maxRetries - 1) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
-    }
-  }
-  throw new Error("Failed to generate unique invoice base number after retries");
-};
-
-const releaseInvoiceBase = async (baseNumber: string) => {
-  try {
-    const baseNum = parseInt(baseNumber);
-    if (isNaN(baseNum)) return;
-    const poolRef = doc(db, "counters", "invoiceBasePool");
-    await runTransaction(db, async (transaction) => {
-      const poolSnap = await transaction.get(poolRef);
-      let lastNumber = poolSnap.data()?.lastNumber || 0;
-      let gaps = (poolSnap.data()?.gaps || []) as number[];
-      if (!gaps.includes(baseNum)) {
-        gaps.push(baseNum);
-        gaps.sort((a, b) => a - b);
-      }
-      transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
-    });
-  } catch (error) {
-    console.error("Failed to release invoice base:", error);
-  }
-};
-
-const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoice): Promise<string> => {
+  const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoice): Promise<string> => {
     const pi = piRow || selectedItem;
     if (!pi) return "";
     const suratRef = doc(db, "suratPengangkutan", surat.id);
@@ -1142,8 +1047,14 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     const piSnap = await getDoc(piRef);
     let baseNumber = piSnap.data()?.invoiceBaseNumber;
     if (!baseNumber) {
-      baseNumber = await getUniqueInvoiceBaseNumber();
+      baseNumber = await getNextAvailableBaseNumberUnified();
       await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
+    } else {
+      const isUsedByOther = await isBaseNumberUsedByOtherPI(baseNumber, pi.nomorPI);
+      if (isUsedByOther) {
+        baseNumber = await getNextAvailableBaseNumberUnified();
+        await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
+      }
     }
     const allSurat = getSuratMuatForPI(pi.nomorPI);
     const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
@@ -1216,12 +1127,12 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       const piSnap = await getDoc(piRef);
       let baseNumber = piSnap.data()?.invoiceBaseNumber;
       if (!baseNumber) {
-        baseNumber = await getNextAvailableBaseNumber();
+        baseNumber = await getNextAvailableBaseNumberUnified();
         await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
       } else {
-        const isUsed = await isBaseNumberUsed(baseNumber, row.nomorPI);
-        if (isUsed) {
-          baseNumber = await getNextAvailableBaseNumber();
+        const isUsedByOther = await isBaseNumberUsedByOtherPI(baseNumber, row.nomorPI);
+        if (isUsedByOther) {
+          baseNumber = await getNextAvailableBaseNumberUnified();
           await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
         }
       }
@@ -1244,29 +1155,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       const piRef = doc(db, "proformaInvoice", row.id);
       const piSnap = await getDoc(piRef);
       const oldBase = piSnap.data()?.invoiceBaseNumber;
-      if (oldBase) {
-        const poolRef = doc(db, "counters", "invoiceBasePool");
-        await runTransaction(db, async (transaction) => {
-          const poolSnap = await transaction.get(poolRef);
-          let lastNumber = poolSnap.data()?.lastNumber || 0;
-          let gaps = (poolSnap.data()?.gaps || []) as number[];
-          const baseNum = parseInt(oldBase);
-          if (!gaps.includes(baseNum)) {
-            gaps.push(baseNum);
-            gaps.sort((a, b) => a - b);
-          }
-          if (baseNum === lastNumber) {
-            let newLast = lastNumber - 1;
-            while (newLast > 0 && gaps.includes(newLast)) {
-              newLast--;
-            }
-            lastNumber = Math.max(0, newLast);
-          }
-          transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
-        });
-
-      }
-      const newBase = await getUniqueInvoiceBaseNumber();
+      const newBase = await getNextAvailableBaseNumberUnified();
       await updateDoc(piRef, { invoiceBaseNumber: newBase, updatedAt: serverTimestamp() });
       const allSurat = getSuratMuatForPI(row.nomorPI);
       for (const surat of allSurat) {
@@ -1274,7 +1163,6 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
         await updateDoc(suratRef, { nomorInvoice: deleteField(), updatedAt: serverTimestamp() });
       }
       const oldFullInvoice = `BAGB-INV-${oldBase}`;
-      const oldSementaraPattern = `BAGB-INV-S`;
       try {
         await deleteDoc(doc(db, "arsipInvoice", oldFullInvoice));
       } catch {}
@@ -1386,7 +1274,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       return;
     }
     const baseNumber = invoiceNomor.replace("BAGB-INV-", "");
-    const isUsedByOther = await isBaseNumberUsed(baseNumber, selectedItem.nomorPI);
+    const isUsedByOther = await isBaseNumberUsedByOtherPI(baseNumber, selectedItem.nomorPI);
     if (isUsedByOther) {
       alert("Nomor invoice base sudah terpakai oleh PI lain. Silakan reset atau gunakan nomor lain.");
       return;
@@ -2014,21 +1902,11 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
       if (!piDoc) { setIsLoading(false); return; }
       const nomorPI = piDoc.nomorPI;
       if (piDoc.invoiceBaseNumber) {
-        const baseNum = parseInt(piDoc.invoiceBaseNumber);
-        const poolRef = doc(db, "counters", "invoiceBasePool");
-        await runTransaction(db, async (transaction) => {
-          const poolSnap = await transaction.get(poolRef);
-          let lastNumber = poolSnap.data()?.lastNumber || 0;
-          let gaps = (poolSnap.data()?.gaps || []) as number[];
-          if (!gaps.includes(baseNum)) {
-            gaps.push(baseNum);
-            gaps.sort((a, b) => a - b);
-          }
-          transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
-        });
-
-        try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${piDoc.invoiceBaseNumber}`)); } catch {}
+        try {
+          await updateDoc(doc(db, "proformaInvoice", id), { invoiceBaseNumber: deleteField() });
+        } catch {}
       }
+              try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${piDoc.invoiceBaseNumber}`)); } catch {}
       const suratDocsMap = new Map<string, any>();
       const suratQuery1 = query(collection(db, "suratPengangkutan"), where("nomorPI", "==", nomorPI));
       const suratSnap1 = await getDocs(suratQuery1);
