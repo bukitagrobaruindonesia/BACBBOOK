@@ -905,7 +905,9 @@ export default function RekapProformaInvoicePage() {
         };
         piList.forEach((pi) => {
           if (!map[pi]) map[pi] = [];
-          map[pi].push(info);
+          if (!map[pi].find((s) => s.id === info.id)) {
+            map[pi].push(info);
+          }
         });
       });
       setSuratMuatMap(map);
@@ -929,17 +931,11 @@ export default function RekapProformaInvoicePage() {
   };
 
   const getSuratMuatForPI = (nomorPI: string): SuratMuatInfo[] => {
-    const results: SuratMuatInfo[] = [];
-    Object.values(suratMuatMap).forEach((list) => {
-      list.forEach((surat) => {
-        const rawPI = surat.nomorPI;
-        let match = false;
-        if (Array.isArray(rawPI)) { match = rawPI.includes(nomorPI); }
-        else if (typeof rawPI === "string") { match = rawPI === nomorPI; }
-        if (match && !results.find((r) => r.id === surat.id)) { results.push(surat); }
-      });
-    });
-    return results;
+    if (!nomorPI) return [];
+    const results = suratMuatMap[nomorPI] || [];
+    return results.filter((surat, index, self) => 
+      index === self.findIndex((s) => s.id === surat.id)
+    );
   };
 
   const getTotalOrdered = (item: ProformaInvoice, filterGI?: boolean) => {
@@ -3611,7 +3607,7 @@ const handleExportExcel = () => {
                       const jenisLabel = suratIsGI ? "Gudang Induk" : suratIsMandiri ? "DO Mandiri" : suratIsDikuasakan ? "DO Dikuasakan" : "DO";
                       const jenisClass = suratIsGI ? "text-green-700 bg-green-100" : suratIsMandiri ? "text-indigo-700 bg-indigo-100" : "text-orange-700 bg-orange-100";
                       return (
-                      <tr key={idx} className="border-b">
+                      <tr key={surat.id} className="border-b">
                         <td className="px-4 py-3 text-sm text-gray-900 border">{idx + 1}</td>
                         <td className="px-4 py-3 text-sm font-mono font-bold text-green-700 border">{surat.nomorSeri}</td>
                         <td className="px-4 py-3 text-sm border"><span className={`px-2 py-1 rounded-md text-xs font-bold ${jenisClass}`}>{jenisLabel}</span></td>
