@@ -172,10 +172,17 @@ const getUniqueSeriSP = async (year: number, roman: string): Promise<string> => 
         const poolSnap = await transaction.get(poolRef);
         let lastNumber = 0;
         let gaps: number[] = [];
+        let usedNumbers: number[] = [];
+        let reservedNumbers: Array<{num: number; timestamp: number}> = [];
         if (poolSnap.exists()) {
           lastNumber = poolSnap.data().lastNumber || 0;
           gaps = poolSnap.data().gaps || [];
+          usedNumbers = poolSnap.data().usedNumbers || [];
+          reservedNumbers = poolSnap.data().reservedNumbers || [];
         }
+        const now = Date.now();
+        const activeReserved = reservedNumbers.filter((r: any) => now - r.timestamp < 5 * 60 * 1000);
+        const activeReservedNums = activeReserved.map((r: any) => r.num);
         let candidateNum: number;
         if (gaps.length > 0) {
           gaps.sort((a, b) => a - b);
@@ -185,32 +192,25 @@ const getUniqueSeriSP = async (year: number, roman: string): Promise<string> => 
           candidateNum = lastNumber + 1;
           lastNumber = candidateNum;
         }
-        const candidateSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
-        const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(candidateSeri));
-        const lockDoc = await transaction.get(lockRef);
-        if (lockDoc.exists()) {
+        if (usedNumbers.includes(candidateNum) || activeReservedNums.includes(candidateNum)) {
           let searchNum = candidateNum + 1;
           let found = false;
-          while (searchNum <= lastNumber + 1000 && !found) {
-            const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
-            const testRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(testSeri));
-            const testDoc = await transaction.get(testRef);
-            if (!testDoc.exists()) {
-              if (gaps.includes(searchNum)) {
-                gaps = gaps.filter((g) => g !== searchNum);
-              } else if (searchNum > lastNumber) {
-                lastNumber = searchNum;
-              }
+          while (!found && searchNum <= lastNumber + 1000) {
+            if (!usedNumbers.includes(searchNum) && !activeReservedNums.includes(searchNum)) {
               candidateNum = searchNum;
               found = true;
+              if (searchNum > lastNumber) lastNumber = searchNum;
+              break;
             }
             searchNum++;
           }
           if (!found) throw new Error("No available SP number found");
         }
-        transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
-        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
-        return candidateSeri;
+        activeReserved.push({ num: candidateNum, timestamp: now });
+        activeReserved.sort((a: any, b: any) => a.num - b.num);
+        const finalSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
+        transaction.set(poolRef, { lastNumber, gaps, usedNumbers, reservedNumbers: activeReserved, updatedAt: Timestamp.now() });
+        return finalSeri;
       });
       return result;
     } catch (error: any) {
@@ -236,10 +236,17 @@ const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<s
         const poolSnap = await transaction.get(poolRef);
         let lastNumber = 0;
         let gaps: number[] = [];
+        let usedNumbers: number[] = [];
+        let reservedNumbers: Array<{num: number; timestamp: number}> = [];
         if (poolSnap.exists()) {
           lastNumber = poolSnap.data().lastNumber || 0;
           gaps = poolSnap.data().gaps || [];
+          usedNumbers = poolSnap.data().usedNumbers || [];
+          reservedNumbers = poolSnap.data().reservedNumbers || [];
         }
+        const now = Date.now();
+        const activeReserved = reservedNumbers.filter((r: any) => now - r.timestamp < 5 * 60 * 1000);
+        const activeReservedNums = activeReserved.map((r: any) => r.num);
         let candidateNum: number;
         if (gaps.length > 0) {
           gaps.sort((a, b) => a - b);
@@ -249,32 +256,25 @@ const getUniqueSeriDODikuasakan = async (year: number, roman: string): Promise<s
           candidateNum = lastNumber + 1;
           lastNumber = candidateNum;
         }
-        const candidateSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
-        const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(candidateSeri));
-        const lockDoc = await transaction.get(lockRef);
-        if (lockDoc.exists()) {
+        if (usedNumbers.includes(candidateNum) || activeReservedNums.includes(candidateNum)) {
           let searchNum = candidateNum + 1;
           let found = false;
-          while (searchNum <= lastNumber + 1000 && !found) {
-            const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
-            const testRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(testSeri));
-            const testDoc = await transaction.get(testRef);
-            if (!testDoc.exists()) {
-              if (gaps.includes(searchNum)) {
-                gaps = gaps.filter((g) => g !== searchNum);
-              } else if (searchNum > lastNumber) {
-                lastNumber = searchNum;
-              }
+          while (!found && searchNum <= lastNumber + 1000) {
+            if (!usedNumbers.includes(searchNum) && !activeReservedNums.includes(searchNum)) {
               candidateNum = searchNum;
               found = true;
+              if (searchNum > lastNumber) lastNumber = searchNum;
+              break;
             }
             searchNum++;
           }
           if (!found) throw new Error("No available DO Dikuasakan number found");
         }
-        transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
-        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
-        return candidateSeri;
+        activeReserved.push({ num: candidateNum, timestamp: now });
+        activeReserved.sort((a: any, b: any) => a.num - b.num);
+        const finalSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
+        transaction.set(poolRef, { lastNumber, gaps, usedNumbers, reservedNumbers: activeReserved, updatedAt: Timestamp.now() });
+        return finalSeri;
       });
       return result;
     } catch (error: any) {
@@ -300,10 +300,17 @@ const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): P
         const poolSnap = await transaction.get(poolRef);
         let lastNumber = 0;
         let gaps: number[] = [];
+        let usedNumbers: number[] = [];
+        let reservedNumbers: Array<{num: number; timestamp: number}> = [];
         if (poolSnap.exists()) {
           lastNumber = poolSnap.data().lastNumber || 0;
           gaps = poolSnap.data().gaps || [];
+          usedNumbers = poolSnap.data().usedNumbers || [];
+          reservedNumbers = poolSnap.data().reservedNumbers || [];
         }
+        const now = Date.now();
+        const activeReserved = reservedNumbers.filter((r: any) => now - r.timestamp < 5 * 60 * 1000);
+        const activeReservedNums = activeReserved.map((r: any) => r.num);
         let candidateNum: number;
         if (gaps.length > 0) {
           gaps.sort((a, b) => a - b);
@@ -313,32 +320,25 @@ const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): P
           candidateNum = lastNumber + 1;
           lastNumber = candidateNum;
         }
-        const candidateSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
-        const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(candidateSeri));
-        const lockDoc = await transaction.get(lockRef);
-        if (lockDoc.exists()) {
+        if (usedNumbers.includes(candidateNum) || activeReservedNums.includes(candidateNum)) {
           let searchNum = candidateNum + 1;
           let found = false;
-          while (searchNum <= lastNumber + 1000 && !found) {
-            const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
-            const testRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(testSeri));
-            const testDoc = await transaction.get(testRef);
-            if (!testDoc.exists()) {
-              if (gaps.includes(searchNum)) {
-                gaps = gaps.filter((g) => g !== searchNum);
-              } else if (searchNum > lastNumber) {
-                lastNumber = searchNum;
-              }
+          while (!found && searchNum <= lastNumber + 1000) {
+            if (!usedNumbers.includes(searchNum) && !activeReservedNums.includes(searchNum)) {
               candidateNum = searchNum;
               found = true;
+              if (searchNum > lastNumber) lastNumber = searchNum;
+              break;
             }
             searchNum++;
           }
           if (!found) throw new Error("No available DO Mandiri number found");
         }
-        transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
-        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
-        return candidateSeri;
+        activeReserved.push({ num: candidateNum, timestamp: now });
+        activeReserved.sort((a: any, b: any) => a.num - b.num);
+        const finalSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
+        transaction.set(poolRef, { lastNumber, gaps, usedNumbers, reservedNumbers: activeReserved, updatedAt: Timestamp.now() });
+        return finalSeri;
       });
       return result;
     } catch (error: any) {
@@ -356,11 +356,6 @@ const getUniqueSeriDOMandiri = async (perusahaan: string, nomorSubDO: string): P
 
 const releaseSeriSP = async (nomorSeri: string) => {
   try {
-    const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(nomorSeri));
-    const lockSnap = await getDoc(lockRef);
-    if (lockSnap.exists()) {
-      await deleteDoc(lockRef);
-    }
     const parts = nomorSeri.split("/");
     if (parts.length === 4 && parts[0] === "BAGB-SP") {
       const year = parseInt(parts[1]);
@@ -371,11 +366,15 @@ const releaseSeriSP = async (nomorSeri: string) => {
         const poolSnap = await transaction.get(poolRef);
         if (!poolSnap.exists()) return;
         let gaps = (poolSnap.data().gaps || []) as number[];
+        let usedNumbers = (poolSnap.data().usedNumbers || []) as number[];
+        let reservedNumbers = (poolSnap.data().reservedNumbers || []) as Array<{num: number; timestamp: number}>;
         if (!gaps.includes(num)) {
           gaps.push(num);
           gaps.sort((a, b) => a - b);
         }
-        transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+        usedNumbers = usedNumbers.filter((n) => n !== num);
+        reservedNumbers = reservedNumbers.filter((r) => r.num !== num);
+        transaction.set(poolRef, { gaps, usedNumbers, reservedNumbers, updatedAt: Timestamp.now() }, { merge: true });
       });
     }
   } catch (error) {
@@ -385,11 +384,6 @@ const releaseSeriSP = async (nomorSeri: string) => {
 
 const releaseSeriDO = async (nomorSeri: string) => {
   try {
-    const lockRef = doc(db, "suratPengangkutanLocks", sanitizeLockDocId(nomorSeri));
-    const lockSnap = await getDoc(lockRef);
-    if (lockSnap.exists()) {
-      await deleteDoc(lockRef);
-    }
     const parts = nomorSeri.split("/");
     if (parts.length === 4 && parts[0] === "BAGB-SP-DO") {
       const year = parseInt(parts[1]);
@@ -400,11 +394,15 @@ const releaseSeriDO = async (nomorSeri: string) => {
         const poolSnap = await transaction.get(poolRef);
         if (!poolSnap.exists()) return;
         let gaps = (poolSnap.data().gaps || []) as number[];
+        let usedNumbers = (poolSnap.data().usedNumbers || []) as number[];
+        let reservedNumbers = (poolSnap.data().reservedNumbers || []) as Array<{num: number; timestamp: number}>;
         if (!gaps.includes(num)) {
           gaps.push(num);
           gaps.sort((a, b) => a - b);
         }
-        transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+        usedNumbers = usedNumbers.filter((n) => n !== num);
+        reservedNumbers = reservedNumbers.filter((r) => r.num !== num);
+        transaction.set(poolRef, { gaps, usedNumbers, reservedNumbers, updatedAt: Timestamp.now() }, { merge: true });
       });
     } else if (nomorSeri.startsWith("BAGB-DO-")) {
       const match = nomorSeri.match(/^BAGB-DO-(.+?)-(.+?)-SP\/(\d{4})$/);
@@ -417,16 +415,83 @@ const releaseSeriDO = async (nomorSeri: string) => {
           const poolSnap = await transaction.get(poolRef);
           if (!poolSnap.exists()) return;
           let gaps = (poolSnap.data().gaps || []) as number[];
+          let usedNumbers = (poolSnap.data().usedNumbers || []) as number[];
+          let reservedNumbers = (poolSnap.data().reservedNumbers || []) as Array<{num: number; timestamp: number}>;
           if (!gaps.includes(num)) {
             gaps.push(num);
             gaps.sort((a, b) => a - b);
           }
-          transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+          usedNumbers = usedNumbers.filter((n) => n !== num);
+          reservedNumbers = reservedNumbers.filter((r) => r.num !== num);
+          transaction.set(poolRef, { gaps, usedNumbers, reservedNumbers, updatedAt: Timestamp.now() }, { merge: true });
         });
       }
     }
   } catch (error) {
     console.error(error);
+  }
+};
+
+const markSeriAsUsed = async (nomorSeri: string) => {
+  try {
+    const parts = nomorSeri.split("/");
+    if (parts.length === 4 && parts[0] === "BAGB-SP") {
+      const year = parseInt(parts[1]);
+      const roman = parts[2];
+      const num = parseInt(parts[3]);
+      const poolRef = doc(db, "counters", `suratPengangkutanSP_${year}_${roman}`);
+      await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        if (!poolSnap.exists()) return;
+        let usedNumbers = (poolSnap.data().usedNumbers || []) as number[];
+        let reservedNumbers = (poolSnap.data().reservedNumbers || []) as Array<{num: number; timestamp: number}>;
+        if (!usedNumbers.includes(num)) {
+          usedNumbers.push(num);
+          usedNumbers.sort((a, b) => a - b);
+        }
+        reservedNumbers = reservedNumbers.filter((r) => r.num !== num);
+        transaction.set(poolRef, { usedNumbers, reservedNumbers, updatedAt: Timestamp.now() }, { merge: true });
+      });
+    } else if (parts.length === 4 && parts[0] === "BAGB-SP-DO") {
+      const year = parseInt(parts[1]);
+      const roman = parts[2];
+      const num = parseInt(parts[3]);
+      const poolRef = doc(db, "counters", `suratPengangkutanDO_Dikuasakan_${year}_${roman}`);
+      await runTransaction(db, async (transaction) => {
+        const poolSnap = await transaction.get(poolRef);
+        if (!poolSnap.exists()) return;
+        let usedNumbers = (poolSnap.data().usedNumbers || []) as number[];
+        let reservedNumbers = (poolSnap.data().reservedNumbers || []) as Array<{num: number; timestamp: number}>;
+        if (!usedNumbers.includes(num)) {
+          usedNumbers.push(num);
+          usedNumbers.sort((a, b) => a - b);
+        }
+        reservedNumbers = reservedNumbers.filter((r) => r.num !== num);
+        transaction.set(poolRef, { usedNumbers, reservedNumbers, updatedAt: Timestamp.now() }, { merge: true });
+      });
+    } else if (nomorSeri.startsWith("BAGB-DO-")) {
+      const match = nomorSeri.match(/^BAGB-DO-(.+?)-(.+?)-SP\/(\d{4})$/);
+      if (match) {
+        const nsub = match[1];
+        const perusahaan = match[2];
+        const num = parseInt(match[3]);
+        const poolRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nsub}`);
+        await runTransaction(db, async (transaction) => {
+          const poolSnap = await transaction.get(poolRef);
+          if (!poolSnap.exists()) return;
+          let usedNumbers = (poolSnap.data().usedNumbers || []) as number[];
+          let reservedNumbers = (poolSnap.data().reservedNumbers || []) as Array<{num: number; timestamp: number}>;
+          if (!usedNumbers.includes(num)) {
+            usedNumbers.push(num);
+            usedNumbers.sort((a, b) => a - b);
+          }
+          reservedNumbers = reservedNumbers.filter((r) => r.num !== num);
+          transaction.set(poolRef, { usedNumbers, reservedNumbers, updatedAt: Timestamp.now() }, { merge: true });
+        });
+      }
+    }
+  } catch (error) {
+    console.error("markSeriAsUsed error:", error);
   }
 };
 
@@ -2006,6 +2071,9 @@ export default function SuratPengangkutanPage() {
       });
 
       setPendingNomorSeri("");
+      if (nomorSeri) {
+        await markSeriAsUsed(nomorSeri);
+      }
       setSuccessMessage(`Surat pengangkutan berhasil dibuat!`);
       resetForm();
       fetchExistingSurat();
