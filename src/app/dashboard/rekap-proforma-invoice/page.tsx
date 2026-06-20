@@ -108,6 +108,7 @@ interface StockItem {
   bobotPerUnit: number;
   unit: string;
   botolPerDus: number;
+  volumeMl: number;
   stokAkhirUnit: number;
   stokAkhirKG: number;
   barangKeluarUnit: number;
@@ -715,6 +716,7 @@ export default function RekapProformaInvoicePage() {
         bobotPerUnit: docSnap.data().bobotPerUnit || 50,
         unit: docSnap.data().unit || "ZAK",
         botolPerDus: docSnap.data().botolPerDus || docSnap.data().jumlahIsiBotol || 20,
+        volumeMl: docSnap.data().volumeMl || docSnap.data().bobotPerUnit || 500,
         stokAkhirUnit: docSnap.data().stokAkhirUnit || 0,
         stokAkhirKG: docSnap.data().stokAkhirKG || 0,
         barangKeluarUnit: docSnap.data().barangKeluarUnit || 0,
@@ -1251,7 +1253,7 @@ export default function RekapProformaInvoicePage() {
         const satuan = produk.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
         const stock = isBotolOrDus ? getStockForProduct(produk.namaProduk) : null;
-        const volumeML = stock?.bobotPerUnit || produk.bobotPerUnit || 50;
+        const volumeML = stock?.volumeMl || stock?.bobotPerUnit || 500;
         const bobot = produk.bobotPerUnit || 50;
         let kemasan: string;
         let kuantitas: number;
@@ -1433,7 +1435,7 @@ export default function RekapProformaInvoicePage() {
         const satuan = produk.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
         const stock = isBotolOrDus ? getStockForProduct(produk.namaProduk) : null;
-        const volumeML = stock?.bobotPerUnit || produk.bobotPerUnit || 50;
+        const volumeML = stock?.volumeMl || stock?.bobotPerUnit || 500;
         const bobot = produk.bobotPerUnit || 50;
         let kemasan: string;
         let kuantitas: number;
@@ -2650,7 +2652,7 @@ const handleExportExcel = () => {
         const satuan = produk?.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
         const stock = isBotolOrDus ? getStockForProduct(it.jenisPupuk || "") : null;
-        const volumeML = stock?.bobotPerUnit || produk?.bobotPerUnit || 50;
+        const volumeML = stock?.volumeMl || stock?.bobotPerUnit || 500;
         const bobot = it.bobotPerUnit || produk?.bobotPerUnit || 50;
         const hargaSatuan = produk?.hargaSatuan || 0;
         const hargaPerZakDus = produk?.hargaPerZakDus || 0;
@@ -2687,7 +2689,7 @@ const handleExportExcel = () => {
         const satuan = produk.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
         const stock = isBotolOrDus ? getStockForProduct(produk.namaProduk) : null;
-        const volumeML = stock?.bobotPerUnit || produk.bobotPerUnit || 50;
+        const volumeML = stock?.volumeMl || stock?.bobotPerUnit || 500;
         const bobot = produk.bobotPerUnit || 50;
         let kemasan: string;
         let kuantitas: number;
