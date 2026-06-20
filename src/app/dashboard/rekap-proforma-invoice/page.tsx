@@ -455,6 +455,43 @@ const releasePaymentLock = async (nomorPI: string, lockId: string) => {
   }
 };
 
+
+const getUsedBaseNumbers = async (): Promise<number[]> => {
+  const used = new Set<number>();
+  try {
+    const fullSnap = await getDocs(query(collection(db, "arsipInvoice")));
+    fullSnap.docs.forEach((d) => {
+      const nomor = d.data().nomorInvoice || "";
+      const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
+      if (match) used.add(parseInt(match[1]));
+    });
+    const sementaraSnap = await getDocs(query(collection(db, "arsipInvoiceSementara")));
+    sementaraSnap.docs.forEach((d) => {
+      const nomor = d.data().nomorInvoice || "";
+      const match = nomor.match(/^BAGB-INV(?:-S\d+)?-(\d{3})$/);
+      if (match) used.add(parseInt(match[1]));
+    });
+  } catch (error) {
+    console.error(error);
+  }
+  return Array.from(used).sort((a, b) => a - b);
+};
+
+const getNextAvailableBaseNumber = async (): Promise<string> => {
+  const used = await getUsedBaseNumbers();
+  if (used.length === 0) return "001";
+  let candidate = 1;
+  while (used.includes(candidate)) {
+    candidate++;
+  }
+  return String(candidate).padStart(3, "0");
+};
+
+const isBaseNumberUsed = async (baseNumber: string): Promise<boolean> => {
+  const used = await getUsedBaseNumbers();
+  return used.includes(parseInt(baseNumber));
+};
+
 const cleanupStaleLocks = async () => {
   try {
     const editQuery = query(collection(db, "editLocks"));
@@ -1101,8 +1138,14 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       const piSnap = await getDoc(piRef);
       let baseNumber = piSnap.data()?.invoiceBaseNumber;
       if (!baseNumber) {
-        baseNumber = await getUniqueInvoiceBaseNumber();
+        baseNumber = await getNextAvailableBaseNumber();
         await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
+      } else {
+        const isUsed = await isBaseNumberUsed(baseNumber);
+        if (isUsed) {
+          baseNumber = await getNextAvailableBaseNumber();
+          await updateDoc(piRef, { invoiceBaseNumber: baseNumber });
+        }
       }
       const nomor = `BAGB-INV-${baseNumber}`;
       setInvoiceNomor(nomor);
@@ -1262,6 +1305,12 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
   const handleTerbitkanInvoice = async () => {
     if (!selectedItem || !invoiceNomor || !selectedOrderTTD) {
       alert("Pilih TTD untuk Diorder Oleh terlebih dahulu.");
+      return;
+    }
+    const baseNumber = invoiceNomor.replace("BAGB-INV-", "");
+    const isUsed = await isBaseNumberUsed(baseNumber);
+    if (isUsed) {
+      alert("Nomor invoice base sudah terpakai. Silakan reset atau gunakan nomor lain.");
       return;
     }
     const orderTTD = ttdList.find((t) => t.id === selectedOrderTTD);
