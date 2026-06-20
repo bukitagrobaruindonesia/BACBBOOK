@@ -477,11 +477,57 @@ const getUsedBaseNumbers = async (): Promise<number[]> => {
   return Array.from(used).sort((a, b) => a - b);
 };
 
+const getBaseNumbersForPI = async (nomorPI: string): Promise<number[]> => {
+  const used = new Set<number>();
+  try {
+    const sementaraQuery = query(collection(db, "arsipInvoiceSementara"), where("nomorPI", "==", nomorPI));
+    const sementaraSnap = await getDocs(sementaraQuery);
+    sementaraSnap.docs.forEach((d) => {
+      const nomor = d.data().nomorInvoice || "";
+      const match = nomor.match(/^BAGB-INV-S\d+-(\d{3})$/);
+      if (match) used.add(parseInt(match[1]));
+    });
+  } catch (error) {
+    console.error(error);
+  }
+  return Array.from(used).sort((a, b) => a - b);
+};
+
 const getNextAvailableBaseNumber = async (): Promise<string> => {
   const used = await getUsedBaseNumbers();
   if (used.length === 0) return "001";
   let candidate = 1;
   while (used.includes(candidate)) {
+    candidate++;
+  }
+  return String(candidate).padStart(3, "0");
+};
+
+const getAllPIBaseNumbers = async (): Promise<Record<string, number>> => {
+  const map: Record<string, number> = {};
+  try {
+    const piQuery = query(collection(db, "proformaInvoice"));
+    const piSnap = await getDocs(piQuery);
+    piSnap.docs.forEach((d) => {
+      const data = d.data();
+      if (data.invoiceBaseNumber) {
+        map[data.nomorPI] = parseInt(data.invoiceBaseNumber);
+      }
+    });
+  } catch (error) {
+    console.error(error);
+  }
+  return map;
+};
+
+const getNextBaseForPI = async (nomorPI: string): Promise<string> => {
+  const piBases = await getBaseNumbersForPI(nomorPI);
+  const allUsed = await getUsedBaseNumbers();
+  for (const base of piBases) {
+    if (!allUsed.includes(base)) return String(base).padStart(3, "0");
+  }
+  let candidate = 1;
+  while (allUsed.includes(candidate)) {
     candidate++;
   }
   return String(candidate).padStart(3, "0");
@@ -780,7 +826,18 @@ export default function RekapProformaInvoicePage() {
     }
   };
 
-  const getUniqueBastNumber = async (): Promise<string> => {
+  const isBaseNumberUsedByOtherPI = async (baseNumber: string, nomorPI: string): Promise<boolean> => {
+  const piMap = await getAllPIBaseNumbers();
+  const baseNum = parseInt(baseNumber);
+  for (const [pi, base] of Object.entries(piMap)) {
+    if (base === baseNum && pi !== nomorPI) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const getUniqueBastNumber = async (): Promise<string> => {
     const now = new Date();
     const year = now.getFullYear();
     const roman = getRomanMonth(now.getMonth() + 1);
@@ -1329,8 +1386,8 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
       return;
     }
     const baseNumber = invoiceNomor.replace("BAGB-INV-", "");
-    const isUsed = await isBaseNumberUsed(baseNumber, selectedItem.nomorPI);
-    if (isUsed) {
+    const isUsedByOther = await isBaseNumberUsedByOtherPI(baseNumber, selectedItem.nomorPI);
+    if (isUsedByOther) {
       alert("Nomor invoice base sudah terpakai oleh PI lain. Silakan reset atau gunakan nomor lain.");
       return;
     }
