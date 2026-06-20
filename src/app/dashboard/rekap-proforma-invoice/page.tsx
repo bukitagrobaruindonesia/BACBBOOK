@@ -1171,11 +1171,12 @@ export default function RekapProformaInvoicePage() {
     setIsInvoiceModalOpen(true);
     setIsGeneratingInvoice(true);
     try {
-      if (!pi.customerId) {
+      let resolvedCustomerId = pi.customerId || "";
+      if (!resolvedCustomerId) {
         const q = query(collection(db, "customers"), where("namaCustomer", "==", pi.namaCustomer.trim()));
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
-          setCustomerId(snapshot.docs[0].data().customerId || "");
+          resolvedCustomerId = snapshot.docs[0].data().customerId || "";
         } else {
           const q2 = query(collection(db, "customers"));
           const snapshot2 = await getDocs(q2);
@@ -1183,18 +1184,16 @@ export default function RekapProformaInvoicePage() {
             d.data().namaCustomer?.trim().toLowerCase() === pi.namaCustomer.trim().toLowerCase()
           );
           if (found) {
-            setCustomerId(found.data().customerId || "");
+            resolvedCustomerId = found.data().customerId || "";
           }
         }
+        setCustomerId(resolvedCustomerId);
       }
       const nomor = await generateInvoiceNumber(surat, pi);
       setInvoiceNomor(nomor);
       const parsed = parseInvoiceNumber(nomor);
       if (parsed) {
         const baseNumber = String(parsed.baseNum).padStart(3, "0");
-      }
-      if (!pi.customerId) {
-        await fetchCustomerByName(pi.namaCustomer);
       }
       const allSurat = getSuratMuatForPI(pi.nomorPI);
       const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
@@ -1328,20 +1327,34 @@ export default function RekapProformaInvoicePage() {
           p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase()) ||
           it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase())
         );
+        const satuan = produk?.satuan || "ZAK";
+        const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
         const bobot = it.bobotPerUnit || produk?.bobotPerUnit || 50;
-        const loadedQty = (it.pengambilanZAK || 0) * bobot;
         const hargaSatuan = produk?.hargaSatuan || 0;
+        let kemasan: string;
+        let kuantitas: number;
+        let displaySatuan: string;
+        if (isBotolOrDus) {
+          kemasan = bobot ? `${bobot} ML` : "-";
+          kuantitas = it.pengambilanZAK || 0;
+          displaySatuan = satuan === "DUS" ? "DUS" : "BOTOL";
+        } else {
+          kemasan = bobot ? `${bobot} KG` : "-";
+          kuantitas = (it.pengambilanZAK || 0) * bobot;
+          displaySatuan = "KG";
+        }
+        const subTotal = kuantitas * hargaSatuan;
         return {
           no: idx + 1,
           namaProduk: it.jenisPupuk || "",
           produsen: produk?.produsen || "",
-          kemasan: bobot ? `${bobot} KG` : "-",
+          kemasan,
           fot: it.fot || produk?.fot || "",
-          kuantitas: loadedQty,
-          satuan: "KG",
+          kuantitas,
+          satuan: displaySatuan,
           hargaSatuan,
           hargaPerZakDus: produk?.hargaPerZakDus || 0,
-          subTotal: loadedQty * hargaSatuan,
+          subTotal,
         };
       }).filter((it) => it.kuantitas > 0);
       const totalSubTotal = invoiceItems.reduce((sum, it) => sum + it.subTotal, 0);
