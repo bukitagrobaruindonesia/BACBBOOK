@@ -960,97 +960,69 @@ export default function RekapProformaInvoicePage() {
   };
 
   const getUniqueInvoiceBaseNumber = async (): Promise<string> => {
-    const poolRef = doc(db, "counters", "invoiceBasePool");
-    const maxRetries = 15;
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      try {
-        const result = await runTransaction(db, async (transaction) => {
-          const poolSnap = await transaction.get(poolRef);
-          let lastNumber = 0;
-          let gaps: number[] = [];
-          if (poolSnap.exists()) {
-            lastNumber = poolSnap.data().lastNumber || 0;
-            gaps = poolSnap.data().gaps || [];
-          }
-          let candidateNum: number;
-          gaps.sort((a, b) => a - b);
-          if (gaps.length > 0) {
-            candidateNum = gaps[0];
-            gaps = gaps.filter((g) => g !== candidateNum);
-          } else {
-            candidateNum = lastNumber + 1;
-            lastNumber = candidateNum;
-          }
-          const candidateBase = String(candidateNum).padStart(3, "0");
-          const lockRef = doc(db, "invoiceBaseLocks", candidateBase);
-          const lockDoc = await transaction.get(lockRef);
-          if (lockDoc.exists()) {
-            let searchNum = candidateNum + 1;
-            let found = false;
-            while (searchNum <= lastNumber + 1000 && !found) {
-              const testBase = String(searchNum).padStart(3, "0");
-              const testRef = doc(db, "invoiceBaseLocks", testBase);
-              const testDoc = await transaction.get(testRef);
-              if (!testDoc.exists()) {
-                if (gaps.includes(searchNum)) {
-                  gaps = gaps.filter((g) => g !== searchNum);
-                } else if (searchNum > lastNumber) {
-                  lastNumber = searchNum;
-                }
-                candidateNum = searchNum;
-                found = true;
-              }
-              searchNum++;
-            }
-            if (!found) {
-              throw new Error("No available invoice base number found");
-            }
-          }
-          transaction.set(lockRef, { createdAt: serverTimestamp(), used: true, nomorPI: "pending" });
-          transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
-          return String(candidateNum).padStart(3, "0");
-        });
-        const verifyRef = doc(db, "invoiceBaseLocks", result);
-        const verifySnap = await getDoc(verifyRef);
-        if (verifySnap.exists() && verifySnap.data().nomorPI && verifySnap.data().nomorPI !== "pending") {
-          continue;
-        }
-        return result;
-      } catch (error: any) {
-        if (attempt === maxRetries - 1) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
-      }
-    }
-    throw new Error("Failed to generate unique invoice base number after retries");
-  };
-
-  
-const releaseInvoiceBase = async (baseNumber: string) => {
+  const poolRef = doc(db, "counters", "invoiceBasePool");
+  const maxRetries = 15;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      const baseNum = parseInt(baseNumber);
-      if (isNaN(baseNum)) return;
-      const poolRef = doc(db, "counters", "invoiceBasePool");
-      await runTransaction(db, async (transaction) => {
+      const result = await runTransaction(db, async (transaction) => {
         const poolSnap = await transaction.get(poolRef);
-        let lastNumber = poolSnap.data()?.lastNumber || 0;
-        let gaps = (poolSnap.data()?.gaps || []) as number[];
-        if (!gaps.includes(baseNum)) {
-          gaps.push(baseNum);
-          gaps.sort((a, b) => a - b);
+        let lastNumber = 0;
+        let gaps: number[] = [];
+        if (poolSnap.exists()) {
+          lastNumber = poolSnap.data().lastNumber || 0;
+          gaps = poolSnap.data().gaps || [];
         }
-        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
+        gaps.sort((a, b) => a - b);
+        let candidateNum: number;
+        if (gaps.length > 0) {
+          candidateNum = gaps[0];
+          gaps = gaps.filter((g) => g !== candidateNum);
+        } else {
+          candidateNum = lastNumber + 1;
+          lastNumber = candidateNum;
+        }
+        transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
+        return String(candidateNum).padStart(3, "0");
       });
-      try {
-        await updateDoc(doc(db, "invoiceBaseLocks", baseNumber), { released: true, releasedAt: serverTimestamp() });
-      } catch {}
-    } catch (error) {
-      console.error("Failed to release invoice base:", error);
+      return result;
+    } catch (error: any) {
+      if (attempt === maxRetries - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
     }
-  };
+  }
+  throw new Error("Failed to generate unique invoice base number after retries");
+};
+
+const releaseInvoiceBase = async (baseNumber: string) => {
+  try {
+    const baseNum = parseInt(baseNumber);
+    if (isNaN(baseNum)) return;
+    const poolRef = doc(db, "counters", "invoiceBasePool");
+    await runTransaction(db, async (transaction) => {
+      const poolSnap = await transaction.get(poolRef);
+      let lastNumber = poolSnap.data()?.lastNumber || 0;
+      let gaps = (poolSnap.data()?.gaps || []) as number[];
+      if (!gaps.includes(baseNum)) {
+        gaps.push(baseNum);
+        gaps.sort((a, b) => a - b);
+      }
+      transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() });
+    });
+  } catch (error) {
+    console.error("Failed to release invoice base:", error);
+  }
+};
 
 const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoice): Promise<string> => {
     const pi = piRow || selectedItem;
     if (!pi) return "";
+    const suratRef = doc(db, "suratPengangkutan", surat.id);
+    const suratSnap = await getDoc(suratRef);
+    const existingNomor = suratSnap.data()?.nomorInvoice;
+    if (existingNomor) {
+      const parsed = parseInvoiceNumber(existingNomor);
+      if (parsed) return existingNomor;
+    }
     const piRef = doc(db, "proformaInvoice", pi.id);
     const piSnap = await getDoc(piRef);
     let baseNumber = piSnap.data()?.invoiceBaseNumber;
@@ -1063,6 +1035,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
     const sIndex = sortedSurat.findIndex((s) => s.id === surat.id);
     const sNum = sIndex >= 0 ? sIndex + 1 : 1;
     const nomor = `BAGB-INV-S${sNum}-${baseNumber}`;
+    await updateDoc(suratRef, { nomorInvoice: nomor });
     return nomor;
   };
 
@@ -1170,9 +1143,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
           }
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
-        try {
-          await updateDoc(doc(db, "invoiceBaseLocks", oldBase), { reset: true, resetAt: serverTimestamp() });
-        } catch {}
+
       }
       const newBase = await getUniqueInvoiceBaseNumber();
       await updateDoc(piRef, { invoiceBaseNumber: newBase, updatedAt: serverTimestamp() });
@@ -1349,7 +1320,7 @@ const generateInvoiceNumber = async (surat: SuratMuatInfo, piRow?: ProformaInvoi
         updatedAt: serverTimestamp(),
       };
       await setDoc(doc(db, "arsipInvoice", invoiceNomor), { ...arsipData, createdAt: serverTimestamp() }, { merge: true });
-      await updateDoc(doc(db, "invoiceBaseLocks", invoiceNomor.replace("BAGB-INV-", "")), { nomorPI: pi.nomorPI });
+
       setIsInvoiceModalOpen(false);
       setInvoiceExists(true);
       alert("Invoice berhasil diterbitkan!");
@@ -1928,9 +1899,7 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
           }
           transaction.set(poolRef, { lastNumber, gaps, updatedAt: Timestamp.now() }, { merge: true });
         });
-        try {
-          await updateDoc(doc(db, "invoiceBaseLocks", piDoc.invoiceBaseNumber), { deleted: true, deletedAt: serverTimestamp() });
-        } catch {}
+
         try { await deleteDoc(doc(db, "counters", `invoicePartialPool_${piDoc.invoiceBaseNumber}`)); } catch {}
       }
       const suratDocsMap = new Map<string, any>();
