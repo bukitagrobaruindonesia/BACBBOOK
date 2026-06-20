@@ -1250,12 +1250,14 @@ export default function RekapProformaInvoicePage() {
       const invoiceItems = pi.produkItems.map((produk, idx) => {
         const satuan = produk.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const stock = isBotolOrDus ? getStockForProduct(produk.namaProduk) : null;
+        const volumeML = stock?.bobotPerUnit || produk.bobotPerUnit || 50;
         const bobot = produk.bobotPerUnit || 50;
         let kemasan: string;
         let kuantitas: number;
         let displaySatuan: string;
         if (isBotolOrDus) {
-          kemasan = bobot ? `${bobot} ML` : "-";
+          kemasan = volumeML ? `${volumeML} ML` : "-";
           kuantitas = produk.kuantitas || 0;
           displaySatuan = satuan === "DUS" ? "DUS" : "BOTOL";
         } else {
@@ -1430,12 +1432,14 @@ export default function RekapProformaInvoicePage() {
       const invoiceItems = pi.produkItems.map((produk, idx) => {
         const satuan = produk.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const stock = isBotolOrDus ? getStockForProduct(produk.namaProduk) : null;
+        const volumeML = stock?.bobotPerUnit || produk.bobotPerUnit || 50;
         const bobot = produk.bobotPerUnit || 50;
         let kemasan: string;
         let kuantitas: number;
         let displaySatuan: string;
         if (isBotolOrDus) {
-          kemasan = bobot ? `${bobot} ML` : "-";
+          kemasan = volumeML ? `${volumeML} ML` : "-";
           kuantitas = produk.kuantitas || 0;
           displaySatuan = satuan === "DUS" ? "DUS" : "BOTOL";
         } else {
@@ -2645,6 +2649,8 @@ const handleExportExcel = () => {
         );
         const satuan = produk?.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const stock = isBotolOrDus ? getStockForProduct(it.jenisPupuk || "") : null;
+        const volumeML = stock?.bobotPerUnit || produk?.bobotPerUnit || 50;
         const bobot = it.bobotPerUnit || produk?.bobotPerUnit || 50;
         const hargaSatuan = produk?.hargaSatuan || 0;
         const hargaPerZakDus = produk?.hargaPerZakDus || 0;
@@ -2653,7 +2659,7 @@ const handleExportExcel = () => {
         let displaySatuan: string;
         let subTotal: number;
         if (isBotolOrDus) {
-          kemasan = bobot ? `${bobot} ML` : "-";
+          kemasan = volumeML ? `${volumeML} ML` : "-";
           kuantitas = it.pengambilanZAK || 0;
           displaySatuan = satuan === "DUS" ? "DUS" : "BTL";
           subTotal = kuantitas * hargaSatuan;
@@ -2680,12 +2686,14 @@ const handleExportExcel = () => {
       invoiceItems = pi.produkItems.map((produk, idx) => {
         const satuan = produk.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const stock = isBotolOrDus ? getStockForProduct(produk.namaProduk) : null;
+        const volumeML = stock?.bobotPerUnit || produk.bobotPerUnit || 50;
         const bobot = produk.bobotPerUnit || 50;
         let kemasan: string;
         let kuantitas: number;
         let displaySatuan: string;
         if (isBotolOrDus) {
-          kemasan = bobot ? `${bobot} ML` : "-";
+          kemasan = volumeML ? `${volumeML} ML` : "-";
           kuantitas = produk.kuantitas || 0;
           displaySatuan = satuan === "DUS" ? "DUS" : "BTL";
         } else {
