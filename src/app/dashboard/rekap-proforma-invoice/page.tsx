@@ -1240,14 +1240,6 @@ export default function RekapProformaInvoicePage() {
       if (parsed) {
         const baseNumber = String(parsed.baseNum).padStart(3, "0");
       }
-      const allSurat = getSuratMuatForPI(pi.nomorPI);
-      const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
-      if (parsed && parsed.isPartial && sortedSurat.length > 0) {
-        const sIndex = parsed.partialNum - 1;
-        if (sIndex >= 0 && sIndex < sortedSurat.length) {
-          setInvoiceDate(sortedSurat[sIndex].tanggal);
-        }
-      }
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
   };
 
