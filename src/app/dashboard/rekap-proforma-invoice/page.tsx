@@ -15,7 +15,7 @@ import Modal from "@/app/components/ui/Modal";
 import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
 import Card from "@/app/components/ui/Card";
-import { exportToExcel } from "@/app/utils/exportExcel";
+import * as XLSX from "xlsx-js-style";
 
 interface ProdukItem {
   namaProduk: string;
@@ -353,6 +353,38 @@ const releaseSeriDO = async (nomorSeri: string) => {
         const perusahaan = match[2];
         const num = parseInt(match[3]);
         const poolRef = doc(db, "counters", `suratPengangkutanDO_Mandiri_${perusahaan}_${nsub}`);
+        await runTransaction(db, async (transaction) => {
+          const poolSnap = await transaction.get(poolRef);
+          if (!poolSnap.exists()) return;
+          let gaps = (poolSnap.data().gaps || []) as number[];
+          if (!gaps.includes(num)) {
+            gaps.push(num);
+            gaps.sort((a, b) => a - b);
+          }
+          transaction.set(poolRef, { gaps, updatedAt: Timestamp.now() }, { merge: true });
+        });
+      }
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const releaseBastNumber = async (nomorSeri: string) => {
+  try {
+    const lockRef = doc(db, "bastLocks", nomorSeri);
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists()) {
+      await deleteDoc(lockRef);
+    }
+    const parts = nomorSeri.split("/");
+    if (parts.length >= 4 && parts[0] === "BAGB" && parts[1] === "BAB") {
+      const roman = parts[2];
+      const year = parseInt(parts[3]);
+      const numMatch = nomorSeri.match(/\/(\d{4})$/);
+      if (numMatch) {
+        const num = parseInt(numMatch[1]);
+        const poolRef = doc(db, "counters", `bast_${year}_${roman}`);
         await runTransaction(db, async (transaction) => {
           const poolSnap = await transaction.get(poolRef);
           if (!poolSnap.exists()) return;
@@ -807,31 +839,45 @@ export default function RekapProformaInvoicePage() {
     const year = now.getFullYear();
     const roman = getRomanMonth(now.getMonth() + 1);
     const prefix = `BAGB/BAB/${roman}/${year}`;
-    const counterRef = doc(db, "counters", `bast_${year}_${roman}`);
-    const maxRetries = 10;
+    const poolRef = doc(db, "counters", `bast_${year}_${roman}`);
+    const maxRetries = 15;
     for (let attempt = 0; attempt < maxRetries; attempt++) {
       try {
         const result = await runTransaction(db, async (transaction) => {
-          const counterDoc = await transaction.get(counterRef);
+          const poolDoc = await transaction.get(poolRef);
+          let gaps: number[] = [];
           let lastNum = 0;
-          if (counterDoc.exists()) {
-            lastNum = counterDoc.data().lastNumber || 0;
+          if (poolDoc.exists()) {
+            const data = poolDoc.data();
+            gaps = (data.gaps || []) as number[];
+            lastNum = data.lastNumber || 0;
           }
-          let candidateNum = lastNum + 1;
+          let candidateNum: number;
+          if (gaps.length > 0) {
+            candidateNum = gaps[0];
+            gaps = gaps.slice(1);
+          } else {
+            candidateNum = lastNum + 1;
+            lastNum = candidateNum;
+          }
           let candidateSeri = `${prefix}/${String(candidateNum).padStart(4, "0")}`;
           const lockRef = doc(db, "bastLocks", candidateSeri);
           const lockDoc = await transaction.get(lockRef);
           if (lockDoc.exists()) {
-            let searchNum = candidateNum + 1;
+            let searchNum = lastNum + 1;
             let found = false;
-            while (searchNum <= candidateNum + 100 && !found) {
+            while (searchNum <= lastNum + 100 && !found) {
               const testSeri = `${prefix}/${String(searchNum).padStart(4, "0")}`;
               const testRef = doc(db, "bastLocks", testSeri);
               const testDoc = await transaction.get(testRef);
               if (!testDoc.exists()) {
                 candidateNum = searchNum;
                 candidateSeri = testSeri;
+                if (searchNum > lastNum) lastNum = searchNum;
                 found = true;
+              } else if (gaps.length > 0) {
+                const gapIdx = gaps.indexOf(searchNum);
+                if (gapIdx >= 0) gaps.splice(gapIdx, 1);
               }
               searchNum++;
             }
@@ -840,7 +886,7 @@ export default function RekapProformaInvoicePage() {
             }
           }
           transaction.set(lockRef, { createdAt: serverTimestamp(), used: true });
-          transaction.set(counterRef, { lastNumber: candidateNum });
+          transaction.set(poolRef, { lastNumber: lastNum, gaps, updatedAt: Timestamp.now() }, { merge: true });
           return candidateSeri;
         });
         return result;
@@ -1220,10 +1266,18 @@ export default function RekapProformaInvoicePage() {
     try {
       const q1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
       const snap1 = await getDocs(q1);
-      for (const d of snap1.docs) { await deleteDoc(doc(db, "beritaAcara", d.id)); }
+      for (const d of snap1.docs) {
+        const seri = d.data().nomorSeri;
+        if (seri) await releaseBastNumber(seri);
+        await deleteDoc(doc(db, "beritaAcara", d.id));
+      }
       const q2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", nomorPI));
       const snap2 = await getDocs(q2);
-      for (const d of snap2.docs) { await deleteDoc(doc(db, "beritaAcara", d.id)); }
+      for (const d of snap2.docs) {
+        const seri = d.data().nomorSeri;
+        if (seri) await releaseBastNumber(seri);
+        await deleteDoc(doc(db, "beritaAcara", d.id));
+      }
       setBastExists(false);
       fetchData();
     } catch (error) { console.error(error); }
@@ -2116,10 +2170,18 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
       for (const d of transaksiSnap2.docs) { await deleteDoc(doc(db, "transaksiBarangKeluar", d.id)); }
       const baQuery1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", nomorPI));
       const baSnap1 = await getDocs(baQuery1);
-      for (const d of baSnap1.docs) { await deleteDoc(doc(db, "beritaAcara", d.id)); }
+      for (const d of baSnap1.docs) {
+        const seri = d.data().nomorSeri;
+        if (seri) await releaseBastNumber(seri);
+        await deleteDoc(doc(db, "beritaAcara", d.id));
+      }
       const baQuery2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", nomorPI));
       const baSnap2 = await getDocs(baQuery2);
-      for (const d of baSnap2.docs) { await deleteDoc(doc(db, "beritaAcara", d.id)); }
+      for (const d of baSnap2.docs) {
+        const seri = d.data().nomorSeri;
+        if (seri) await releaseBastNumber(seri);
+        await deleteDoc(doc(db, "beritaAcara", d.id));
+      }
       await deleteDoc(doc(db, "proformaInvoice", id));
       await fetchData();
       await fetchSuratMuat();
@@ -2303,59 +2365,365 @@ const handleDeleteSurat = async (surat: SuratMuatInfo) => {
   }
 };
 
-const handleExportExcel = () => {
-    const exportData: any[] = [];
-    filteredData.forEach((item) => {
-      const produkRows = item.produkItems.map((p, idx) => ({
-        "No": idx + 1,
-        "Nama Produk": p.namaProduk,
-        "FOT": p.fot || "",
-        "Produsen": p.produsen || "",
-        "Kuantitas": p.kuantitas || 0,
-        "Satuan": p.satuan || "",
-        "Harga Satuan": p.hargaSatuan || 0,
-        "Harga Per ZAK/DUS": p.hargaPerZakDus || 0,
-        "Total Harga": p.totalHarga || 0,
-        "PPN 11%": p.includePPN ? (p.ppnNominal || ((p.kuantitas || 0) * (p.hargaSatuan || 0) * 0.11)) : 0,
-      }));
-      const suratList = getSuratMuatForPI(item.nomorPI);
-      const suratRows = suratList.map((s, idx) => ({
-        "No Surat": idx + 1,
-        "Nomor Seri": s.nomorSeri,
-        "Tanggal Surat": s.tanggal,
-        "Driver": s.driverUnit,
-        "No Polisi": s.nomorPolisi,
-        "Total KG": s.totalKG,
-      }));
-      exportData.push({
-        "Tanggal PI": item.tanggal,
-        "Nomor PI": item.nomorPI,
-        "Nama Customer": item.namaCustomer,
-        "Alamat": item.alamatCustomer,
-        "NPWP": item.npwp || "",
-        "Metode Pembayaran": item.metodePembayaran,
-        "Subtotal": item.subtotal,
-        "Total PPN": item.ppnNominal,
-        "Uang Muka": item.uangMuka || 0,
-        "Ongkos Kirim": item.ongkosKirim || 0,
-        "Jumlah Tertagih": item.jumlahTertagih,
-        "Terbilang": item.terbilang,
-        "Jatuh Tempo": item.tanggalJatuhTempo,
-        "Keterangan": item.keterangan,
-        "Status Pengangkutan": getStatusPengangkutan(item),
-        "Status Pelunasan": item.statusPelunasan || getPaymentStatus(item),
-        "Status Pemesanan": item.statusPemesanan || "Aktif",
-        "Jumlah Dibayar": item.jumlahUangDibayar || 0,
-        "Tanggal Pembayaran": item.tanggalPembayaran || "",
-        "Sisa (KG)": item.sisaPengambilanKG || 0,
-        "Dibuat Oleh": item.createdBy,
-        "Produk Count": item.produkItems.length,
-        "Produk Detail": JSON.stringify(produkRows),
-        "Surat Muat Count": suratList.length,
-        "Surat Muat Detail": JSON.stringify(suratRows),
-      });
+const handleExportExcel = async () => {
+    const now = new Date();
+    const bulanNama = now.toLocaleDateString("id-ID", { month: "long" });
+    const tahun = now.getFullYear();
+    const fileName = `Rekap_PI_${bulanNama}_${tahun}.xlsx`;
+
+    const wb = XLSX.utils.book_new();
+
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11, name: "Arial" },
+      fill: { fgColor: { rgb: "15803D" }, patternType: "solid" },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border: {
+        top: { style: "thin", color: { rgb: "000000" } },
+        bottom: { style: "thin", color: { rgb: "000000" } },
+        left: { style: "thin", color: { rgb: "000000" } },
+        right: { style: "thin", color: { rgb: "000000" } },
+      },
+    };
+
+    const subHeaderStyle = {
+      font: { bold: true, color: { rgb: "1F2937" }, sz: 10, name: "Arial" },
+      fill: { fgColor: { rgb: "DCFCE7" }, patternType: "solid" },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border: {
+        top: { style: "thin", color: { rgb: "000000" } },
+        bottom: { style: "thin", color: { rgb: "000000" } },
+        left: { style: "thin", color: { rgb: "000000" } },
+        right: { style: "thin", color: { rgb: "000000" } },
+      },
+    };
+
+    const dataStyle = {
+      font: { color: { rgb: "000000" }, sz: 10, name: "Arial" },
+      alignment: { horizontal: "left", vertical: "center", wrapText: true },
+      border: {
+        top: { style: "thin", color: { rgb: "D1D5DB" } },
+        bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+        left: { style: "thin", color: { rgb: "D1D5DB" } },
+        right: { style: "thin", color: { rgb: "D1D5DB" } },
+      },
+    };
+
+    const numberStyle = {
+      ...dataStyle,
+      alignment: { horizontal: "right", vertical: "center" },
+      numFmt: '"Rp "#,##0',
+    };
+
+    const qtyStyle = {
+      ...dataStyle,
+      alignment: { horizontal: "right", vertical: "center" },
+      numFmt: '#,##0',
+    };
+
+    const dateStyle = {
+      ...dataStyle,
+      alignment: { horizontal: "center", vertical: "center" },
+      numFmt: 'DD/MM/YYYY',
+    };
+
+    const statusStyle = (status: string) => {
+      let bg = "F3F4F6";
+      let fg = "374151";
+      if (status === "Lunas" || status === "Selesai Dimuat" || status === "Aktif") { bg = "DCFCE7"; fg = "166534"; }
+      else if (status === "Cicilan" || status === "Sebagian Dimuat") { bg = "FEF9C3"; fg = "854D0E"; }
+      else if (status === "Belum Lunas" || status === "Belum Dimuat" || status === "Batal") { bg = "FEE2E2"; fg = "991B1B"; }
+      return {
+        ...dataStyle,
+        font: { bold: true, color: { rgb: fg }, sz: 10, name: "Arial" },
+        fill: { fgColor: { rgb: bg }, patternType: "solid" },
+        alignment: { horizontal: "center", vertical: "center" },
+      };
+    };
+
+    const altRowStyle = {
+      ...dataStyle,
+      fill: { fgColor: { rgb: "F9FAFB" }, patternType: "solid" },
+    };
+
+    const totalStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11, name: "Arial" },
+      fill: { fgColor: { rgb: "166534" }, patternType: "solid" },
+      alignment: { horizontal: "right", vertical: "center" },
+      border: {
+        top: { style: "medium", color: { rgb: "000000" } },
+        bottom: { style: "medium", color: { rgb: "000000" } },
+        left: { style: "thin", color: { rgb: "000000" } },
+        right: { style: "thin", color: { rgb: "000000" } },
+      },
+      numFmt: '"Rp "#,##0',
+    };
+
+    const headers = [
+      "No", "Tanggal PI", "Nomor PI", "Nama Customer", "Alamat", "NPWP",
+      "Metode Pembayaran", "Subtotal", "PPN", "Uang Muka", "Ongkos Kirim",
+      "Jumlah Tertagih", "Status Pengangkutan", "Status Pelunasan", "Status Pemesanan",
+      "Jumlah Dibayar", "Tanggal Pembayaran", "Sisa (KG)", "Dibuat Oleh",
+      "Produk Count", "Surat Muat Count"
+    ];
+
+    const wsData: any[][] = [];
+
+    wsData.push(["PT BUKIT AGROCHEMICAL BARU"]);
+    wsData.push(["REKAP PI"]);
+    wsData.push([`${bulanNama.toUpperCase()} ${tahun}`]);
+    wsData.push([]);
+    wsData.push(headers);
+
+    let rowNum = 6;
+    filteredData.forEach((item, idx) => {
+      const statusPengangkutan = getStatusPengangkutan(item);
+      const statusPelunasan = item.statusPelunasan || getPaymentStatus(item);
+      const statusPemesanan = item.statusPemesanan || "Aktif";
+      const row = [
+        idx + 1,
+        item.tanggal,
+        item.nomorPI,
+        item.namaCustomer,
+        item.alamatCustomer,
+        item.npwp || "",
+        item.metodePembayaran,
+        item.subtotal,
+        item.ppnNominal,
+        item.uangMuka || 0,
+        item.ongkosKirim || 0,
+        item.jumlahTertagih,
+        statusPengangkutan,
+        statusPelunasan,
+        statusPemesanan,
+        item.jumlahUangDibayar || 0,
+        item.tanggalPembayaran || "",
+        item.sisaPengambilanKG || 0,
+        item.createdBy,
+        item.produkItems.length,
+        getSuratMuatForPI(item.nomorPI).length,
+      ];
+      wsData.push(row);
+      rowNum++;
     });
-    exportToExcel(exportData, `Rekap_Proforma_Invoice_${new Date().toISOString().split("T")[0]}`, "Rekap PI");
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    const colWidths = [
+      { wch: 5 }, { wch: 12 }, { wch: 18 }, { wch: 25 }, { wch: 30 }, { wch: 20 },
+      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
+      { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 14 },
+      { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 18 },
+      { wch: 12 }, { wch: 14 }
+    ];
+    ws["!cols"] = colWidths;
+
+    ws["!rows"] = [
+      { hpt: 40 }, { hpt: 35 }, { hpt: 30 }, { hpt: 15 },
+      { hpt: 40 },
+      ...Array(filteredData.length).fill({ hpt: 22 })
+    ];
+
+    const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[cellRef]) ws[cellRef] = { v: "" };
+
+        if (R === 0) {
+          ws[cellRef].s = {
+            font: { bold: true, color: { rgb: "166534" }, sz: 18, name: "Arial" },
+            alignment: { horizontal: "center", vertical: "center" },
+            fill: { fgColor: { rgb: "F0FDF4" }, patternType: "solid" },
+            border: {
+              bottom: { style: "medium", color: { rgb: "15803D" } },
+            },
+          };
+        } else if (R === 1) {
+          ws[cellRef].s = {
+            font: { bold: true, color: { rgb: "166534" }, sz: 16, name: "Arial" },
+            alignment: { horizontal: "center", vertical: "center" },
+          };
+        } else if (R === 2) {
+          ws[cellRef].s = {
+            font: { bold: true, color: { rgb: "6B7280" }, sz: 13, name: "Arial" },
+            alignment: { horizontal: "center", vertical: "center" },
+            border: {
+              bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+            },
+          };
+        } else if (R === 4) {
+          ws[cellRef].s = headerStyle;
+        } else if (R >= 5) {
+          const isAlt = (R - 5) % 2 === 1;
+          const baseStyle = isAlt ? altRowStyle : dataStyle;
+
+          if (C === 0) {
+            ws[cellRef].s = { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } };
+          } else if (C === 1) {
+            ws[cellRef].s = dateStyle;
+          } else if (C === 7 || C === 8 || C === 9 || C === 10 || C === 11 || C === 15) {
+            ws[cellRef].s = numberStyle;
+          } else if (C === 12) {
+            const val = ws[cellRef].v as string;
+            ws[cellRef].s = statusStyle(val);
+          } else if (C === 13) {
+            const val = ws[cellRef].v as string;
+            ws[cellRef].s = statusStyle(val);
+          } else if (C === 14) {
+            const val = ws[cellRef].v as string;
+            ws[cellRef].s = statusStyle(val);
+          } else if (C === 17) {
+            ws[cellRef].s = qtyStyle;
+          } else if (C === 19 || C === 20) {
+            ws[cellRef].s = { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } };
+          } else {
+            ws[cellRef].s = baseStyle;
+          }
+        }
+      }
+    }
+
+    ws["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: range.e.c } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: range.e.c } },
+    ];
+
+    ws["!autofilter"] = { ref: `A5:${XLSX.utils.encode_cell({ r: 4, c: range.e.c })}` };
+
+    const totalRow = rowNum;
+    const totalRowData = [
+      "", "", "", "", "", "", "TOTAL",
+      filteredData.reduce((sum, i) => sum + (i.subtotal || 0), 0),
+      filteredData.reduce((sum, i) => sum + (i.ppnNominal || 0), 0),
+      filteredData.reduce((sum, i) => sum + (i.uangMuka || 0), 0),
+      filteredData.reduce((sum, i) => sum + (i.ongkosKirim || 0), 0),
+      filteredData.reduce((sum, i) => sum + (i.jumlahTertagih || 0), 0),
+      "", "", "",
+      filteredData.reduce((sum, i) => sum + (i.jumlahUangDibayar || 0), 0),
+      "", "", "", "", "",
+    ];
+    XLSX.utils.sheet_add_aoa(ws, [totalRowData], { origin: `A${totalRow}` });
+
+    for (let C = range.s.c; C <= range.e.c; ++C) {
+      const cellRef = XLSX.utils.encode_cell({ r: totalRow - 1, c: C });
+      if (!ws[cellRef]) ws[cellRef] = { v: "" };
+      if (C === 7 || C === 8 || C === 9 || C === 10 || C === 11 || C === 15) {
+        ws[cellRef].s = totalStyle;
+      } else if (C === 6) {
+        ws[cellRef].s = { ...totalStyle, alignment: { horizontal: "center", vertical: "center" } };
+      } else {
+        ws[cellRef].s = { ...totalStyle, numFmt: undefined };
+      }
+    }
+
+    ws["!rows"] = [
+      { hpt: 30 }, { hpt: 30 }, { hpt: 25 }, { hpt: 15 },
+      { hpt: 35 },
+      ...Array(filteredData.length).fill({ hpt: 22 }),
+      { hpt: 28 }
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, "Rekap PI");
+
+    if (filteredData.length > 0) {
+      const detailHeaders = [
+        "No", "Nomor PI", "Tanggal PI", "Nama Customer", "Nama Produk", "FOT", "Produsen",
+        "Kuantitas", "Satuan", "Harga Satuan", "Harga Per ZAK/DUS", "Total Harga", "PPN 11%"
+      ];
+      const detailData: any[][] = [];
+      detailData.push(["PT BUKIT AGROCHEMICAL BARU"]);
+      detailData.push(["DETAIL PRODUK REKAP PI"]);
+      detailData.push([`${bulanNama.toUpperCase()} ${tahun}`]);
+      detailData.push([]);
+      detailData.push(detailHeaders);
+
+      filteredData.forEach((item) => {
+        item.produkItems.forEach((p, idx) => {
+          detailData.push([
+            idx + 1,
+            item.nomorPI,
+            item.tanggal,
+            item.namaCustomer,
+            p.namaProduk,
+            p.fot || "",
+            p.produsen || "",
+            p.kuantitas || 0,
+            p.satuan || "",
+            p.hargaSatuan || 0,
+            p.hargaPerZakDus || 0,
+            p.totalHarga || 0,
+            p.includePPN ? ((p.kuantitas || 0) * (p.hargaSatuan || 0) * 0.11) : 0,
+          ]);
+        });
+      });
+
+      const wsDetail = XLSX.utils.aoa_to_sheet(detailData);
+      const detailColWidths = [
+        { wch: 5 }, { wch: 18 }, { wch: 12 }, { wch: 25 }, { wch: 25 }, { wch: 20 }, { wch: 18 },
+        { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 12 }
+      ];
+      wsDetail["!cols"] = detailColWidths;
+
+      const detailRange = XLSX.utils.decode_range(wsDetail["!ref"] || "A1");
+
+      for (let R = detailRange.s.r; R <= detailRange.e.r; ++R) {
+        for (let C = detailRange.s.c; C <= detailRange.e.c; ++C) {
+          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!wsDetail[cellRef]) wsDetail[cellRef] = { v: "" };
+
+          if (R === 0) {
+            wsDetail[cellRef].s = {
+              font: { bold: true, color: { rgb: "166534" }, sz: 16, name: "Arial" },
+              alignment: { horizontal: "center", vertical: "center" },
+            };
+          } else if (R === 1) {
+            wsDetail[cellRef].s = {
+              font: { bold: true, color: { rgb: "166534" }, sz: 14, name: "Arial" },
+              alignment: { horizontal: "center", vertical: "center" },
+            };
+          } else if (R === 2) {
+            wsDetail[cellRef].s = {
+              font: { bold: true, color: { rgb: "6B7280" }, sz: 12, name: "Arial" },
+              alignment: { horizontal: "center", vertical: "center" },
+            };
+          } else if (R === 4) {
+            wsDetail[cellRef].s = headerStyle;
+          } else if (R >= 5) {
+            const isAlt = (R - 5) % 2 === 1;
+            const baseStyle = isAlt ? altRowStyle : dataStyle;
+            if (C === 0) {
+              wsDetail[cellRef].s = { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } };
+            } else if (C === 7 || C === 12) {
+              wsDetail[cellRef].s = qtyStyle;
+            } else if (C === 9 || C === 10 || C === 11 || C === 13) {
+              wsDetail[cellRef].s = numberStyle;
+            } else {
+              wsDetail[cellRef].s = baseStyle;
+            }
+          }
+        }
+      }
+
+      wsDetail["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: detailRange.e.c } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: detailRange.e.c } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: detailRange.e.c } },
+      ];
+
+      wsDetail["!autofilter"] = { ref: `A5:${XLSX.utils.encode_cell({ r: 4, c: detailRange.e.c })}` };
+
+      wsDetail["!rows"] = [
+        { hpt: 40 }, { hpt: 35 }, { hpt: 30 }, { hpt: 15 },
+        { hpt: 40 },
+        ...Array(detailData.length - 5).fill({ hpt: 22 })
+      ];
+
+      XLSX.utils.book_append_sheet(wb, wsDetail, "Detail Produk");
+    }
+
+    XLSX.writeFile(wb, fileName);
   };
 
   const handlePrintPDF = (item: ProformaInvoice) => {
