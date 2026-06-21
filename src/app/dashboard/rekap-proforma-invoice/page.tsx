@@ -2420,9 +2420,9 @@ const handleExportExcel = async () => {
       fill: { fgColor: { rgb: "F9FAFB" }, patternType: "solid" },
     };
 
-    const piMergeStyle = {
+    const mergeStyle = {
       font: { bold: true, color: { rgb: "000000" }, sz: 10, name: "Arial" },
-      alignment: { horizontal: "left", vertical: "center", wrapText: true },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
       border: {
         top: { style: "thin", color: { rgb: "D1D5DB" } },
         bottom: { style: "thin", color: { rgb: "D1D5DB" } },
@@ -2445,8 +2445,9 @@ const handleExportExcel = async () => {
     wsData.push([]);
     wsData.push(headers);
 
-    let rowNum = 6;
     let globalIdx = 0;
+    const merges: any[] = [];
+    const piRowMap: { startRow: number; endRow: number; piNomor: string }[] = [];
 
     for (const item of filteredData) {
       const suratList = getSuratMuatForPI(item.nomorPI);
@@ -2479,21 +2480,105 @@ const handleExportExcel = async () => {
         } catch {}
       }
 
-      const piStartRow = rowNum;
+      const piStartRow = wsData.length; // Current row index (0-based, header is row 4)
+      let piTotalRows = 0;
 
-      if (suratList.length === 0) {
-        // No SP yet - show PI with ordered qty, sisa = ordered
-        for (const p of item.produkItems) {
-          const satuan = p.satuan || "ZAK";
-          const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
-          const botolPerDus = p.jumlahIsiBotol || 20;
-          let qtyOrdered = p.kuantitas || 0;
-          let displaySatuan = satuan;
-          if (satuan === "DUS" && isBotolOrDus) {
-            qtyOrdered = qtyOrdered * botolPerDus;
-            displaySatuan = "BOTOL";
-          }
+      // Calculate total rows for this PI
+      for (const p of item.produkItems) {
+        const satuan = p.satuan || "ZAK";
+        const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const botolPerDus = p.jumlahIsiBotol || 20;
+        let qtyOrdered = p.kuantitas || 0;
+        let displaySatuan = satuan;
+        if (satuan === "DUS" && isBotolOrDus) {
+          qtyOrdered = qtyOrdered * botolPerDus;
+          displaySatuan = "BOTOL";
+        }
 
+        let spCount = 0;
+        suratList.forEach((s) => {
+          (s.items || []).forEach((it) => {
+            const itemPI = it.nomorPI || "";
+            if (itemPI && itemPI !== item.nomorPI) return;
+            const match = it.jenisPupuk && (
+              it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase()) ||
+              p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
+            );
+            if (!match) return;
+            spCount++;
+          });
+        });
+
+        if (spCount === 0) {
+          piTotalRows += 1;
+        } else {
+          piTotalRows += spCount;
+        }
+      }
+
+      // Generate rows
+      for (const p of item.produkItems) {
+        const satuan = p.satuan || "ZAK";
+        const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+        const botolPerDus = p.jumlahIsiBotol || 20;
+        let qtyOrdered = p.kuantitas || 0;
+        let displaySatuan = satuan;
+        if (satuan === "DUS" && isBotolOrDus) {
+          qtyOrdered = qtyOrdered * botolPerDus;
+          displaySatuan = "BOTOL";
+        }
+
+        let totalLoaded = 0;
+        const spRows: any[][] = [];
+
+        suratList.forEach((s) => {
+          (s.items || []).forEach((it) => {
+            const itemPI = it.nomorPI || "";
+            if (itemPI && itemPI !== item.nomorPI) return;
+            const match = it.jenisPupuk && (
+              it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase()) ||
+              p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
+            );
+            if (!match) return;
+
+            let qtyLoaded = 0;
+            let displaySatuanMuat = displaySatuan;
+            if (isBotolOrDus) {
+              qtyLoaded = it.pengambilanZAK || 0;
+            } else {
+              qtyLoaded = (it.pengambilanZAK || 0) * (it.bobotPerUnit || p.bobotPerUnit || 50);
+              displaySatuanMuat = "KG";
+            }
+            totalLoaded += qtyLoaded;
+
+            spRows.push([
+              globalIdx + 1,
+              item.nomorPI,
+              item.tanggal,
+              item.namaCustomer,
+              p.namaProduk,
+              p.fot || "",
+              p.produsen || "",
+              qtyOrdered,
+              displaySatuan,
+              s.nomorSeri,
+              qtyLoaded,
+              displaySatuanMuat,
+              Math.max(0, qtyOrdered - totalLoaded),
+              displaySatuan,
+              s.nomorPolisi || "-",
+              s.driverUnit || "-",
+              nomorBA,
+              nomorInvoiceFull,
+              statusPengangkutan,
+              statusPelunasan,
+              statusPemesanan,
+            ]);
+            globalIdx++;
+          });
+        });
+
+        if (spRows.length === 0) {
           const row = [
             globalIdx + 1,
             item.nomorPI,
@@ -2519,104 +2604,14 @@ const handleExportExcel = async () => {
           ];
           wsData.push(row);
           globalIdx++;
-          rowNum++;
+        } else {
+          spRows.forEach((r) => wsData.push(r));
         }
-      } else {
-        // Has SP - show each SP row per product
-        for (const p of item.produkItems) {
-          const satuan = p.satuan || "ZAK";
-          const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
-          const botolPerDus = p.jumlahIsiBotol || 20;
-          let qtyOrdered = p.kuantitas || 0;
-          let displaySatuan = satuan;
-          if (satuan === "DUS" && isBotolOrDus) {
-            qtyOrdered = qtyOrdered * botolPerDus;
-            displaySatuan = "BOTOL";
-          }
+      }
 
-          let totalLoaded = 0;
-          const spRows: any[][] = [];
-
-          suratList.forEach((s) => {
-            (s.items || []).forEach((it) => {
-              const itemPI = it.nomorPI || "";
-              if (itemPI && itemPI !== item.nomorPI) return;
-              const match = it.jenisPupuk && (
-                it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase()) ||
-                p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
-              );
-              if (!match) return;
-
-              let qtyLoaded = 0;
-              let displaySatuanMuat = displaySatuan;
-              if (isBotolOrDus) {
-                qtyLoaded = it.pengambilanZAK || 0;
-              } else {
-                qtyLoaded = (it.pengambilanZAK || 0) * (it.bobotPerUnit || p.bobotPerUnit || 50);
-                displaySatuanMuat = "KG";
-              }
-              totalLoaded += qtyLoaded;
-
-              spRows.push([
-                globalIdx + 1,
-                item.nomorPI,
-                item.tanggal,
-                item.namaCustomer,
-                p.namaProduk,
-                p.fot || "",
-                p.produsen || "",
-                qtyOrdered,
-                displaySatuan,
-                s.nomorSeri,
-                qtyLoaded,
-                displaySatuanMuat,
-                Math.max(0, qtyOrdered - totalLoaded),
-                displaySatuan,
-                s.nomorPolisi || "-",
-                s.driverUnit || "-",
-                nomorBA,
-                nomorInvoiceFull,
-                statusPengangkutan,
-                statusPelunasan,
-                statusPemesanan,
-              ]);
-              globalIdx++;
-              rowNum++;
-            });
-          });
-
-          if (spRows.length === 0) {
-            // No SP for this product yet
-            const row = [
-              globalIdx + 1,
-              item.nomorPI,
-              item.tanggal,
-              item.namaCustomer,
-              p.namaProduk,
-              p.fot || "",
-              p.produsen || "",
-              qtyOrdered,
-              displaySatuan,
-              "-",
-              0,
-              displaySatuan,
-              qtyOrdered,
-              displaySatuan,
-              "-",
-              "-",
-              nomorBA,
-              nomorInvoiceFull,
-              statusPengangkutan,
-              statusPelunasan,
-              statusPemesanan,
-            ];
-            wsData.push(row);
-            globalIdx++;
-            rowNum++;
-          } else {
-            spRows.forEach((r) => wsData.push(r));
-          }
-        }
+      const piEndRow = wsData.length - 1;
+      if (piEndRow > piStartRow) {
+        piRowMap.push({ startRow: piStartRow, endRow: piEndRow, piNomor: item.nomorPI });
       }
     }
 
@@ -2630,6 +2625,13 @@ const handleExportExcel = async () => {
     ws["!cols"] = colWidths;
 
     const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+
+    // Build merge definitions for PI columns
+    piRowMap.forEach((pi) => {
+      [1, 2, 3, 16, 17, 18, 19, 20].forEach((col) => {
+        merges.push({ s: { r: pi.startRow, c: col }, e: { r: pi.endRow, c: col } });
+      });
+    });
 
     for (let R = range.s.r; R <= range.e.r; ++R) {
       for (let C = range.s.c; C <= range.e.c; ++C) {
@@ -2660,14 +2662,19 @@ const handleExportExcel = async () => {
           const isAlt = (R - 5) % 2 === 1;
           const baseStyle = isAlt ? altRowStyle : dataStyle;
 
+          // Check if this cell is part of a PI merge
+          const isMergedCell = merges.some((m) => 
+            m.s.r === R && m.s.c === C && m.e.r > m.s.r
+          );
+
           if (C === 0) {
             ws[cellRef].s = { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } };
           } else if (C === 2) {
             ws[cellRef].s = dateStyle;
           } else if (C === 7 || C === 10 || C === 12) {
             ws[cellRef].s = qtyStyle;
-          } else if (C === 1) {
-            ws[cellRef].s = piMergeStyle;
+          } else if (isMergedCell) {
+            ws[cellRef].s = mergeStyle;
           } else {
             ws[cellRef].s = baseStyle;
           }
@@ -2679,6 +2686,7 @@ const handleExportExcel = async () => {
       { s: { r: 0, c: 0 }, e: { r: 0, c: range.e.c } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: range.e.c } },
       { s: { r: 2, c: 0 }, e: { r: 2, c: range.e.c } },
+      ...merges,
     ];
 
     ws["!autofilter"] = { ref: `A5:${XLSX.utils.encode_cell({ r: 4, c: range.e.c })}` };
