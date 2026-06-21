@@ -2528,13 +2528,27 @@ const handleExportExcel = async () => {
           displaySatuan = "BOTOL";
         }
 
-        let totalLoaded = 0;
+        let cumulativeLoaded = 0;
         const spRows: any[][] = [];
 
         suratList.forEach((s) => {
+          // Check if SP is associated with this PI (SP-level nomorPI)
+          const spNomorPI = s.nomorPI;
+          const spPiList: string[] = [];
+          if (Array.isArray(spNomorPI)) {
+            spPiList.push(...spNomorPI);
+          } else if (spNomorPI && typeof spNomorPI === "string") {
+            spPiList.push(spNomorPI);
+          }
+          const spMatchesPI = spPiList.length === 0 || spPiList.includes(item.nomorPI);
+          if (!spMatchesPI) return;
+
           (s.items || []).forEach((it) => {
+            // Check item-level nomorPI (if set, must match current PI)
             const itemPI = it.nomorPI || "";
             if (itemPI && itemPI !== item.nomorPI) return;
+
+            // Check product match
             const match = it.jenisPupuk && (
               it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase()) ||
               p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
@@ -2549,7 +2563,7 @@ const handleExportExcel = async () => {
               qtyLoaded = (it.pengambilanZAK || 0) * (it.bobotPerUnit || p.bobotPerUnit || 50);
               displaySatuanMuat = "KG";
             }
-            totalLoaded += qtyLoaded;
+            cumulativeLoaded += qtyLoaded;
 
             spRows.push([
               globalIdx + 1,
@@ -2564,7 +2578,7 @@ const handleExportExcel = async () => {
               s.nomorSeri,
               qtyLoaded,
               displaySatuanMuat,
-              Math.max(0, qtyOrdered - totalLoaded),
+              Math.max(0, qtyOrdered - cumulativeLoaded),
               displaySatuan,
               s.nomorPolisi || "-",
               s.driverUnit || "-",

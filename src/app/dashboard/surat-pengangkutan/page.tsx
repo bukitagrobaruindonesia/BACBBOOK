@@ -782,6 +782,8 @@ export default function SuratPengangkutanPage() {
       const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id, items);
       const effectiveLoaded = loadedDO + allocatedInOtherItems;
       const sisaDO = Math.max(0, (doItem.partyKG || 0) - effectiveLoaded);
+      const allocatedInPrevious = getAllocatedInPreviousItems(doItem, item.id, items);
+      const sisaDOForDisplay = Math.max(0, (doItem.partyKG || 0) - loadedDO - allocatedInPrevious);
       const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
       let maxZAKPI = 0;
       let maxZAKDO = 0;
@@ -805,23 +807,23 @@ export default function SuratPengangkutanPage() {
       let newSisa = item.sisa;
       if (finalMaxZAK === 0) {
         newPengambilan = "";
-        newSisa = formatParty(sisaDO);
+        newSisa = formatParty(sisaDOForDisplay);
       } else if (currentPengambilan > finalMaxZAK) {
         newPengambilan = String(finalMaxZAK);
         if (isDusBotol) {
           const zakFinal = finalMaxZAK;
-          const doSisaAfter = Math.max(0, sisaDO - (zakFinal / botolPerDus) * (item.bobotPerUnit || 50));
+          const doSisaAfter = Math.max(0, sisaDOForDisplay - (zakFinal / botolPerDus) * (item.bobotPerUnit || 50));
           newSisa = formatParty(doSisaAfter);
         } else {
-          const doSisaAfter = Math.max(0, sisaDO - finalMaxZAK * item.bobotPerUnit);
+          const doSisaAfter = Math.max(0, sisaDOForDisplay - finalMaxZAK * item.bobotPerUnit);
           newSisa = formatParty(doSisaAfter);
         }
       } else {
         if (isDusBotol) {
-          const doSisaAfter = Math.max(0, sisaDO - (currentPengambilan / botolPerDus) * (item.bobotPerUnit || 50));
+          const doSisaAfter = Math.max(0, sisaDOForDisplay - (currentPengambilan / botolPerDus) * (item.bobotPerUnit || 50));
           newSisa = formatParty(doSisaAfter);
         } else {
-          const doSisaAfter = Math.max(0, sisaDO - currentPengambilan * item.bobotPerUnit);
+          const doSisaAfter = Math.max(0, sisaDOForDisplay - currentPengambilan * item.bobotPerUnit);
           newSisa = formatParty(doSisaAfter);
         }
       }
@@ -1577,8 +1579,8 @@ export default function SuratPengangkutanPage() {
           const allocatedInPrevious = doItem ? getAllocatedInPreviousItems(doItem, id, prev) : 0;
           const loadedDO = doItem ? getLoadedKGForDOFromSurat(doItem) : 0;
           const effectiveDoLoaded = hasDO ? (loadedDO + allocatedInOtherItems) : 0;
-          const doSisa = hasDO ? Math.max(0, item.doPartyKG - effectiveDoLoaded) : 0;
-          const partyBefore = hasDO ? Math.max(0, item.doPartyKG - loadedDO - allocatedInPrevious) : 0;
+          const doSisa = hasDO ? Math.max(0, item.doPartyKG - loadedDO - allocatedInPrevious) : 0;
+          const doSisaForMax = hasDO ? Math.max(0, item.doPartyKG - effectiveDoLoaded) : 0;
           const isDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
           const botolPerDus = item.jenisPupuk ? getBotolPerDus(item.jenisPupuk) : 20;
           let maxPI = 0;
@@ -1588,14 +1590,14 @@ export default function SuratPengangkutanPage() {
             if (hasDO) {
               const itemBobot = item.bobotPerUnit || 50;
               if (itemBobot === 1) {
-                maxDO = Math.floor(doSisa);
+                maxDO = Math.floor(doSisaForMax);
               } else {
-                maxDO = Math.floor(doSisa / itemBobot) * botolPerDus;
+                maxDO = Math.floor(doSisaForMax / itemBobot) * botolPerDus;
               }
             }
           } else {
             maxPI = item.bobotPerUnit > 0 ? Math.floor(piSisa / item.bobotPerUnit) : 0;
-            maxDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisa / item.bobotPerUnit) : 0;
+            maxDO = hasDO && item.bobotPerUnit > 0 ? Math.floor(doSisaForMax / item.bobotPerUnit) : 0;
           }
           const finalMax = hasDO ? Math.min(maxPI, maxDO) : maxPI;
           updated.maxZAK = finalMax;
