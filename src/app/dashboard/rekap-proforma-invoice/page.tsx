@@ -15,7 +15,8 @@ import Modal from "@/app/components/ui/Modal";
 import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
 import Card from "@/app/components/ui/Card";
-import * as XLSX from "xlsx-js-style";
+import * as XLSXAny from "xlsx-js-style";
+const XLSX = XLSXAny as any;
 
 interface ProdukItem {
   namaProduk: string;
@@ -2463,7 +2464,7 @@ const handleExportExcel = async () => {
       "Metode Pembayaran", "Subtotal", "PPN", "Uang Muka", "Ongkos Kirim",
       "Jumlah Tertagih", "Status Pengangkutan", "Status Pelunasan", "Status Pemesanan",
       "Jumlah Dibayar", "Tanggal Pembayaran", "Sisa (KG)", "Dibuat Oleh",
-      "Produk Count", "Surat Muat Count"
+      "Produk Count", "Surat Muat Count", "Nomor Seri SP", "Nomor BA", "Nomor Invoice Full"
     ];
 
     const wsData: any[][] = [];
@@ -2475,33 +2476,99 @@ const handleExportExcel = async () => {
     wsData.push(headers);
 
     let rowNum = 6;
-    filteredData.forEach((item, idx) => {
-      const statusPengangkutan = getStatusPengangkutan(item);
-      const statusPelunasan = item.statusPelunasan || getPaymentStatus(item);
-      const statusPemesanan = item.statusPemesanan || "Aktif";
-      const row = [
-        idx + 1,
-        item.tanggal,
-        item.nomorPI,
-        item.namaCustomer,
-        item.alamatCustomer,
-        item.npwp || "",
-        item.metodePembayaran,
-        item.subtotal,
-        item.ppnNominal,
-        item.uangMuka || 0,
-        item.ongkosKirim || 0,
-        item.jumlahTertagih,
-        statusPengangkutan,
-        statusPelunasan,
-        statusPemesanan,
-        item.jumlahUangDibayar || 0,
-        item.tanggalPembayaran || "",
-        item.sisaPengambilanKG || 0,
-        item.createdBy,
-        item.produkItems.length,
-        getSuratMuatForPI(item.nomorPI).length,
-      ];
+    const rows = await Promise.all(
+      filteredData.map(async (item, idx) => {
+        const statusPengangkutan = getStatusPengangkutan(item);
+        const statusPelunasan = item.statusPelunasan || getPaymentStatus(item);
+        const statusPemesanan = item.statusPemesanan || "Aktif";
+        const suratList = getSuratMuatForPI(item.nomorPI);
+        const nomorSeriSP = suratList.map((s) => s.nomorSeri).join(", ") || "-";
+
+        let nomorBA = "-";
+        try {
+          const baQ1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
+          const baSnap1 = await getDocs(baQ1);
+          if (!baSnap1.empty) {
+            nomorBA = baSnap1.docs[0].data().nomorSeri || "-";
+          } else {
+            const baQ2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
+            const baSnap2 = await getDocs(baQ2);
+            if (!baSnap2.empty) {
+              nomorBA = baSnap2.docs[0].data().nomorSeri || "-";
+            }
+          }
+        } catch {}
+
+        let nomorInvoiceFull = "-";
+        if (item.invoiceBaseNumber) {
+          nomorInvoiceFull = `BAGB-INV-${item.invoiceBaseNumber}`;
+          try {
+            const invRef = doc(db, "arsipInvoice", nomorInvoiceFull);
+            const invSnap = await getDoc(invRef);
+            if (!invSnap.exists()) nomorInvoiceFull = "-";
+          } catch {}
+        }
+
+        let totalOrdered = 0;
+        let totalLoaded = 0;
+        item.produkItems.forEach((p) => {
+          const satuan = p.satuan || "ZAK";
+          const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+          const botolPerDus = p.jumlahIsiBotol || 20;
+          let qty = p.kuantitas || 0;
+          if (satuan === "DUS" && isBotolOrDus) {
+            qty = qty * botolPerDus;
+          }
+          totalOrdered += qty;
+          suratList.forEach((s) => {
+            (s.items || []).forEach((it) => {
+              const itemPI = it.nomorPI || "";
+              if (itemPI && itemPI !== item.nomorPI) return;
+              const match = it.jenisPupuk && (
+                it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase()) ||
+                p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
+              );
+              if (!match) return;
+              if (isBotolOrDus) {
+                totalLoaded += it.pengambilanZAK || 0;
+              } else {
+                totalLoaded += (it.pengambilanZAK || 0) * (it.bobotPerUnit || p.bobotPerUnit || 50);
+              }
+            });
+          });
+        });
+        const sisaKG = Math.max(0, totalOrdered - totalLoaded);
+
+        const row = [
+          idx + 1,
+          item.tanggal,
+          item.nomorPI,
+          item.namaCustomer,
+          item.alamatCustomer,
+          item.npwp || "",
+          item.metodePembayaran,
+          item.subtotal,
+          item.ppnNominal,
+          item.uangMuka || 0,
+          item.ongkosKirim || 0,
+          item.jumlahTertagih,
+          statusPengangkutan,
+          statusPelunasan,
+          statusPemesanan,
+          item.jumlahUangDibayar || 0,
+          item.tanggalPembayaran || "",
+          sisaKG,
+          item.createdBy,
+          item.produkItems.length,
+          suratList.length,
+          nomorSeriSP,
+          nomorBA,
+          nomorInvoiceFull,
+        ];
+        return row;
+      })
+    );
+    rows.forEach((row) => {
       wsData.push(row);
       rowNum++;
     });
@@ -2513,7 +2580,7 @@ const handleExportExcel = async () => {
       { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
       { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 14 },
       { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 18 },
-      { wch: 12 }, { wch: 14 }
+      { wch: 12 }, { wch: 14 }, { wch: 25 }, { wch: 22 }, { wch: 20 }
     ];
     ws["!cols"] = colWidths;
 
@@ -2602,7 +2669,7 @@ const handleExportExcel = async () => {
       filteredData.reduce((sum, i) => sum + (i.jumlahTertagih || 0), 0),
       "", "", "",
       filteredData.reduce((sum, i) => sum + (i.jumlahUangDibayar || 0), 0),
-      "", "", "", "", "",
+      "", "", "", "", "", "", "", "",
     ];
     XLSX.utils.sheet_add_aoa(ws, [totalRowData], { origin: `A${totalRow}` });
 
