@@ -2386,18 +2386,6 @@ const handleExportExcel = async () => {
       },
     };
 
-    const subHeaderStyle = {
-      font: { bold: true, color: { rgb: "1F2937" }, sz: 10, name: "Arial" },
-      fill: { fgColor: { rgb: "DCFCE7" }, patternType: "solid" },
-      alignment: { horizontal: "center", vertical: "center", wrapText: true },
-      border: {
-        top: { style: "thin", color: { rgb: "000000" } },
-        bottom: { style: "thin", color: { rgb: "000000" } },
-        left: { style: "thin", color: { rgb: "000000" } },
-        right: { style: "thin", color: { rgb: "000000" } },
-      },
-    };
-
     const dataStyle = {
       font: { color: { rgb: "000000" }, sz: 10, name: "Arial" },
       alignment: { horizontal: "left", vertical: "center", wrapText: true },
@@ -2427,99 +2415,128 @@ const handleExportExcel = async () => {
       numFmt: 'DD/MM/YYYY',
     };
 
-    const statusStyle = (status: string) => {
-      let bg = "F3F4F6";
-      let fg = "374151";
-      if (status === "Lunas" || status === "Selesai Dimuat" || status === "Aktif") { bg = "DCFCE7"; fg = "166534"; }
-      else if (status === "Cicilan" || status === "Sebagian Dimuat") { bg = "FEF9C3"; fg = "854D0E"; }
-      else if (status === "Belum Lunas" || status === "Belum Dimuat" || status === "Batal") { bg = "FEE2E2"; fg = "991B1B"; }
-      return {
-        ...dataStyle,
-        font: { bold: true, color: { rgb: fg }, sz: 10, name: "Arial" },
-        fill: { fgColor: { rgb: bg }, patternType: "solid" },
-        alignment: { horizontal: "center", vertical: "center" },
-      };
-    };
-
     const altRowStyle = {
       ...dataStyle,
       fill: { fgColor: { rgb: "F9FAFB" }, patternType: "solid" },
     };
 
-    const totalStyle = {
-      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11, name: "Arial" },
-      fill: { fgColor: { rgb: "166534" }, patternType: "solid" },
-      alignment: { horizontal: "right", vertical: "center" },
+    const piMergeStyle = {
+      font: { bold: true, color: { rgb: "000000" }, sz: 10, name: "Arial" },
+      alignment: { horizontal: "left", vertical: "center", wrapText: true },
       border: {
-        top: { style: "medium", color: { rgb: "000000" } },
-        bottom: { style: "medium", color: { rgb: "000000" } },
-        left: { style: "thin", color: { rgb: "000000" } },
-        right: { style: "thin", color: { rgb: "000000" } },
+        top: { style: "thin", color: { rgb: "D1D5DB" } },
+        bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+        left: { style: "thin", color: { rgb: "D1D5DB" } },
+        right: { style: "thin", color: { rgb: "D1D5DB" } },
       },
-      numFmt: '"Rp "#,##0',
+      fill: { fgColor: { rgb: "E8F5E9" }, patternType: "solid" },
     };
 
     const headers = [
-      "No", "Tanggal PI", "Nomor PI", "Nama Customer", "Alamat", "NPWP",
-      "Metode Pembayaran", "Subtotal", "PPN", "Uang Muka", "Ongkos Kirim",
-      "Jumlah Tertagih", "Status Pengangkutan", "Status Pelunasan", "Status Pemesanan",
-      "Jumlah Dibayar", "Tanggal Pembayaran", "Sisa (KG)", "Dibuat Oleh",
-      "Produk Count", "Surat Muat Count", "Nomor Seri SP", "Nomor BA", "Nomor Invoice Full"
+      "No", "Nomor PI", "Tanggal PI", "Nama Customer", "Produk", "FOT", "Produsen",
+      "Qty Dipesan", "Satuan", "Nomor SP", "Qty Dimuat", "Satuan Muat", "Sisa", "Satuan Sisa",
+      "No Polisi", "Driver", "Nomor BA", "Nomor Invoice", "Status Pengangkutan", "Status Pelunasan", "Status Pemesanan"
     ];
 
     const wsData: any[][] = [];
-
     wsData.push(["PT BUKIT AGROCHEMICAL BARU"]);
-    wsData.push(["REKAP PI"]);
+    wsData.push(["REKAP PI - DETAIL SURAT PENGANGKUTAN"]);
     wsData.push([`${bulanNama.toUpperCase()} ${tahun}`]);
     wsData.push([]);
     wsData.push(headers);
 
     let rowNum = 6;
-    const rows = await Promise.all(
-      filteredData.map(async (item, idx) => {
-        const statusPengangkutan = getStatusPengangkutan(item);
-        const statusPelunasan = item.statusPelunasan || getPaymentStatus(item);
-        const statusPemesanan = item.statusPemesanan || "Aktif";
-        const suratList = getSuratMuatForPI(item.nomorPI);
-        const nomorSeriSP = suratList.map((s) => s.nomorSeri).join(", ") || "-";
+    let globalIdx = 0;
 
-        let nomorBA = "-";
-        try {
-          const baQ1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
-          const baSnap1 = await getDocs(baQ1);
-          if (!baSnap1.empty) {
-            nomorBA = baSnap1.docs[0].data().nomorSeri || "-";
-          } else {
-            const baQ2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
-            const baSnap2 = await getDocs(baQ2);
-            if (!baSnap2.empty) {
-              nomorBA = baSnap2.docs[0].data().nomorSeri || "-";
-            }
+    for (const item of filteredData) {
+      const suratList = getSuratMuatForPI(item.nomorPI);
+      const statusPengangkutan = getStatusPengangkutan(item);
+      const statusPelunasan = item.statusPelunasan || getPaymentStatus(item);
+      const statusPemesanan = item.statusPemesanan || "Aktif";
+
+      let nomorBA = "-";
+      try {
+        const baQ1 = query(collection(db, "beritaAcara"), where("nomorPI", "==", item.nomorPI));
+        const baSnap1 = await getDocs(baQ1);
+        if (!baSnap1.empty) {
+          nomorBA = baSnap1.docs[0].data().nomorSeri || "-";
+        } else {
+          const baQ2 = query(collection(db, "beritaAcara"), where("nomorPI", "array-contains", item.nomorPI));
+          const baSnap2 = await getDocs(baQ2);
+          if (!baSnap2.empty) {
+            nomorBA = baSnap2.docs[0].data().nomorSeri || "-";
           }
-        } catch {}
-
-        let nomorInvoiceFull = "-";
-        if (item.invoiceBaseNumber) {
-          nomorInvoiceFull = `BAGB-INV-${item.invoiceBaseNumber}`;
-          try {
-            const invRef = doc(db, "arsipInvoice", nomorInvoiceFull);
-            const invSnap = await getDoc(invRef);
-            if (!invSnap.exists()) nomorInvoiceFull = "-";
-          } catch {}
         }
+      } catch {}
 
-        let totalOrdered = 0;
-        let totalLoaded = 0;
-        item.produkItems.forEach((p) => {
+      let nomorInvoiceFull = "-";
+      if (item.invoiceBaseNumber) {
+        nomorInvoiceFull = `BAGB-INV-${item.invoiceBaseNumber}`;
+        try {
+          const invRef = doc(db, "arsipInvoice", nomorInvoiceFull);
+          const invSnap = await getDoc(invRef);
+          if (!invSnap.exists()) nomorInvoiceFull = "-";
+        } catch {}
+      }
+
+      const piStartRow = rowNum;
+
+      if (suratList.length === 0) {
+        // No SP yet - show PI with ordered qty, sisa = ordered
+        for (const p of item.produkItems) {
           const satuan = p.satuan || "ZAK";
           const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
           const botolPerDus = p.jumlahIsiBotol || 20;
-          let qty = p.kuantitas || 0;
+          let qtyOrdered = p.kuantitas || 0;
+          let displaySatuan = satuan;
           if (satuan === "DUS" && isBotolOrDus) {
-            qty = qty * botolPerDus;
+            qtyOrdered = qtyOrdered * botolPerDus;
+            displaySatuan = "BOTOL";
           }
-          totalOrdered += qty;
+
+          const row = [
+            globalIdx + 1,
+            item.nomorPI,
+            item.tanggal,
+            item.namaCustomer,
+            p.namaProduk,
+            p.fot || "",
+            p.produsen || "",
+            qtyOrdered,
+            displaySatuan,
+            "-",
+            0,
+            displaySatuan,
+            qtyOrdered,
+            displaySatuan,
+            "-",
+            "-",
+            nomorBA,
+            nomorInvoiceFull,
+            statusPengangkutan,
+            statusPelunasan,
+            statusPemesanan,
+          ];
+          wsData.push(row);
+          globalIdx++;
+          rowNum++;
+        }
+      } else {
+        // Has SP - show each SP row per product
+        for (const p of item.produkItems) {
+          const satuan = p.satuan || "ZAK";
+          const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
+          const botolPerDus = p.jumlahIsiBotol || 20;
+          let qtyOrdered = p.kuantitas || 0;
+          let displaySatuan = satuan;
+          if (satuan === "DUS" && isBotolOrDus) {
+            qtyOrdered = qtyOrdered * botolPerDus;
+            displaySatuan = "BOTOL";
+          }
+
+          let totalLoaded = 0;
+          const spRows: any[][] = [];
+
           suratList.forEach((s) => {
             (s.items || []).forEach((it) => {
               const itemPI = it.nomorPI || "";
@@ -2529,66 +2546,88 @@ const handleExportExcel = async () => {
                 p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
               );
               if (!match) return;
+
+              let qtyLoaded = 0;
+              let displaySatuanMuat = displaySatuan;
               if (isBotolOrDus) {
-                totalLoaded += it.pengambilanZAK || 0;
+                qtyLoaded = it.pengambilanZAK || 0;
               } else {
-                totalLoaded += (it.pengambilanZAK || 0) * (it.bobotPerUnit || p.bobotPerUnit || 50);
+                qtyLoaded = (it.pengambilanZAK || 0) * (it.bobotPerUnit || p.bobotPerUnit || 50);
+                displaySatuanMuat = "KG";
               }
+              totalLoaded += qtyLoaded;
+
+              spRows.push([
+                globalIdx + 1,
+                item.nomorPI,
+                item.tanggal,
+                item.namaCustomer,
+                p.namaProduk,
+                p.fot || "",
+                p.produsen || "",
+                qtyOrdered,
+                displaySatuan,
+                s.nomorSeri,
+                qtyLoaded,
+                displaySatuanMuat,
+                Math.max(0, qtyOrdered - totalLoaded),
+                displaySatuan,
+                s.nomorPolisi || "-",
+                s.driverUnit || "-",
+                nomorBA,
+                nomorInvoiceFull,
+                statusPengangkutan,
+                statusPelunasan,
+                statusPemesanan,
+              ]);
+              globalIdx++;
+              rowNum++;
             });
           });
-        });
-        const sisaKG = Math.max(0, totalOrdered - totalLoaded);
 
-        const row = [
-          idx + 1,
-          item.tanggal,
-          item.nomorPI,
-          item.namaCustomer,
-          item.alamatCustomer,
-          item.npwp || "",
-          item.metodePembayaran,
-          item.subtotal,
-          item.ppnNominal,
-          item.uangMuka || 0,
-          item.ongkosKirim || 0,
-          item.jumlahTertagih,
-          statusPengangkutan,
-          statusPelunasan,
-          statusPemesanan,
-          item.jumlahUangDibayar || 0,
-          item.tanggalPembayaran || "",
-          sisaKG,
-          item.createdBy,
-          item.produkItems.length,
-          suratList.length,
-          nomorSeriSP,
-          nomorBA,
-          nomorInvoiceFull,
-        ];
-        return row;
-      })
-    );
-    rows.forEach((row) => {
-      wsData.push(row);
-      rowNum++;
-    });
+          if (spRows.length === 0) {
+            // No SP for this product yet
+            const row = [
+              globalIdx + 1,
+              item.nomorPI,
+              item.tanggal,
+              item.namaCustomer,
+              p.namaProduk,
+              p.fot || "",
+              p.produsen || "",
+              qtyOrdered,
+              displaySatuan,
+              "-",
+              0,
+              displaySatuan,
+              qtyOrdered,
+              displaySatuan,
+              "-",
+              "-",
+              nomorBA,
+              nomorInvoiceFull,
+              statusPengangkutan,
+              statusPelunasan,
+              statusPemesanan,
+            ];
+            wsData.push(row);
+            globalIdx++;
+            rowNum++;
+          } else {
+            spRows.forEach((r) => wsData.push(r));
+          }
+        }
+      }
+    }
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
     const colWidths = [
-      { wch: 5 }, { wch: 12 }, { wch: 18 }, { wch: 25 }, { wch: 30 }, { wch: 20 },
-      { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 14 },
-      { wch: 16 }, { wch: 18 }, { wch: 14 }, { wch: 14 },
-      { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 18 },
-      { wch: 12 }, { wch: 14 }, { wch: 25 }, { wch: 22 }, { wch: 20 }
+      { wch: 5 }, { wch: 18 }, { wch: 12 }, { wch: 25 }, { wch: 22 }, { wch: 18 }, { wch: 18 },
+      { wch: 12 }, { wch: 10 }, { wch: 22 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 },
+      { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 18 }, { wch: 14 }, { wch: 14 }
     ];
     ws["!cols"] = colWidths;
-
-    ws["!rows"] = [
-      { hpt: 40 }, { hpt: 35 }, { hpt: 30 }, { hpt: 15 },
-      { hpt: 40 },
-      ...Array(filteredData.length).fill({ hpt: 22 })
-    ];
 
     const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
 
@@ -2602,9 +2641,7 @@ const handleExportExcel = async () => {
             font: { bold: true, color: { rgb: "166534" }, sz: 18, name: "Arial" },
             alignment: { horizontal: "center", vertical: "center" },
             fill: { fgColor: { rgb: "F0FDF4" }, patternType: "solid" },
-            border: {
-              bottom: { style: "medium", color: { rgb: "15803D" } },
-            },
+            border: { bottom: { style: "medium", color: { rgb: "15803D" } } },
           };
         } else if (R === 1) {
           ws[cellRef].s = {
@@ -2615,9 +2652,7 @@ const handleExportExcel = async () => {
           ws[cellRef].s = {
             font: { bold: true, color: { rgb: "6B7280" }, sz: 13, name: "Arial" },
             alignment: { horizontal: "center", vertical: "center" },
-            border: {
-              bottom: { style: "thin", color: { rgb: "D1D5DB" } },
-            },
+            border: { bottom: { style: "thin", color: { rgb: "D1D5DB" } } },
           };
         } else if (R === 4) {
           ws[cellRef].s = headerStyle;
@@ -2627,23 +2662,12 @@ const handleExportExcel = async () => {
 
           if (C === 0) {
             ws[cellRef].s = { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } };
-          } else if (C === 1) {
+          } else if (C === 2) {
             ws[cellRef].s = dateStyle;
-          } else if (C === 7 || C === 8 || C === 9 || C === 10 || C === 11 || C === 15) {
-            ws[cellRef].s = numberStyle;
-          } else if (C === 12) {
-            const val = ws[cellRef].v as string;
-            ws[cellRef].s = statusStyle(val);
-          } else if (C === 13) {
-            const val = ws[cellRef].v as string;
-            ws[cellRef].s = statusStyle(val);
-          } else if (C === 14) {
-            const val = ws[cellRef].v as string;
-            ws[cellRef].s = statusStyle(val);
-          } else if (C === 17) {
+          } else if (C === 7 || C === 10 || C === 12) {
             ws[cellRef].s = qtyStyle;
-          } else if (C === 19 || C === 20) {
-            ws[cellRef].s = { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } };
+          } else if (C === 1) {
+            ws[cellRef].s = piMergeStyle;
           } else {
             ws[cellRef].s = baseStyle;
           }
@@ -2659,141 +2683,15 @@ const handleExportExcel = async () => {
 
     ws["!autofilter"] = { ref: `A5:${XLSX.utils.encode_cell({ r: 4, c: range.e.c })}` };
 
-    const totalRow = rowNum;
-    const totalRowData = [
-      "", "", "", "", "", "", "TOTAL",
-      filteredData.reduce((sum, i) => sum + (i.subtotal || 0), 0),
-      filteredData.reduce((sum, i) => sum + (i.ppnNominal || 0), 0),
-      filteredData.reduce((sum, i) => sum + (i.uangMuka || 0), 0),
-      filteredData.reduce((sum, i) => sum + (i.ongkosKirim || 0), 0),
-      filteredData.reduce((sum, i) => sum + (i.jumlahTertagih || 0), 0),
-      "", "", "",
-      filteredData.reduce((sum, i) => sum + (i.jumlahUangDibayar || 0), 0),
-      "", "", "", "", "", "", "", "",
-    ];
-    XLSX.utils.sheet_add_aoa(ws, [totalRowData], { origin: `A${totalRow}` });
-
-    for (let C = range.s.c; C <= range.e.c; ++C) {
-      const cellRef = XLSX.utils.encode_cell({ r: totalRow - 1, c: C });
-      if (!ws[cellRef]) ws[cellRef] = { v: "" };
-      if (C === 7 || C === 8 || C === 9 || C === 10 || C === 11 || C === 15) {
-        ws[cellRef].s = totalStyle;
-      } else if (C === 6) {
-        ws[cellRef].s = { ...totalStyle, alignment: { horizontal: "center", vertical: "center" } };
-      } else {
-        ws[cellRef].s = { ...totalStyle, numFmt: undefined };
-      }
-    }
-
     ws["!rows"] = [
-      { hpt: 30 }, { hpt: 30 }, { hpt: 25 }, { hpt: 15 },
-      { hpt: 35 },
-      ...Array(filteredData.length).fill({ hpt: 22 }),
-      { hpt: 28 }
+      { hpt: 40 }, { hpt: 35 }, { hpt: 30 }, { hpt: 15 },
+      { hpt: 40 },
+      ...Array(wsData.length - 5).fill({ hpt: 22 })
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, "Rekap PI");
-
-    if (filteredData.length > 0) {
-      const detailHeaders = [
-        "No", "Nomor PI", "Tanggal PI", "Nama Customer", "Nama Produk", "FOT", "Produsen",
-        "Kuantitas", "Satuan", "Harga Satuan", "Harga Per ZAK/DUS", "Total Harga", "PPN 11%"
-      ];
-      const detailData: any[][] = [];
-      detailData.push(["PT BUKIT AGROCHEMICAL BARU"]);
-      detailData.push(["DETAIL PRODUK REKAP PI"]);
-      detailData.push([`${bulanNama.toUpperCase()} ${tahun}`]);
-      detailData.push([]);
-      detailData.push(detailHeaders);
-
-      filteredData.forEach((item) => {
-        item.produkItems.forEach((p, idx) => {
-          detailData.push([
-            idx + 1,
-            item.nomorPI,
-            item.tanggal,
-            item.namaCustomer,
-            p.namaProduk,
-            p.fot || "",
-            p.produsen || "",
-            p.kuantitas || 0,
-            p.satuan || "",
-            p.hargaSatuan || 0,
-            p.hargaPerZakDus || 0,
-            p.totalHarga || 0,
-            p.includePPN ? ((p.kuantitas || 0) * (p.hargaSatuan || 0) * 0.11) : 0,
-          ]);
-        });
-      });
-
-      const wsDetail = XLSX.utils.aoa_to_sheet(detailData);
-      const detailColWidths = [
-        { wch: 5 }, { wch: 18 }, { wch: 12 }, { wch: 25 }, { wch: 25 }, { wch: 20 }, { wch: 18 },
-        { wch: 12 }, { wch: 10 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 12 }
-      ];
-      wsDetail["!cols"] = detailColWidths;
-
-      const detailRange = XLSX.utils.decode_range(wsDetail["!ref"] || "A1");
-
-      for (let R = detailRange.s.r; R <= detailRange.e.r; ++R) {
-        for (let C = detailRange.s.c; C <= detailRange.e.c; ++C) {
-          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
-          if (!wsDetail[cellRef]) wsDetail[cellRef] = { v: "" };
-
-          if (R === 0) {
-            wsDetail[cellRef].s = {
-              font: { bold: true, color: { rgb: "166534" }, sz: 16, name: "Arial" },
-              alignment: { horizontal: "center", vertical: "center" },
-            };
-          } else if (R === 1) {
-            wsDetail[cellRef].s = {
-              font: { bold: true, color: { rgb: "166534" }, sz: 14, name: "Arial" },
-              alignment: { horizontal: "center", vertical: "center" },
-            };
-          } else if (R === 2) {
-            wsDetail[cellRef].s = {
-              font: { bold: true, color: { rgb: "6B7280" }, sz: 12, name: "Arial" },
-              alignment: { horizontal: "center", vertical: "center" },
-            };
-          } else if (R === 4) {
-            wsDetail[cellRef].s = headerStyle;
-          } else if (R >= 5) {
-            const isAlt = (R - 5) % 2 === 1;
-            const baseStyle = isAlt ? altRowStyle : dataStyle;
-            if (C === 0) {
-              wsDetail[cellRef].s = { ...baseStyle, alignment: { horizontal: "center", vertical: "center" } };
-            } else if (C === 7 || C === 12) {
-              wsDetail[cellRef].s = qtyStyle;
-            } else if (C === 9 || C === 10 || C === 11 || C === 13) {
-              wsDetail[cellRef].s = numberStyle;
-            } else {
-              wsDetail[cellRef].s = baseStyle;
-            }
-          }
-        }
-      }
-
-      wsDetail["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: detailRange.e.c } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: detailRange.e.c } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: detailRange.e.c } },
-      ];
-
-      wsDetail["!autofilter"] = { ref: `A5:${XLSX.utils.encode_cell({ r: 4, c: detailRange.e.c })}` };
-
-      wsDetail["!rows"] = [
-        { hpt: 40 }, { hpt: 35 }, { hpt: 30 }, { hpt: 15 },
-        { hpt: 40 },
-        ...Array(detailData.length - 5).fill({ hpt: 22 })
-      ];
-
-      XLSX.utils.book_append_sheet(wb, wsDetail, "Detail Produk");
-    }
-
     XLSX.writeFile(wb, fileName);
-  };
-
-  const handlePrintPDF = (item: ProformaInvoice) => {
+  };const handlePrintPDF = (item: ProformaInvoice) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const produkRows = (item.produkItems || []).map((p, idx) => `
