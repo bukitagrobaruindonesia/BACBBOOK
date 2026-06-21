@@ -719,26 +719,30 @@ export default function BapispFinalPage() {
           if (riwayat.length === 0) return "";
           const totalPaid = riwayat.reduce((sum, r) => sum + (r.jumlah || 0), 0) || pi.jumlahUangDibayar || 0;
           const status = pi.statusPelunasan || (totalPaid >= pi.jumlahTertagih && pi.jumlahTertagih > 0 ? "Lunas" : totalPaid > 0 ? "Cicilan" : "Belum Lunas");
+          const hasAnyFoto = riwayat.some(r => (r.fotoBukti || []).length > 0);
           const paymentSections = riwayat.map((r, idx) => {
             const fotoHtml = (r.fotoBukti || []).map((foto, fidx) => `
-              <img src="${foto}" style="max-height: 160px; max-width: 30%; object-fit: contain; border: 1px solid #ccc; margin: 4px; border-radius: 4px;" />
+              <div style="width: 100%; text-align: center; margin-bottom: 16px; page-break-inside: avoid;">
+                <p style="font-size: 10px; color: #666; margin-bottom: 8px;">Foto Bukti #${fidx + 1}</p>
+                <img src="${foto}" style="max-height: 70vh; max-width: 90%; width: auto; height: auto; object-fit: contain; border: 1px solid #ccc; border-radius: 8px;" />
+              </div>
             `).join("");
             return `
-              <div style="margin-bottom: 16px; padding: 10px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e5e5e5;">
-                  <span style="font-size: 11px; font-weight: 700; color: #000;">Pembayaran #${idx + 1}</span>
+              <div style="margin-bottom: 20px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa; page-break-inside: avoid;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #e5e5e5;">
+                  <span style="font-size: 12px; font-weight: 700; color: #000;">Pembayaran #${idx + 1}</span>
                   <span style="font-size: 10px; color: #666;">${r.tanggal}</span>
                 </div>
-                <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
                   <span style="font-size: 10px; color: #333;">Nominal:</span>
                   <span style="font-size: 11px; font-weight: 700; color: #000; font-family: monospace;">${formatRupiah(r.jumlah)}</span>
                 </div>
-                ${fotoHtml ? `<div style="margin-top: 8px;"><p style="font-size: 9px; color: #666; margin-bottom: 6px;">Foto Bukti:</p><div style="display: flex; flex-wrap: wrap; gap: 8px;">${fotoHtml}</div></div>` : `<p style="font-size: 9px; color: #999; font-style: italic;">Tidak ada foto bukti</p>`}
+                ${fotoHtml ? `<div style="margin-top: 10px;">${fotoHtml}</div>` : `<p style="font-size: 10px; color: #999; font-style: italic;">Tidak ada foto bukti</p>`}
               </div>
             `;
           }).join("");
           return `
-            <div style="page-break-before: always;">
+            <div style="${hasAnyFoto ? 'page-break-before: always;' : ''}">
               <img src="/Picture3.png" alt="Header" style="width: 100%; display: block; margin-bottom: 0;" onerror="this.style.display='none'" />
               <div style="text-align: center; margin: 8px 0 12px 0;">
                 <h1 style="font-size: 14px; font-weight: bold; letter-spacing: 1px; margin-bottom: 4px; text-decoration: underline;">BUKTI PEMBAYARAN</h1>

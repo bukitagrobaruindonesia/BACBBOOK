@@ -1240,6 +1240,14 @@ export default function RekapProformaInvoicePage() {
       if (parsed) {
         const baseNumber = String(parsed.baseNum).padStart(3, "0");
       }
+      const allSurat = getSuratMuatForPI(pi.nomorPI);
+      const sortedSurat = [...allSurat].sort((a, b) => new Date(a.tanggal).getTime() - new Date(b.tanggal).getTime());
+      if (parsed && parsed.isPartial && sortedSurat.length > 0) {
+        const sIndex = parsed.partialNum - 1;
+        if (sIndex >= 0 && sIndex < sortedSurat.length) {
+          setInvoiceDate(sortedSurat[sIndex].tanggal);
+        }
+      }
     } catch (error) { console.error(error); } finally { setIsGeneratingInvoice(false); }
   };
 
@@ -2472,10 +2480,8 @@ const handleExportExcel = async () => {
         } catch {}
       }
 
-      const piStartRow = wsData.length; // Current row index (0-based, header is row 4)
-      let piTotalRows = 0;
+      const piStartRow = wsData.length;
 
-      // Calculate total rows for this PI
       for (const p of item.produkItems) {
         const satuan = p.satuan || "ZAK";
         const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
@@ -2487,44 +2493,9 @@ const handleExportExcel = async () => {
           displaySatuan = "BOTOL";
         }
 
-        let spCount = 0;
-        suratList.forEach((s) => {
-          (s.items || []).forEach((it) => {
-            const itemPI = it.nomorPI || "";
-            if (itemPI && itemPI !== item.nomorPI) return;
-            const match = it.jenisPupuk && (
-              it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase()) ||
-              p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
-            );
-            if (!match) return;
-            spCount++;
-          });
-        });
-
-        if (spCount === 0) {
-          piTotalRows += 1;
-        } else {
-          piTotalRows += spCount;
-        }
-      }
-
-      // Generate rows
-      for (const p of item.produkItems) {
-        const satuan = p.satuan || "ZAK";
-        const isBotolOrDus = satuan === "BOTOL" || satuan === "DUS";
-        const botolPerDus = p.jumlahIsiBotol || 20;
-        let qtyOrdered = p.kuantitas || 0;
-        let displaySatuan = satuan;
-        if (satuan === "DUS" && isBotolOrDus) {
-          qtyOrdered = qtyOrdered * botolPerDus;
-          displaySatuan = "BOTOL";
-        }
-
-        let cumulativeLoaded = 0;
-        const spRows: any[][] = [];
+        let spRowsForProduct: any[][] = [];
 
         suratList.forEach((s) => {
-          // Check if SP is associated with this PI (SP-level nomorPI)
           const spNomorPI = s.nomorPI;
           const spPiList: string[] = [];
           if (Array.isArray(spNomorPI)) {
@@ -2536,11 +2507,9 @@ const handleExportExcel = async () => {
           if (!spMatchesPI) return;
 
           (s.items || []).forEach((it) => {
-            // Check item-level nomorPI (if set, must match current PI)
             const itemPI = it.nomorPI || "";
             if (itemPI && itemPI !== item.nomorPI) return;
 
-            // Check product match
             const match = it.jenisPupuk && (
               it.jenisPupuk.toUpperCase().includes(p.namaProduk.toUpperCase()) ||
               p.namaProduk.toUpperCase().includes(it.jenisPupuk.toUpperCase())
@@ -2555,9 +2524,8 @@ const handleExportExcel = async () => {
               qtyLoaded = (it.pengambilanZAK || 0) * (it.bobotPerUnit || p.bobotPerUnit || 50);
               displaySatuanMuat = "KG";
             }
-            cumulativeLoaded += qtyLoaded;
 
-            spRows.push([
+            spRowsForProduct.push([
               globalIdx + 1,
               item.nomorPI,
               item.tanggal,
@@ -2570,7 +2538,7 @@ const handleExportExcel = async () => {
               s.nomorSeri,
               qtyLoaded,
               displaySatuanMuat,
-              Math.max(0, qtyOrdered - cumulativeLoaded),
+              0,
               displaySatuan,
               s.nomorPolisi || "-",
               s.driverUnit || "-",
@@ -2584,7 +2552,7 @@ const handleExportExcel = async () => {
           });
         });
 
-        if (spRows.length === 0) {
+        if (spRowsForProduct.length === 0) {
           const row = [
             globalIdx + 1,
             item.nomorPI,
@@ -2611,12 +2579,17 @@ const handleExportExcel = async () => {
           wsData.push(row);
           globalIdx++;
         } else {
-          spRows.forEach((r) => wsData.push(r));
+          let cumulativeLoaded = 0;
+          spRowsForProduct.forEach((r) => {
+            cumulativeLoaded += r[10];
+            r[12] = Math.max(0, qtyOrdered - cumulativeLoaded);
+          });
+          spRowsForProduct.forEach((r) => wsData.push(r));
         }
       }
 
       const piEndRow = wsData.length - 1;
-      if (piEndRow > piStartRow) {
+      if (piEndRow >= piStartRow) {
         piRowMap.push({ startRow: piStartRow, endRow: piEndRow, piNomor: item.nomorPI });
       }
     }
@@ -2632,7 +2605,6 @@ const handleExportExcel = async () => {
 
     const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
 
-    // Build merge definitions for PI columns
     piRowMap.forEach((pi) => {
       [1, 2, 3, 16, 17, 18, 19, 20].forEach((col) => {
         merges.push({ s: { r: pi.startRow, c: col }, e: { r: pi.endRow, c: col } });
@@ -2668,7 +2640,6 @@ const handleExportExcel = async () => {
           const isAlt = (R - 5) % 2 === 1;
           const baseStyle = isAlt ? altRowStyle : dataStyle;
 
-          // Check if this cell is part of a PI merge
           const isMergedCell = merges.some((m) => 
             m.s.r === R && m.s.c === C && m.e.r > m.s.r
           );
@@ -2705,7 +2676,8 @@ const handleExportExcel = async () => {
 
     XLSX.utils.book_append_sheet(wb, ws, "Rekap PI");
     XLSX.writeFile(wb, fileName);
-  };const handlePrintPDF = (item: ProformaInvoice) => {
+  };
+const handlePrintPDF = (item: ProformaInvoice) => {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
     const produkRows = (item.produkItems || []).map((p, idx) => `
@@ -3246,10 +3218,12 @@ const handleExportExcel = async () => {
               <p><strong>Jumlah Tertagih:</strong> ${formatRupiah(item.jumlahTertagih)}</p>
               <p><strong>Status Pelunasan:</strong> ${item.statusPelunasan || getPaymentStatus(item)}</p>
             </div>
-            <div style="margin-top: 20px; text-align: center;">
-              <p style="font-weight: 700; margin-bottom: 16px; font-size: 12px;">Foto Bukti Pembayaran #${fotoIndex} dari ${totalFotos}</p>
+            <div style="margin-top: 12px; text-align: center; flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+              <p style="font-weight: 700; margin-bottom: 8px; font-size: 12px;">Foto Bukti Pembayaran #${fotoIndex} dari ${totalFotos}</p>
               <p style="font-size: 10px; color: #666; margin-bottom: 8px;">Tanggal: ${r.tanggal} | Nominal: ${formatRupiah(r.jumlah)}</p>
-              <img src="${foto}" style="max-height: 65vh; max-width: 90%; object-fit: contain; border: 1px solid #ccc; border-radius: 8px;" onerror="this.style.display='none'; this.parentElement.innerHTML='<p style=padding:40px;color:#999;>Gambar tidak dapat dimuat</p>';" />
+              <div style="width: 100%; display: flex; justify-content: center; align-items: center; flex: 1;">
+                <img src="${foto}" style="max-height: 72vh; max-width: 95%; width: auto; height: auto; object-fit: contain; border: 1px solid #ccc; border-radius: 8px;" onerror="this.style.display='none'; this.parentElement.innerHTML='<p style=padding:40px;color:#999;>Gambar tidak dapat dimuat</p>';" />
+              </div>
             </div>
           </div>
           <img src="/Picture1.png" alt="Footer" class="header-img" onerror="this.style.display='none'" style="margin-top: auto;" />
