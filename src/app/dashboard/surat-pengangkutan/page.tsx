@@ -546,6 +546,7 @@ export default function SuratPengangkutanPage() {
 
   const [items, setItems] = useState<SuratPengangkutanItem[]>([]);
   const itemsRef = useRef<SuratPengangkutanItem[]>([]);
+  const isUpdatingRef = useRef(false);
 
   useEffect(() => {
     itemsRef.current = items;
@@ -770,16 +771,15 @@ export default function SuratPengangkutanPage() {
   }, [urlNomorPI, piList, jenisSurat, subJenisDO, showJenisModal, showSubJenisModal]);
 
   useEffect(() => {
-    const currentItems = itemsRef.current;
-    if (currentItems.length === 0) return;
+    if (items.length === 0) return;
+    if (isUpdatingRef.current) return;
     let needsUpdate = false;
-    const updatedItems = currentItems.map((item) => {
+    const updatedItems = items.map((item) => {
       if (!item.nomorSubDO.trim() || !item.jenisPupuk.trim()) return item;
       const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
       if (!doItem) return item;
       const loadedDO = getLoadedKGForDOFromSurat(doItem);
-      const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id, currentItems);
-      const allocatedInPrevious = getAllocatedInPreviousItems(doItem, item.id, currentItems);
+      const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id, items);
       const effectiveLoaded = loadedDO + allocatedInOtherItems;
       const sisaDO = Math.max(0, (doItem.partyKG || 0) - effectiveLoaded);
       const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
@@ -800,9 +800,6 @@ export default function SuratPengangkutanPage() {
         maxZAKDO = item.bobotPerUnit > 0 ? Math.floor(sisaDO / item.bobotPerUnit) : 0;
       }
       const finalMaxZAK = Math.min(maxZAKPI, maxZAKDO);
-      if (item.maxZAK !== finalMaxZAK || item.doLoadedKG !== effectiveLoaded) {
-        needsUpdate = true;
-      }
       const currentPengambilan = parseFloat(item.pengambilanZAK) || 0;
       let newPengambilan = item.pengambilanZAK;
       let newSisa = item.sisa;
@@ -828,35 +825,30 @@ export default function SuratPengangkutanPage() {
           newSisa = formatParty(doSisaAfter);
         }
       }
+      const newParty = formatParty(doItem.partyKG);
+      if (
+        item.maxZAK !== finalMaxZAK ||
+        item.doLoadedKG !== effectiveLoaded ||
+        item.party !== newParty ||
+        item.sisa !== newSisa ||
+        item.pengambilanZAK !== newPengambilan
+      ) {
+        needsUpdate = true;
+      }
       return {
         ...item,
         doLoadedKG: effectiveLoaded,
         maxZAK: finalMaxZAK,
-        party: formatParty(doItem.partyKG),
+        party: newParty,
         sisa: newSisa,
         pengambilanZAK: newPengambilan,
       };
     });
     if (!needsUpdate) return;
-    setItems((prev) => {
-      let changed = false;
-      const merged = prev.map((oldItem) => {
-        const updated = updatedItems.find((u) => u.id === oldItem.id);
-        if (!updated) return oldItem;
-        if (
-          oldItem.doLoadedKG !== updated.doLoadedKG ||
-          oldItem.maxZAK !== updated.maxZAK ||
-          oldItem.party !== updated.party ||
-          oldItem.sisa !== updated.sisa ||
-          oldItem.pengambilanZAK !== updated.pengambilanZAK
-        ) {
-          changed = true;
-        }
-        return updated;
-      });
-      return changed ? merged : prev;
-    });
-  }, [doList, doUsageRealtime]);
+    isUpdatingRef.current = true;
+    setItems(updatedItems);
+    setTimeout(() => { isUpdatingRef.current = false; }, 0);
+  }, [items, doList, doUsageRealtime]);
 
   const handleClickOutside = (e: MouseEvent) => {
     const target = e.target as Node;
@@ -1584,7 +1576,7 @@ export default function SuratPengangkutanPage() {
           const allocatedInOtherItems = doItem ? getAllocatedInOtherItems(doItem, id, prev) : 0;
           const allocatedInPrevious = doItem ? getAllocatedInPreviousItems(doItem, id, prev) : 0;
           const loadedDO = doItem ? getLoadedKGForDOFromSurat(doItem) : 0;
-          const effectiveDoLoaded = hasDO ? (item.doLoadedKG + allocatedInOtherItems) : 0;
+          const effectiveDoLoaded = hasDO ? (loadedDO + allocatedInOtherItems) : 0;
           const doSisa = hasDO ? Math.max(0, item.doPartyKG - effectiveDoLoaded) : 0;
           const partyBefore = hasDO ? Math.max(0, item.doPartyKG - loadedDO - allocatedInPrevious) : 0;
           const isDusBotol = item.bobotPerUnit === 1 && item.jenisPupuk && isDusOrBotolProduct(item.jenisPupuk);
