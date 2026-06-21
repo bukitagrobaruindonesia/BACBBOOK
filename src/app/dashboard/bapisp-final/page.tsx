@@ -545,14 +545,14 @@ export default function BapispFinalPage() {
         <title>Dokumen BAPISP Final ${ba.nomorSeri}</title>
         <style>
           @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+          @media print { body { margin: 0; padding: 0; height: auto; } .no-print { display: none !important; } }
           * { box-sizing: border-box; margin: 0; padding: 0; }
           body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.5; color: #000; }
           .doc-page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
           .doc-page-pi { width: 182mm; margin: 0 auto; position: relative; min-height: 257mm; }
           .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
           .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-          @media print { .print-bar { display: none !important; } .page-break { page-break-before: always; } }
+          @media print { .print-bar { display: none !important; } }
         </style>
       </head>
       <body>
@@ -622,8 +622,6 @@ export default function BapispFinalPage() {
 
           </div>
         </div>
-
-        <div class="page-break"></div>
 
         <div class="doc-page-pi" style="page-break-before: always;">
           <img src="/LogoAGRO.png" alt="Watermark" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 280px; height: auto; opacity: 0.6; pointer-events: none; z-index: 0;" onerror="this.style.display='none'" />
