@@ -364,7 +364,7 @@ const getPILock = async (nomorPI: string, userEmail?: string): Promise<string> =
         if (lockSnap.exists()) {
           const data = lockSnap.data();
           const createdAt = data.createdAt?.toMillis?.() || data.createdAt || 0;
-          const staleThreshold = Date.now() - 5 * 60 * 1000;
+          const staleThreshold = Date.now() - 2 * 60 * 1000;
           if (createdAt > staleThreshold) {
             throw new Error("PI lock exists");
           }
@@ -403,7 +403,7 @@ const cleanupStalePILocks = async () => {
   try {
     const locksQuery = query(collection(db, "piLocks"));
     const locksSnap = await getDocs(locksQuery);
-    const staleThreshold = Date.now() - 5 * 60 * 1000;
+    const staleThreshold = Date.now() - 2 * 60 * 1000;
     for (const lockDoc of locksSnap.docs) {
       const lockData = lockDoc.data();
       const createdAt = lockData.createdAt?.toMillis?.() || lockData.createdAt || 0;
@@ -413,6 +413,99 @@ const cleanupStalePILocks = async () => {
     }
   } catch (error) {
     console.error("Cleanup PI locks failed:", error);
+  }
+};
+
+
+const getDOLock = async (nomorSubDO: string, userEmail?: string): Promise<string> => {
+  if (!nomorSubDO || nomorSubDO.trim() === "") {
+    throw new Error("Nomor SUB DO tidak valid");
+  }
+  const lockRef = doc(db, "doLocks", nomorSubDO.replace(/\//g, "-"));
+  const maxRetries = 15;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await runTransaction(db, async (transaction) => {
+        const lockSnap = await transaction.get(lockRef);
+        if (lockSnap.exists()) {
+          const data = lockSnap.data();
+          const createdAt = data.createdAt?.toMillis?.() || data.createdAt || 0;
+          const staleThreshold = Date.now() - 2 * 60 * 1000;
+          if (createdAt > staleThreshold) {
+            throw new Error("DO lock exists");
+          }
+        }
+        const lockId = `${nomorSubDO}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        transaction.set(lockRef, { lockId, createdAt: serverTimestamp(), nomorSubDO, userEmail: userEmail || "" });
+        return lockId;
+      });
+      return result;
+    } catch (error: any) {
+      if (error.message === "DO lock exists") {
+        if (attempt === maxRetries - 1) throw new Error(`Sedang ada proses surat pengangkutan untuk DO ${nomorSubDO}. Silakan coba lagi dalam beberapa detik.`);
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw new Error("Failed to acquire DO lock");
+};
+
+const releaseDOLock = async (nomorSubDO: string, lockId: string) => {
+  try {
+    if (!nomorSubDO || nomorSubDO.trim() === "") return;
+    const lockRef = doc(db, "doLocks", nomorSubDO.replace(/\//g, "-"));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists() && lockSnap.data().lockId === lockId) {
+      await deleteDoc(lockRef);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const cleanupStaleDOLocks = async () => {
+  try {
+    const locksQuery = query(collection(db, "doLocks"));
+    const locksSnap = await getDocs(locksQuery);
+    const staleThreshold = Date.now() - 2 * 60 * 1000;
+    for (const lockDoc of locksSnap.docs) {
+      const lockData = lockDoc.data();
+      const createdAt = lockData.createdAt?.toMillis?.() || lockData.createdAt || 0;
+      if (createdAt < staleThreshold) {
+        await deleteDoc(doc(db, "doLocks", lockDoc.id));
+      }
+    }
+  } catch (error) {
+    console.error("Cleanup DO locks failed:", error);
+  }
+};
+
+
+const heartbeatDOLock = async (nomorSubDO: string, lockId: string) => {
+  try {
+    if (!nomorSubDO || nomorSubDO.trim() === "") return;
+    const lockRef = doc(db, "doLocks", nomorSubDO.replace(/\//g, "-"));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists() && lockSnap.data().lockId === lockId) {
+      await updateDoc(lockRef, { createdAt: serverTimestamp() });
+    }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+const heartbeatPILock = async (nomorPI: string, lockId: string) => {
+  try {
+    if (!nomorPI || nomorPI.trim() === "") return;
+    const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
+    const lockSnap = await getDoc(lockRef);
+    if (lockSnap.exists() && lockSnap.data().lockId === lockId) {
+      await updateDoc(lockRef, { createdAt: serverTimestamp() });
+    }
+  } catch (error) {
+    console.error(error);
   }
 };
 
@@ -430,6 +523,7 @@ export default function SuratPengangkutanPage() {
   const [suratDOList, setSuratDOList] = useState<SuratDODoc[]>([]);
   const [doUsageRealtime, setDoUsageRealtime] = useState<Record<string, number>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeLocks, setActiveLocks] = useState<{ piLocks: Array<{ nomorPI: string; lockId: string }>; doLocks: Array<{ nomorSubDO: string; lockId: string }> }>({ piLocks: [], doLocks: [] });
   const [successMessage, setSuccessMessage] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [jenisSurat, setJenisSurat] = useState<"gudangInduk" | "do" | "">("");
@@ -451,6 +545,11 @@ export default function SuratPengangkutanPage() {
   });
 
   const [items, setItems] = useState<SuratPengangkutanItem[]>([]);
+  const itemsRef = useRef<SuratPengangkutanItem[]>([]);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
   const [piProductStatus, setPiProductStatus] = useState<Record<string, Record<string, { loaded: number; ordered: number; status: string }>>>({});
   const [piFullyLoadedMap, setPiFullyLoadedMap] = useState<Record<string, boolean>>({});
   const [piSearchMap, setPiSearchMap] = useState<Record<number, string>>({});
@@ -603,7 +702,11 @@ export default function SuratPengangkutanPage() {
 
   useEffect(() => {
     cleanupStalePILocks();
-    const interval = setInterval(cleanupStalePILocks, 10 * 60 * 1000);
+    cleanupStaleDOLocks();
+    const interval = setInterval(() => {
+      cleanupStalePILocks();
+      cleanupStaleDOLocks();
+    }, 2 * 60 * 1000);
     const handleBeforeUnload = () => {
       if (pendingNomorSeri) {
         releaseSeriTemp(pendingNomorSeri);
@@ -611,6 +714,11 @@ export default function SuratPengangkutanPage() {
       const allPIs = items.map((it) => it.nomorPI).filter((v) => v && v.trim() !== "").filter((v, i, a) => a.indexOf(v) === i);
       allPIs.forEach((nomorPI) => {
         const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
+        deleteDoc(lockRef).catch(() => {});
+      });
+      const allDOs = items.map((it) => it.nomorSubDO).filter((v) => v && v.trim() !== "").filter((v, i, a) => a.indexOf(v) === i);
+      allDOs.forEach((nomorSubDO) => {
+        const lockRef = doc(db, "doLocks", nomorSubDO.replace(/\//g, "-"));
         deleteDoc(lockRef).catch(() => {});
       });
     };
@@ -626,8 +734,26 @@ export default function SuratPengangkutanPage() {
         const lockRef = doc(db, "piLocks", nomorPI.replace(/\//g, "-"));
         deleteDoc(lockRef).catch(() => {});
       });
+      const allDOs = items.map((it) => it.nomorSubDO).filter((v) => v && v.trim() !== "").filter((v, i, a) => a.indexOf(v) === i);
+      allDOs.forEach((nomorSubDO) => {
+        const lockRef = doc(db, "doLocks", nomorSubDO.replace(/\//g, "-"));
+        deleteDoc(lockRef).catch(() => {});
+      });
     };
   }, [pendingNomorSeri, jenisSurat, items]);
+
+  useEffect(() => {
+    if (activeLocks.piLocks.length === 0 && activeLocks.doLocks.length === 0) return;
+    const heartbeatInterval = setInterval(() => {
+      activeLocks.piLocks.forEach((pl) => {
+        heartbeatPILock(pl.nomorPI, pl.lockId);
+      });
+      activeLocks.doLocks.forEach((dl) => {
+        heartbeatDOLock(dl.nomorSubDO, dl.lockId);
+      });
+    }, 30 * 1000);
+    return () => clearInterval(heartbeatInterval);
+  }, [activeLocks]);
 
   useEffect(() => {
     if (urlNomorPI && piList.length > 0 && !showJenisModal && !showSubJenisModal) {
@@ -644,18 +770,18 @@ export default function SuratPengangkutanPage() {
   }, [urlNomorPI, piList, jenisSurat, subJenisDO, showJenisModal, showSubJenisModal]);
 
   useEffect(() => {
-    if (items.length === 0) return;
+    const currentItems = itemsRef.current;
+    if (currentItems.length === 0) return;
     let needsUpdate = false;
-    const updatedItems = items.map((item) => {
+    const updatedItems = currentItems.map((item) => {
       if (!item.nomorSubDO.trim() || !item.jenisPupuk.trim()) return item;
       const doItem = doList.find((d) => d.nomorSubDO === item.nomorSubDO);
       if (!doItem) return item;
       const loadedDO = getLoadedKGForDOFromSurat(doItem);
-      const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id, items);
-      const allocatedInPrevious = getAllocatedInPreviousItems(doItem, item.id, items);
+      const allocatedInOtherItems = getAllocatedInOtherItems(doItem, item.id, currentItems);
+      const allocatedInPrevious = getAllocatedInPreviousItems(doItem, item.id, currentItems);
       const effectiveLoaded = loadedDO + allocatedInOtherItems;
       const sisaDO = Math.max(0, (doItem.partyKG || 0) - effectiveLoaded);
-      const partyBefore = Math.max(0, (doItem.partyKG || 0) - loadedDO - allocatedInPrevious);
       const piSisa = Math.max(0, item.piKuantitas - item.piLoadedKG);
       let maxZAKPI = 0;
       let maxZAKDO = 0;
@@ -712,8 +838,25 @@ export default function SuratPengangkutanPage() {
       };
     });
     if (!needsUpdate) return;
-    setItems(updatedItems);
-  }, [items, doList, doUsageRealtime]);
+    setItems((prev) => {
+      let changed = false;
+      const merged = prev.map((oldItem) => {
+        const updated = updatedItems.find((u) => u.id === oldItem.id);
+        if (!updated) return oldItem;
+        if (
+          oldItem.doLoadedKG !== updated.doLoadedKG ||
+          oldItem.maxZAK !== updated.maxZAK ||
+          oldItem.party !== updated.party ||
+          oldItem.sisa !== updated.sisa ||
+          oldItem.pengambilanZAK !== updated.pengambilanZAK
+        ) {
+          changed = true;
+        }
+        return updated;
+      });
+      return changed ? merged : prev;
+    });
+  }, [doList, doUsageRealtime]);
 
   const handleClickOutside = (e: MouseEvent) => {
     const target = e.target as Node;
@@ -1630,16 +1773,27 @@ export default function SuratPengangkutanPage() {
     setSuccessMessage("");
     let nomorSeri = "";
     const allPIs = items.map((it) => it.nomorPI).filter((v) => v && v.trim() !== "").filter((v, i, a) => a.indexOf(v) === i);
+    const allDOs = items.map((it) => it.nomorSubDO).filter((v) => v && v.trim() !== "").filter((v, i, a) => a.indexOf(v) === i);
     const piLocks: Array<{ nomorPI: string; lockId: string }> = [];
+    const doLocks: Array<{ nomorSubDO: string; lockId: string }> = [];
     try {
       for (const nomorPI of allPIs) {
         const lockId = await getPILock(nomorPI, user?.email);
         piLocks.push({ nomorPI, lockId });
       }
+      for (const nomorSubDO of allDOs) {
+        const lockId = await getDOLock(nomorSubDO, user?.email);
+        doLocks.push({ nomorSubDO, lockId });
+      }
+      setActiveLocks({ piLocks, doLocks });
     } catch (error: any) {
       for (const pl of piLocks) {
         await releasePILock(pl.nomorPI, pl.lockId);
       }
+      for (const dl of doLocks) {
+        await releaseDOLock(dl.nomorSubDO, dl.lockId);
+      }
+      setActiveLocks({ piLocks: [], doLocks: [] });
       alert(error.message);
       setIsSubmitting(false);
       return;
@@ -1929,6 +2083,10 @@ export default function SuratPengangkutanPage() {
       for (const pl of piLocks) {
         await releasePILock(pl.nomorPI, pl.lockId);
       }
+      for (const dl of doLocks) {
+        await releaseDOLock(dl.nomorSubDO, dl.lockId);
+      }
+      setActiveLocks({ piLocks: [], doLocks: [] });
       setIsSubmitting(false);
     }
   };
