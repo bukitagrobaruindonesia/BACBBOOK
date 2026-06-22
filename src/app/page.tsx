@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
-import Select from "@/app/components/ui/Select";
 import { StockGudang } from "@/app/types";
 
 const ParticleBackground = () => {
@@ -311,7 +310,6 @@ export default function PublicPage() {
           0%, 100% { border-color: rgba(16,185,129,0.1); }
           50% { border-color: rgba(16,185,129,0.4); }
         }
-        
         @keyframes logoPulse {
           0%, 100% { box-shadow: 0 0 30px rgba(16,185,129,0.2), 0 0 60px rgba(16,185,129,0.1); }
           50% { box-shadow: 0 0 50px rgba(16,185,129,0.4), 0 0 100px rgba(16,185,129,0.15); }
