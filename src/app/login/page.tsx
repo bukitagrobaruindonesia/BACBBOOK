@@ -15,15 +15,15 @@ export default function LoginPage() {
   const [step, setStep] = useState<"login" | "verify">("login");
   const [countdown, setCountdown] = useState(0);
   const [generatedCode, setGeneratedCode] = useState("");
-  const { login, user, loading, markVerified } = useAuth();
+  const { login, user, verified, loading, markVerified } = useAuth();
   const router = useRouter();
   const emailjsRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && user && verified) {
       router.replace("/dashboard");
     }
-  }, [loading, user, router]);
+  }, [loading, user, verified, router]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -113,7 +113,6 @@ export default function LoginPage() {
     try {
       if (verificationCode === generatedCode) {
         markVerified();
-        window.location.href = "/dashboard";
       } else {
         setError("Kode verifikasi tidak valid. Silakan coba lagi.");
       }
@@ -143,7 +142,7 @@ export default function LoginPage() {
     );
   }
 
-  if (user) {
+  if (user && verified) {
     return null;
   }
 
