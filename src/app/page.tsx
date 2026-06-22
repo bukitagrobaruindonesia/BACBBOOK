@@ -231,8 +231,17 @@ export default function PublicPage() {
 
   const getTotalUnit = (unitType: string) => {
     return filteredStockData
-      .filter((d: StockGudang) => d.unit === unitType)
-      .reduce((sum: number, d: StockGudang) => sum + (d.stokAkhirUnit || 0), 0);
+      .filter((d: StockGudang) => {
+        if (unitType === "BOTOL") return d.unit === "BOTOL" || d.unit === "DUS";
+        return d.unit === unitType;
+      })
+      .reduce((sum: number, d: StockGudang) => {
+        if (unitType === "BOTOL") {
+          if (d.unit === "DUS") return sum + ((d.stokAkhirUnit || 0) * (d.botolPerDus || 20));
+          return sum + (d.stokAkhirUnit || 0);
+        }
+        return sum + (d.stokAkhirUnit || 0);
+      }, 0);
   };
 
   const formatTanggalDisplay = (dateStr: string) => {
@@ -253,7 +262,10 @@ export default function PublicPage() {
     { label: "Total DUS", value: getTotalUnit("DUS"), color: "purple", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
     { label: "Total BOTOL", value: getTotalUnit("BOTOL"), color: "pink", icon: "M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" },
     { label: "Stock Menipis", value: filteredStockData.filter((d: StockGudang) => {
-      if (d.unit === "DUS" || d.unit === "BOTOL") return (d.stokAkhirUnit || 0) < 50;
+      if (d.unit === "DUS" || d.unit === "BOTOL") {
+        const botolCount = d.unit === "DUS" ? (d.stokAkhirUnit || 0) * (d.botolPerDus || 20) : (d.stokAkhirUnit || 0);
+        return botolCount < 50;
+      }
       return (d.unit === "ZAK" ? (d.stokAkhirUnit || 0) * (d.bobotPerUnit || 50) : d.stokAkhirKG) < 1000;
     }).length, color: "red", icon: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" },
   ];
@@ -392,10 +404,8 @@ export default function PublicPage() {
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-                  <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
+                <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20">
+                  <img src="/LogoAGRO.png" alt="Logo" className="w-full h-full object-contain" />
                 </div>
                 <div>
                   <h1 className="text-lg font-bold text-white tracking-tight">REKAP DATA</h1>
@@ -416,10 +426,8 @@ export default function PublicPage() {
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           <section className="text-center py-12 animate-fade-in-up animate-delay-100">
-            <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 shadow-lg shadow-emerald-500/20 mb-6">
-              <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/20 mb-6 bg-white/10 backdrop-blur-sm">
+              <img src="/LogoAGRO.png" alt="Logo PT Bukit Agrochemical Baru" className="w-16 h-16 object-contain" />
             </div>
             <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 tracking-tight">PT Bukit Agrochemical Baru</h2>
             <p className="text-lg text-emerald-400 mb-2 font-medium">Sistem Administrasi Distributor Pupuk</p>
