@@ -311,11 +311,7 @@ export default function PublicPage() {
           0%, 100% { border-color: rgba(16,185,129,0.1); }
           50% { border-color: rgba(16,185,129,0.4); }
         }
-        @keyframes logoFloat {
-          0%, 100% { transform: rotateY(-6deg) rotateX(4deg) translateY(0); }
-          33% { transform: rotateY(6deg) rotateX(-2deg) translateY(-12px); }
-          66% { transform: rotateY(-3deg) rotateX(6deg) translateY(-6px); }
-        }
+        
         @keyframes logoPulse {
           0%, 100% { box-shadow: 0 0 30px rgba(16,185,129,0.2), 0 0 60px rgba(16,185,129,0.1); }
           50% { box-shadow: 0 0 50px rgba(16,185,129,0.4), 0 0 100px rgba(16,185,129,0.15); }
@@ -413,14 +409,28 @@ export default function PublicPage() {
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12" style={{ perspective: "600px" }}>
+                <div 
+                  className="w-16 h-16 cursor-pointer"
+                  style={{ perspective: "600px" }}
+                  onMouseMove={(e) => {
+                    const el = e.currentTarget.querySelector("img") as HTMLElement;
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = (e.clientX - rect.left - rect.width / 2) / (rect.width / 2);
+                    const y = (e.clientY - rect.top - rect.height / 2) / (rect.height / 2);
+                    el.style.transform = `rotateY(${x * 20}deg) rotateX(${-y * 20}deg) scale(1.1)`;
+                  }}
+                  onMouseLeave={(e) => {
+                    const el = e.currentTarget.querySelector("img") as HTMLElement;
+                    el.style.transform = "rotateY(0deg) rotateX(0deg) scale(1)";
+                  }}
+                >
                   <img 
                     src="/LogoAGRO.png" 
                     alt="Logo" 
-                    className="w-full h-full object-contain transition-transform duration-300 hover:scale-110"
+                    className="w-full h-full object-contain transition-transform duration-100"
                     style={{ 
-                      filter: "drop-shadow(0 0 12px rgba(16,185,129,0.4))",
-                      transform: "translateZ(10px)"
+                      filter: "drop-shadow(0 0 16px rgba(16,185,129,0.5))",
+                      transformStyle: "preserve-3d"
                     }}
                   />
                 </div>
@@ -443,21 +453,33 @@ export default function PublicPage() {
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           <section className="text-center py-12 animate-fade-in-up animate-delay-100">
-            <div className="relative mb-8" style={{ perspective: "800px" }}>
+            <div className="relative mb-8" style={{ perspective: "1000px" }}>
               <div 
-                className="relative w-36 h-36 mx-auto transition-all duration-500 hover:scale-105 cursor-pointer"
+                id="hero-logo"
+                className="relative w-52 h-52 mx-auto cursor-pointer"
                 style={{ 
                   transformStyle: "preserve-3d",
-                  animation: "logoFloat 5s ease-in-out infinite",
-                  filter: "drop-shadow(0 0 30px rgba(16,185,129,0.3)) drop-shadow(0 0 60px rgba(16,185,129,0.15))"
+                  transition: "transform 0.1s ease-out",
+                  filter: "drop-shadow(0 0 40px rgba(16,185,129,0.35)) drop-shadow(0 0 80px rgba(16,185,129,0.2))"
+                }}
+                onMouseMove={(e) => {
+                  const el = e.currentTarget;
+                  const rect = el.getBoundingClientRect();
+                  const x = (e.clientX - rect.left - rect.width / 2) / (rect.width / 2);
+                  const y = (e.clientY - rect.top - rect.height / 2) / (rect.height / 2);
+                  el.style.transform = `rotateY(${x * 25}deg) rotateX(${-y * 25}deg) translateZ(40px)`;
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "rotateY(0deg) rotateX(0deg) translateZ(0px)";
                 }}
               >
                 <img 
                   src="/LogoAGRO.png" 
                   alt="Logo PT Bukit Agrochemical Baru" 
                   className="w-full h-full object-contain"
-                  style={{ transform: "translateZ(30px)" }}
+                  style={{ transform: "translateZ(50px)" }}
                 />
+                <div className="absolute -inset-4 rounded-full bg-emerald-500/10 blur-2xl" style={{ transform: "translateZ(-20px)" }} />
               </div>
             </div>
             <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 tracking-tight">PT Bukit Agrochemical Baru</h2>
