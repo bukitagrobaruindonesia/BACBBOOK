@@ -7,15 +7,18 @@ import { UserSession } from "@/app/types";
 
 interface AuthContextType {
   user: UserSession | null;
+  verified: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  markVerified: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null);
+  const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,14 +28,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const parsed = JSON.parse(storedUser);
         setUser(parsed);
       }
+      const storedVerified = localStorage.getItem("userVerified");
+      if (storedVerified === "true") {
+        setVerified(true);
+      }
     } catch (e) {
       localStorage.removeItem("userSession");
+      localStorage.removeItem("userVerified");
     }
     setLoading(false);
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    console.log("Login attempt:", email);
     try {
       const q = query(
         collection(db, "karyawan"),
@@ -40,7 +47,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         where("password", "==", password)
       );
       const snapshot = await getDocs(q);
-      console.log("Query result:", snapshot.empty ? "empty" : "found");
 
       if (snapshot.empty) {
         return false;
@@ -57,7 +63,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       setUser(userData);
       localStorage.setItem("userSession", JSON.stringify(userData));
-      console.log("User set, returning true");
       return true;
     } catch (error) {
       console.error("Login error:", error);
@@ -65,13 +70,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const markVerified = () => {
+    setVerified(true);
+    localStorage.setItem("userVerified", "true");
+  };
+
   const logout = () => {
     setUser(null);
+    setVerified(false);
     localStorage.removeItem("userSession");
+    localStorage.removeItem("userVerified");
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, verified, loading, login, logout, markVerified }}>
       {children}
     </AuthContext.Provider>
   );

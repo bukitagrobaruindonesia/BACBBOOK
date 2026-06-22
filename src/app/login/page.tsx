@@ -15,15 +15,15 @@ export default function LoginPage() {
   const [step, setStep] = useState<"login" | "verify">("login");
   const [countdown, setCountdown] = useState(0);
   const [generatedCode, setGeneratedCode] = useState("");
-  const { login, user, loading } = useAuth();
+  const { login, user, loading, markVerified } = useAuth();
   const router = useRouter();
   const emailjsRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!loading && user && step === "login") {
+    if (!loading && user) {
       router.replace("/dashboard");
     }
-  }, [loading, user, router, step]);
+  }, [loading, user, router]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -54,11 +54,10 @@ export default function LoginPage() {
     }
 
     const templateParams = {
-      email: targetEmail,
+      user_email: targetEmail,
       verification_code: code,
       company_name: "PT Bukit Agrochemical Baru",
       logo_url: "https://bacbbook-brown.vercel.app/LogoAGRO.png",
-      user_email: targetEmail,
       expiry_time: "10 menit",
     };
 
@@ -113,6 +112,7 @@ export default function LoginPage() {
 
     try {
       if (verificationCode === generatedCode) {
+        markVerified();
         window.location.href = "/dashboard";
       } else {
         setError("Kode verifikasi tidak valid. Silakan coba lagi.");
@@ -143,7 +143,7 @@ export default function LoginPage() {
     );
   }
 
-  if (user && step === "login") {
+  if (user) {
     return null;
   }
 
