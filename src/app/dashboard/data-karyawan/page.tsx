@@ -12,6 +12,7 @@ import {
   updateDoc,
   deleteDoc,
   where,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
@@ -28,6 +29,14 @@ interface Karyawan {
   role: string;
   idKantor: string;
   hiddenMenus: string[];
+  lastAccessAt: any;
+  createdAt: any;
+}
+
+interface RoleJabatan {
+  id: string;
+  namaRole: string;
+  isSuperAdmin: boolean;
   createdAt: any;
 }
 
@@ -54,6 +63,7 @@ const menuOptions = [
 export default function DataKaryawanPage() {
   const { user } = useAuth();
   const [karyawanList, setKaryawanList] = useState<Karyawan[]>([]);
+  const [roleList, setRoleList] = useState<RoleJabatan[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -61,18 +71,23 @@ export default function DataKaryawanPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showRoleForm, setShowRoleForm] = useState(false);
+  const [editingRoleId, setEditingRoleId] = useState<string | null>(null);
+  const [roleFormData, setRoleFormData] = useState({ namaRole: "", isSuperAdmin: false });
 
   const [formData, setFormData] = useState({
     nama: "",
     email: "",
     password: "",
-    role: "Admin",
+    role: "",
     idKantor: "",
     hiddenMenus: [] as string[],
   });
 
   useEffect(() => {
     fetchKaryawan();
+    fetchRoles();
   }, []);
 
   const fetchKaryawan = async () => {
@@ -85,9 +100,10 @@ export default function DataKaryawanPage() {
         nama: doc.data().nama || "",
         email: doc.data().email || "",
         password: doc.data().password || "",
-        role: doc.data().role || "Admin",
+        role: doc.data().role || "",
         idKantor: doc.data().idKantor || "",
         hiddenMenus: doc.data().hiddenMenus || [],
+        lastAccessAt: doc.data().lastAccessAt,
         createdAt: doc.data().createdAt,
       } as Karyawan));
       setKaryawanList(data);
@@ -95,6 +111,22 @@ export default function DataKaryawanPage() {
       console.error(error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchRoles = async () => {
+    try {
+      const q = query(collection(db, "roleJabatan"), orderBy("namaRole", "asc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        namaRole: doc.data().namaRole || "",
+        isSuperAdmin: doc.data().isSuperAdmin || false,
+        createdAt: doc.data().createdAt,
+      } as RoleJabatan));
+      setRoleList(data);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -144,6 +176,7 @@ export default function DataKaryawanPage() {
           role: formData.role.trim(),
           idKantor: formData.idKantor.trim(),
           hiddenMenus: formData.hiddenMenus,
+          lastAccessAt: null,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         });
@@ -160,6 +193,50 @@ export default function DataKaryawanPage() {
     }
   };
 
+  const handleRoleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roleFormData.namaRole.trim()) {
+      setErrors({ roleForm: "Nama role wajib diisi" });
+      return;
+    }
+    try {
+      if (editingRoleId) {
+        await updateDoc(doc(db, "roleJabatan", editingRoleId), {
+          namaRole: roleFormData.namaRole.trim(),
+          isSuperAdmin: roleFormData.isSuperAdmin,
+          updatedAt: serverTimestamp(),
+        });
+        const oldRole = roleList.find((r) => r.id === editingRoleId);
+        if (oldRole && oldRole.namaRole !== roleFormData.namaRole.trim()) {
+          const batch = karyawanList.filter((k) => k.role === oldRole.namaRole);
+          for (const k of batch) {
+            await updateDoc(doc(db, "karyawan", k.id), { role: roleFormData.namaRole.trim() });
+          }
+        }
+        setSuccessMessage("Role berhasil diperbarui!");
+      } else {
+        const exists = roleList.find((r) => r.namaRole.toLowerCase() === roleFormData.namaRole.trim().toLowerCase());
+        if (exists) {
+          setErrors({ roleForm: "Role sudah ada" });
+          return;
+        }
+        await addDoc(collection(db, "roleJabatan"), {
+          namaRole: roleFormData.namaRole.trim(),
+          isSuperAdmin: roleFormData.isSuperAdmin,
+          createdAt: serverTimestamp(),
+        });
+        setSuccessMessage("Role berhasil ditambahkan!");
+      }
+      resetRoleForm();
+      fetchRoles();
+      fetchKaryawan();
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (error) {
+      console.error(error);
+      setErrors({ roleForm: "Gagal menyimpan role." });
+    }
+  };
+
   const handleEdit = (karyawan: Karyawan) => {
     setEditingId(karyawan.id);
     setFormData({
@@ -170,6 +247,7 @@ export default function DataKaryawanPage() {
       idKantor: karyawan.idKantor,
       hiddenMenus: karyawan.hiddenMenus || [],
     });
+    setShowPassword(false);
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -186,18 +264,53 @@ export default function DataKaryawanPage() {
     }
   };
 
+  const handleDeleteRole = async (id: string, namaRole: string) => {
+    const used = karyawanList.some((k) => k.role === namaRole);
+    if (used) {
+      alert("Role sedang digunakan oleh karyawan. Ubah role karyawan terlebih dahulu.");
+      return;
+    }
+    if (!window.confirm("Hapus role ini?")) return;
+    try {
+      await deleteDoc(doc(db, "roleJabatan", id));
+      setSuccessMessage("Role berhasil dihapus!");
+      fetchRoles();
+      setTimeout(() => setSuccessMessage(""), 5000);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const handleEditRole = (role: RoleJabatan) => {
+    setEditingRoleId(role.id);
+    setRoleFormData({ namaRole: role.namaRole, isSuperAdmin: role.isSuperAdmin });
+    setShowRoleForm(true);
+  };
+
   const resetForm = () => {
     setFormData({
       nama: "",
       email: "",
       password: "",
-      role: "Admin",
+      role: "",
       idKantor: "",
       hiddenMenus: [],
     });
     setErrors({});
     setShowForm(false);
     setEditingId(null);
+    setShowPassword(false);
+  };
+
+  const resetRoleForm = () => {
+    setRoleFormData({ namaRole: "", isSuperAdmin: false });
+    setEditingRoleId(null);
+    setShowRoleForm(false);
+    setErrors((prev) => {
+      const n = { ...prev };
+      delete n.roleForm;
+      return n;
+    });
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -222,7 +335,22 @@ export default function DataKaryawanPage() {
     });
   };
 
-  const isSuperAdmin = (role: string) => role.trim().toUpperCase() === "SUPER ADMIN";
+  const isSuperAdmin = (role: string) => {
+    const found = roleList.find((r) => r.namaRole === role);
+    return found ? found.isSuperAdmin : role.trim().toUpperCase() === "SUPER ADMIN";
+  };
+
+  const formatAccessTime = (ts: any) => {
+    if (!ts) return "Belum pernah akses";
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    return date.toLocaleString("id-ID", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   const filteredKaryawan = karyawanList.filter((k) =>
     k.nama.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -286,6 +414,115 @@ export default function DataKaryawanPage() {
         </div>
       )}
 
+      {showRoleForm && (
+        <Card title={editingRoleId ? "Edit Role Jabatan" : "Tambah Role Jabatan"}>
+          <form onSubmit={handleRoleSubmit} className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Nama Role"
+                type="text"
+                name="namaRole"
+                value={roleFormData.namaRole}
+                onChange={(e) => setRoleFormData((prev) => ({ ...prev, namaRole: e.target.value }))}
+                placeholder="Contoh: Manager"
+                error={errors.roleForm}
+                required
+              />
+              <div className="flex items-center gap-3 pt-6">
+                <input
+                  type="checkbox"
+                  id="isSuperAdmin"
+                  checked={roleFormData.isSuperAdmin}
+                  onChange={(e) => setRoleFormData((prev) => ({ ...prev, isSuperAdmin: e.target.checked }))}
+                  className="w-5 h-5 text-green-600 rounded focus:ring-green-500"
+                />
+                <label htmlFor="isSuperAdmin" className="text-sm font-medium text-gray-700">
+                  Super Admin (akses penuh)
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-4 pt-2">
+              <Button type="button" variant="outline" onClick={resetRoleForm}>
+                Batal
+              </Button>
+              <Button type="submit" variant="primary">
+                {editingRoleId ? "Simpan Perubahan" : "Tambah Role"}
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
+
+      <Card title="Daftar Role Jabatan">
+        <div className="flex items-center justify-between mb-4">
+          <p className="text-sm text-gray-500">Kelola role yang tersedia untuk karyawan</p>
+          <Button
+            type="button"
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setEditingRoleId(null);
+              setRoleFormData({ namaRole: "", isSuperAdmin: false });
+              setShowRoleForm(true);
+            }}
+          >
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            Tambah Role
+          </Button>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">No</th>
+                <th className="text-left py-2 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">Nama Role</th>
+                <th className="text-left py-2 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">Tipe</th>
+                <th className="text-center py-2 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">Aksi</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {roleList.map((role, idx) => (
+                <tr key={role.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="py-2 px-3 text-gray-500">{idx + 1}</td>
+                  <td className="py-2 px-3 font-medium text-gray-800">{role.namaRole}</td>
+                  <td className="py-2 px-3">
+                    {role.isSuperAdmin ? (
+                      <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded border border-purple-200 font-bold">Super Admin</span>
+                    ) : (
+                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded border border-gray-200">Regular</span>
+                    )}
+                  </td>
+                  <td className="py-2 px-3">
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => handleEditRole(role)}
+                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Edit"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteRole(role.id, role.namaRole)}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                        title="Hapus"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
       {showForm && (
         <Card title={editingId ? "Edit Karyawan" : "Tambah Karyawan Baru"}>
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -310,16 +547,37 @@ export default function DataKaryawanPage() {
                 error={errors.email}
                 required
               />
-              <Input
-                label={editingId ? "Password (Kosongkan jika tidak diubah)" : "Password"}
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                placeholder={editingId ? "Kosongkan jika tidak diubah" : "Masukkan password"}
-                error={errors.password}
-                required={!editingId}
-              />
+              <div className="relative">
+                <Input
+                  label={editingId ? "Password (Kosongkan jika tidak diubah)" : "Password"}
+                  type={showPassword ? "text" : "password"}
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder={editingId ? "Kosongkan jika tidak diubah" : "Masukkan password"}
+                  error={errors.password}
+                  required={!editingId}
+                />
+                {editingId && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-3 top-[34px] text-gray-400 hover:text-gray-600"
+                    title={showPassword ? "Sembunyikan" : "Tampilkan"}
+                  >
+                    {showPassword ? (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                      </svg>
+                    ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+              </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Role / Jabatan <span className="text-red-500">*</span>
@@ -330,12 +588,10 @@ export default function DataKaryawanPage() {
                   onChange={handleChange}
                   className={`w-full px-4 py-3 border rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all bg-white ${errors.role ? "border-red-500" : "border-gray-300"}`}
                 >
-                  <option value="Super Admin">Super Admin</option>
-                  <option value="Admin">Admin</option>
-                  <option value="Operator">Operator</option>
-                  <option value="Staff Gudang">Staff Gudang</option>
-                  <option value="Sales">Sales</option>
-                  <option value="Driver">Driver</option>
+                  <option value="">Pilih Role</option>
+                  {roleList.map((role) => (
+                    <option key={role.id} value={role.namaRole}>{role.namaRole}</option>
+                  ))}
                 </select>
                 {errors.role && <p className="mt-1 text-sm text-red-600">{errors.role}</p>}
               </div>
@@ -450,6 +706,7 @@ export default function DataKaryawanPage() {
                   <th className="text-left py-3 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">Role</th>
                   <th className="text-left py-3 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">ID Kantor</th>
                   <th className="text-left py-3 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">Akses Menu</th>
+                  <th className="text-left py-3 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">Akses Terakhir</th>
                   <th className="text-center py-3 px-3 font-semibold text-gray-600 uppercase text-xs tracking-wider">Aksi</th>
                 </tr>
               </thead>
@@ -496,6 +753,11 @@ export default function DataKaryawanPage() {
                           )}
                         </div>
                       )}
+                    </td>
+                    <td className="py-3 px-3">
+                      <span className={`text-xs font-medium ${karyawan.lastAccessAt ? "text-green-600" : "text-gray-400"}`}>
+                        {formatAccessTime(karyawan.lastAccessAt)}
+                      </span>
                     </td>
                     <td className="py-3 px-3">
                       <div className="flex items-center justify-center gap-2">
