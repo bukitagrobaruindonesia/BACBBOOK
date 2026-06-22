@@ -16,6 +16,20 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function setCookie(name: string, value: string, days = 7) {
+  const expires = new Date(Date.now() + days * 864e5).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Strict`;
+}
+
+function getCookie(name: string): string | null {
+  const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+function deleteCookie(name: string) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null);
   const [verified, setVerified] = useState(false);
@@ -23,18 +37,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     try {
-      const storedUser = localStorage.getItem("userSession");
+      const storedUser = getCookie("userSession");
       if (storedUser) {
         const parsed = JSON.parse(storedUser);
         setUser(parsed);
       }
-      const storedVerified = localStorage.getItem("userVerified");
+      const storedVerified = getCookie("userVerified");
       if (storedVerified === "true") {
         setVerified(true);
       }
     } catch (e) {
-      localStorage.removeItem("userSession");
-      localStorage.removeItem("userVerified");
+      deleteCookie("userSession");
+      deleteCookie("userVerified");
     }
     setLoading(false);
   }, []);
@@ -62,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       setUser(userData);
-      localStorage.setItem("userSession", JSON.stringify(userData));
+      setCookie("userSession", JSON.stringify(userData));
       return true;
     } catch (error) {
       console.error("Login error:", error);
@@ -72,14 +86,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const markVerified = () => {
     setVerified(true);
-    localStorage.setItem("userVerified", "true");
+    setCookie("userVerified", "true");
   };
 
   const logout = () => {
     setUser(null);
     setVerified(false);
-    localStorage.removeItem("userSession");
-    localStorage.removeItem("userVerified");
+    deleteCookie("userSession");
+    deleteCookie("userVerified");
   };
 
   return (

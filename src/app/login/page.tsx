@@ -50,21 +50,13 @@ export default function LoginPage() {
 
   const sendVerificationEmail = async (targetEmail: string, code: string) => {
     const emailjs = await loadEmailJS();
-    if (!emailjs) {
-      console.log("EmailJS not loaded, code:", code);
-      return;
-    }
+    if (!emailjs) return;
 
     const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID || "";
     const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID || "";
     const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY || "";
 
-    console.log("EmailJS Config:", { serviceId, templateId, publicKey: publicKey ? "***" : "empty" });
-
-    if (!serviceId || !templateId || !publicKey) {
-      console.log("EmailJS config missing, code:", code);
-      return;
-    }
+    if (!serviceId || !templateId || !publicKey) return;
 
     try {
       const templateParams = {
@@ -73,12 +65,9 @@ export default function LoginPage() {
         company_name: "PT Bukit Agrochemical Baru",
         expiry_time: "10 menit",
       };
-      console.log("Sending with params:", templateParams);
-      const result = await emailjs.send(serviceId, templateId, templateParams, publicKey);
-      console.log("Email sent successfully:", result);
+      await emailjs.send(serviceId, templateId, templateParams, publicKey);
     } catch (err: any) {
       console.error("EmailJS send error:", err);
-      throw err;
     }
   };
 
@@ -92,11 +81,7 @@ export default function LoginPage() {
       if (success) {
         const code = generateCode();
         setGeneratedCode(code);
-        try {
-          await sendVerificationEmail(email, code);
-        } catch (emailErr: any) {
-          console.error("Email send failed:", emailErr);
-        }
+        await sendVerificationEmail(email, code);
         setStep("verify");
         setCountdown(60);
         setPassword("");
@@ -104,7 +89,6 @@ export default function LoginPage() {
         setError("Email atau password salah. Silakan coba lagi.");
       }
     } catch (err: any) {
-      console.error("Login error:", err);
       setError("Terjadi kesalahan. Silakan coba lagi.");
     } finally {
       setIsLoading(false);
@@ -117,11 +101,7 @@ export default function LoginPage() {
     try {
       const code = generateCode();
       setGeneratedCode(code);
-      try {
-        await sendVerificationEmail(email, code);
-      } catch (emailErr: any) {
-        console.error("Email resend failed:", emailErr);
-      }
+      await sendVerificationEmail(email, code);
       setCountdown(60);
       setVerificationCode("");
       setError("");
@@ -233,9 +213,6 @@ export default function LoginPage() {
                   Kode verifikasi 6 digit telah dikirim ke
                 </p>
                 <p className="text-sm font-semibold text-green-800 mt-1">{email}</p>
-                <p className="text-xs text-gray-400 mt-2">
-                  (Kode: <span className="font-mono font-bold text-green-600">{generatedCode}</span>)
-                </p>
               </div>
 
               <div className="space-y-2">
