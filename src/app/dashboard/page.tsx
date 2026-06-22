@@ -85,9 +85,11 @@ export default function DashboardPage() {
         fot: doc.data().fot || "",
         kodeBarang: doc.data().kodeBarang || "",
         namaBarang: doc.data().namaBarang || "",
+        namaProdusen: doc.data().namaProdusen || "",
         unit: doc.data().unit || "ZAK",
         bobotPerUnit: doc.data().bobotPerUnit || 50,
         botolPerDus: doc.data().botolPerDus,
+        volumeMl: doc.data().volumeMl,
         stokAwalUnit: doc.data().stokAwalUnit || 0,
         stokAwalKG: doc.data().stokAwalKG || 0,
         barangMasukUnit: doc.data().barangMasukUnit || 0,
@@ -162,7 +164,10 @@ export default function DashboardPage() {
         totalStokAkhirUnit: totalStokUnit,
         totalStokAkhirKG: totalStokKG,
         recentPI: piData,
-        lowStock: stockData.filter((s) => s.stokAkhirKG < 1000).slice(0, 5),
+        lowStock: stockData.filter((s) => {
+          if (s.unit === "DUS" || s.unit === "BOTOL") return (s.stokAkhirUnit || 0) < 50;
+          return (s.stokAkhirKG || 0) < 1000;
+        }).slice(0, 5),
         stockList: stockData,
         recentMasuk: masukData.slice(0, 5),
         recentKeluar: keluarData.slice(0, 5),
@@ -174,16 +179,57 @@ export default function DashboardPage() {
     }
   };
 
-  const getUnitLabel = (unit: string) => {
-    if (unit === "BOTOL") return "ZAK";
-    if (unit === "KG") return "KG";
-    return unit;
+  const getUnitBadgeClass = (unit: string) => {
+    if (unit === "ZAK") return "bg-blue-100 text-blue-700 border-blue-200";
+    if (unit === "DUS") return "bg-purple-100 text-purple-700 border-purple-200";
+    if (unit === "BOTOL") return "bg-pink-100 text-pink-700 border-pink-200";
+    return "bg-gray-100 text-gray-700 border-gray-200";
+  };
+
+  const formatDusDisplay = (row: StockGudang, unitField: number) => {
+    if (row.unit === "DUS") {
+      const dusCount = unitField || 0;
+      const botolCount = dusCount * (row.botolPerDus || 20);
+      return `${dusCount.toLocaleString("id-ID", { maximumFractionDigits: 10 })} DUS (${botolCount.toLocaleString("id-ID", { maximumFractionDigits: 10 })} botol)`;
+    }
+    if (row.unit === "BOTOL") {
+      return `${(unitField || 0).toLocaleString("id-ID", { maximumFractionDigits: 10 })} botol`;
+    }
+    return `${(unitField || 0).toLocaleString("id-ID", { maximumFractionDigits: 10 })} ${row.unit}`;
+  };
+
+  const hitungStokAwalKG = (row: StockGudang) => {
+    if (row.unit === "ZAK") {
+      return (row.stokAwalUnit || 0) * (row.bobotPerUnit || 50);
+    }
+    if (row.unit === "DUS" || row.unit === "BOTOL") {
+      return 0;
+    }
+    return row.stokAwalKG || 0;
+  };
+
+  const hitungStokAkhirKG = (row: StockGudang) => {
+    if (row.unit === "ZAK") {
+      return (row.stokAkhirUnit || 0) * (row.bobotPerUnit || 50);
+    }
+    if (row.unit === "DUS" || row.unit === "BOTOL") {
+      return 0;
+    }
+    return row.stokAkhirKG || 0;
   };
 
   const getStockStatus = (stock: StockGudang) => {
-    if (stock.stokAkhirKG <= 0) return { label: "Habis", color: "bg-red-100 text-red-700 border-red-200" };
-    if (stock.stokAkhirKG < 1000) return { label: "Menipis", color: "bg-orange-100 text-orange-700 border-orange-200" };
-    if (stock.stokAkhirKG < 5000) return { label: "Sedang", color: "bg-yellow-100 text-yellow-700 border-yellow-200" };
+    if (stock.unit === "DUS" || stock.unit === "BOTOL") {
+      const unitCount = stock.stokAkhirUnit || 0;
+      if (unitCount <= 0) return { label: "Habis", color: "bg-red-100 text-red-700 border-red-200" };
+      if (unitCount < 50) return { label: "Menipis", color: "bg-orange-100 text-orange-700 border-orange-200" };
+      if (unitCount < 200) return { label: "Sedang", color: "bg-yellow-100 text-yellow-700 border-yellow-200" };
+      return { label: "Aman", color: "bg-green-100 text-green-700 border-green-200" };
+    }
+    const kg = stock.stokAkhirKG || 0;
+    if (kg <= 0) return { label: "Habis", color: "bg-red-100 text-red-700 border-red-200" };
+    if (kg < 1000) return { label: "Menipis", color: "bg-orange-100 text-orange-700 border-orange-200" };
+    if (kg < 5000) return { label: "Sedang", color: "bg-yellow-100 text-yellow-700 border-yellow-200" };
     return { label: "Aman", color: "bg-green-100 text-green-700 border-green-200" };
   };
 
@@ -590,7 +636,9 @@ export default function DashboardPage() {
                       <th className="text-left py-3 px-2 font-semibold text-gray-600 uppercase text-xs tracking-wider">FOT</th>
                       <th className="text-left py-3 px-2 font-semibold text-gray-600 uppercase text-xs tracking-wider">Kode</th>
                       <th className="text-left py-3 px-2 font-semibold text-gray-600 uppercase text-xs tracking-wider">Nama Barang</th>
+                      <th className="text-left py-3 px-2 font-semibold text-gray-600 uppercase text-xs tracking-wider">Produsen</th>
                       <th className="text-center py-3 px-2 font-semibold text-gray-600 uppercase text-xs tracking-wider">Unit</th>
+                      <th className="text-right py-3 px-2 font-semibold text-gray-600 uppercase text-xs tracking-wider">Konversi</th>
                       <th className="text-right py-3 px-2 font-semibold text-gray-600 uppercase text-xs tracking-wider">Stok Awal</th>
                       <th className="text-right py-3 px-2 font-semibold text-green-600 uppercase text-xs tracking-wider">Masuk</th>
                       <th className="text-right py-3 px-2 font-semibold text-red-600 uppercase text-xs tracking-wider">Keluar</th>
@@ -601,7 +649,6 @@ export default function DashboardPage() {
                   <tbody className="divide-y divide-gray-100">
                     {filteredStock.map((stock) => {
                       const status = getStockStatus(stock);
-                      const displayUnit = getUnitLabel(stock.unit);
                       return (
                         <tr key={stock.id} className="hover:bg-gray-50 transition-colors">
                           <td className="py-3 px-2">
@@ -617,46 +664,65 @@ export default function DashboardPage() {
                           <td className="py-3 px-2">
                             <span className="font-medium text-gray-800">{stock.namaBarang}</span>
                           </td>
+                          <td className="py-3 px-2">
+                            <span className="text-xs text-gray-600">{stock.namaProdusen || "-"}</span>
+                          </td>
                           <td className="py-3 px-2 text-center">
-                            <span className={`px-2 py-1 rounded-md text-xs font-bold ${
-                              stock.unit === "ZAK" ? "bg-blue-100 text-blue-700" :
-                              stock.unit === "DUS" ? "bg-purple-100 text-purple-700" :
-                              stock.unit === "BOTOL" ? "bg-pink-100 text-pink-700" :
-                              "bg-gray-100 text-gray-700"
-                            }`}>
+                            <span className={`px-2 py-1 rounded-md text-xs font-bold border ${getUnitBadgeClass(stock.unit)}`}>
                               {stock.unit}
                             </span>
                           </td>
                           <td className="py-3 px-2 text-right">
-                            <div className="font-mono text-gray-600">
+                            <span className="font-mono text-xs text-gray-500">
+                              {stock.unit === "KG" ? "-" : stock.unit === "BOTOL" || stock.unit === "DUS" ? (
+                                <div>
+                                  <p className="text-pink-600">{stock.botolPerDus || 20} botol/DUS</p>
+                                  <p className="text-pink-500">{stock.volumeMl || 500}ml/botol</p>
+                                </div>
+                              ) : `${stock.bobotPerUnit?.toLocaleString()} KG`}
+                            </span>
+                          </td>
+                          <td className="py-3 px-2 text-right">
+                            <div className="font-mono text-xs text-gray-600">
                               {stock.unit !== "KG" && (
-                                <span>{stock.stokAwalUnit?.toLocaleString()} {displayUnit}</span>
+                                <span>{formatDusDisplay(stock, stock.stokAwalUnit)}</span>
                               )}
-                              <span className="block text-xs text-gray-400">{stock.stokAwalKG?.toLocaleString()} KG</span>
+                              {stock.unit !== "DUS" && stock.unit !== "BOTOL" && (
+                                <span className="block text-gray-400">{hitungStokAwalKG(stock).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</span>
+                              )}
                             </div>
                           </td>
                           <td className="py-3 px-2 text-right">
-                            <div className="font-mono text-green-600">
+                            <div className="font-mono text-xs text-green-600">
                               {stock.unit !== "KG" && (
-                                <span>+{stock.barangMasukUnit?.toLocaleString()} {displayUnit}</span>
+                                <span>+{formatDusDisplay(stock, stock.barangMasukUnit)}</span>
                               )}
-                              <span className="block text-xs text-green-500">+{stock.barangMasukKG?.toLocaleString()} KG</span>
+                              {stock.unit !== "DUS" && stock.unit !== "BOTOL" && (
+                                <span className="block text-green-500">+{stock.barangMasukKG?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</span>
+                              )}
                             </div>
                           </td>
                           <td className="py-3 px-2 text-right">
-                            <div className="font-mono text-red-600">
+                            <div className="font-mono text-xs text-red-600">
                               {stock.unit !== "KG" && (
-                                <span>-{stock.barangKeluarUnit?.toLocaleString()} {displayUnit}</span>
+                                <span>-{formatDusDisplay(stock, stock.barangKeluarUnit)}</span>
                               )}
-                              <span className="block text-xs text-red-500">-{stock.barangKeluarKG?.toLocaleString()} KG</span>
+                              {stock.unit !== "DUS" && stock.unit !== "BOTOL" && (
+                                <span className="block text-red-500">-{stock.barangKeluarKG?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</span>
+                              )}
                             </div>
                           </td>
                           <td className="py-3 px-2 text-right">
                             <div className="font-mono font-bold text-gray-800">
                               {stock.unit !== "KG" && (
-                                <span className="text-green-700">{stock.stokAkhirUnit?.toLocaleString()} {displayUnit}</span>
+                                <span className="text-green-700">{formatDusDisplay(stock, stock.stokAkhirUnit)}</span>
                               )}
-                              <span className="block text-xs text-green-600">{stock.stokAkhirKG?.toLocaleString()} KG</span>
+                              {stock.unit === "KG" && (
+                                <span className="text-green-700">{stock.stokAkhirKG?.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</span>
+                              )}
+                              {stock.unit !== "DUS" && stock.unit !== "BOTOL" && (
+                                <span className="block text-xs text-green-600">{hitungStokAkhirKG(stock).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</span>
+                              )}
                             </div>
                           </td>
                           <td className="py-3 px-2 text-center">
@@ -689,21 +755,29 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="space-y-3">
-                {stats.lowStock.map((stock) => (
-                  <div
-                    key={stock.id}
-                    className="flex items-center justify-between p-4 bg-red-50 rounded-xl border border-red-100"
-                  >
-                    <div>
-                      <p className="font-semibold text-gray-800">{stock.namaBarang}</p>
-                      <p className="text-sm text-gray-500">{stock.kodeBarang} | {stock.fot}</p>
+                {stats.lowStock.map((stock) => {
+                  const status = getStockStatus(stock);
+                  return (
+                    <div
+                      key={stock.id}
+                      className="flex items-center justify-between p-4 bg-red-50 rounded-xl border border-red-100"
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-800">{stock.namaBarang}</p>
+                        <p className="text-sm text-gray-500">{stock.kodeBarang} | {stock.fot}</p>
+                        {stock.namaProdusen && <p className="text-xs text-gray-400">{stock.namaProdusen}</p>}
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-red-600">
+                          {stock.unit === "DUS" || stock.unit === "BOTOL"
+                            ? `${stock.stokAkhirUnit?.toLocaleString()} ${stock.unit}`
+                            : `${stock.stokAkhirKG?.toLocaleString()} KG`}
+                        </p>
+                        <p className="text-xs text-red-400">Sisa stock sangat rendah</p>
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-red-600">{stock.stokAkhirKG.toLocaleString()} KG</p>
-                      <p className="text-xs text-red-400">Sisa stock sangat rendah</p>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </Card>
@@ -767,7 +841,6 @@ export default function DashboardPage() {
                 <div
                   key={pi.id}
                   className="flex items-center justify-between p-4 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
-
                 >
                   <div>
                     <p className="font-semibold text-gray-800">{pi.nomorPI}</p>
