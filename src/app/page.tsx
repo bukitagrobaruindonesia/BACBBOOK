@@ -311,6 +311,16 @@ export default function PublicPage() {
           0%, 100% { border-color: rgba(16,185,129,0.1); }
           50% { border-color: rgba(16,185,129,0.4); }
         }
+        @keyframes logoFloat {
+          0%, 100% { transform: rotateY(-8deg) rotateX(5deg) translateY(0); }
+          25% { transform: rotateY(-12deg) rotateX(8deg) translateY(-8px); }
+          50% { transform: rotateY(-4deg) rotateX(2deg) translateY(-4px); }
+          75% { transform: rotateY(-10deg) rotateX(6deg) translateY(-10px); }
+        }
+        @keyframes logoPulse {
+          0%, 100% { box-shadow: 0 0 30px rgba(16,185,129,0.2), 0 0 60px rgba(16,185,129,0.1); }
+          50% { box-shadow: 0 0 50px rgba(16,185,129,0.4), 0 0 100px rgba(16,185,129,0.15); }
+        }
         @keyframes textShine {
           0% { background-position: 0% 50%; }
           50% { background-position: 100% 50%; }
@@ -404,8 +414,15 @@ export default function PublicPage() {
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl overflow-hidden shadow-lg shadow-emerald-500/20">
-                  <img src="/LogoAGRO.png" alt="Logo" className="w-full h-full object-contain" />
+                <div className="group relative w-14 h-14" style={{ perspective: "600px" }}>
+                  <div className="relative w-full h-full transition-transform duration-500" style={{ transformStyle: "preserve-3d" }}>
+                    <div className="absolute inset-0 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/30 border border-emerald-500/20 bg-white/10 backdrop-blur-sm" style={{ transform: "rotateY(0deg) translateZ(8px)" }}>
+                      <img src="/LogoAGRO.png" alt="Logo" className="w-full h-full object-contain p-1" />
+                    </div>
+                    <div className="absolute inset-0 rounded-2xl overflow-hidden opacity-20 shadow-inner" style={{ transform: "rotateY(180deg) translateZ(8px)" }}>
+                      <img src="/LogoAGRO.png" alt="Logo" className="w-full h-full object-contain p-1" />
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <h1 className="text-lg font-bold text-white tracking-tight">REKAP DATA</h1>
@@ -426,8 +443,14 @@ export default function PublicPage() {
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           <section className="text-center py-12 animate-fade-in-up animate-delay-100">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/20 mb-6 bg-white/10 backdrop-blur-sm">
-              <img src="/LogoAGRO.png" alt="Logo PT Bukit Agrochemical Baru" className="w-16 h-16 object-contain" />
+            <div className="relative mb-8" style={{ perspective: "800px" }}>
+              <div className="relative w-28 h-28 mx-auto transition-all duration-700 hover:scale-110" style={{ transformStyle: "preserve-3d", animation: "logoFloat 4s ease-in-out infinite" }}>
+                <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-500/40 border-2 border-emerald-500/30 bg-gradient-to-br from-emerald-500/20 to-emerald-900/40 backdrop-blur-md" style={{ transform: "rotateY(-8deg) rotateX(5deg) translateZ(20px)" }}>
+                  <img src="/LogoAGRO.png" alt="Logo PT Bukit Agrochemical Baru" className="w-full h-full object-contain p-3" />
+                </div>
+                <div className="absolute -inset-2 rounded-3xl bg-emerald-500/10 blur-xl" style={{ transform: "translateZ(-10px)" }} />
+                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-20 h-4 bg-emerald-500/20 rounded-full blur-md" style={{ transform: "translateZ(-30px)" }} />
+              </div>
             </div>
             <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 tracking-tight">PT Bukit Agrochemical Baru</h2>
             <p className="text-lg text-emerald-400 mb-2 font-medium">Sistem Administrasi Distributor Pupuk</p>
