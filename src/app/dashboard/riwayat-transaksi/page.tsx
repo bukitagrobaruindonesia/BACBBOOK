@@ -93,12 +93,14 @@ interface StockItem {
   barangKeluarKG: number;
   barangMasukUnit: number;
   barangMasukKG: number;
+  unit?: string;
+  botolPerDus?: number;
 }
 
 interface ProformaInvoiceItem {
   id: string;
   nomorPI: string;
-  produkItems: Array<{ namaProduk: string; kuantitas: number }>;
+  produkItems: Array<{ namaProduk: string; kuantitas: number; satuan?: string; fot?: string }>;
   sisaPengambilanKG?: number;
   statusPengangkutan?: string;
 }
@@ -217,6 +219,28 @@ const validateNomorSeriFormat = (value: string) => {
   return giRegex.test(value.trim()) || doRegex.test(value.trim());
 };
 
+const isDusOrBotolProduct = (stockList: StockItem[], namaProduk: string) => {
+  const stock = stockList.find((s) =>
+    s.namaBarang.toUpperCase().includes(namaProduk.toUpperCase()) ||
+    namaProduk.toUpperCase().includes(s.namaBarang.toUpperCase())
+  );
+  return stock ? (stock.unit === "DUS" || stock.unit === "BOTOL") : false;
+};
+
+const getBotolPerDus = (stockList: StockItem[], namaProduk: string) => {
+  const stock = stockList.find((s) =>
+    s.namaBarang.toUpperCase().includes(namaProduk.toUpperCase()) ||
+    namaProduk.toUpperCase().includes(s.namaBarang.toUpperCase())
+  );
+  return stock ? (stock.botolPerDus || 20) : 20;
+};
+
+const formatDusDisplay = (dusCount: number, botolPerDus: number) => {
+  if (dusCount <= 0) return "0 DUS";
+  const totalBotol = dusCount * botolPerDus;
+  return `${dusCount} DUS (${totalBotol} botol)`;
+};
+
 export default function RiwayatTransaksiPage() {
   const { user } = useAuth();
   const [data, setData] = useState<UnifiedTransaksi[]>([]);
@@ -272,6 +296,8 @@ export default function RiwayatTransaksiPage() {
       bobotPerUnit: number;
       sisa: string;
       maxZAK: number;
+      fot: string;
+      nomorPI: string;
     }>,
   });
 
@@ -349,15 +375,37 @@ export default function RiwayatTransaksiPage() {
       const keluarSnapshot = await getDocs(keluarQuery);
       const keluarData = keluarSnapshot.docs.map((doc) => {
         const d = doc.data();
+        const jenis = d.jenist || d.jenis || "barangKeluar";
+        const isSurat = jenis === "suratPengangkutanGudangInduk" || jenis === "suratPengangkutanDO";
+
+        let fotValue = d.fot || "";
+        if (isSurat && d.items && d.items.length > 0) {
+          const itemFots = d.items.map((it: any) => it.fot).filter((f: string) => f && f.trim());
+          if (itemFots.length > 0) {
+            fotValue = itemFots[0];
+          }
+        }
+
+        let namaBarangValue = d.namaBarang || "";
+        let kodeBarangValue = d.kodeBarang || "";
+        let unitValue = d.unit || "ZAK";
+        let jumlahZAKValue = d.jumlahZAK || 0;
+
+        if (isSurat && d.items && d.items.length > 0) {
+          const firstItem = d.items[0];
+          namaBarangValue = firstItem.jenisPupuk || "";
+          unitValue = firstItem.bobotPerUnit === 1 ? "BOTOL" : "ZAK";
+        }
+
         return {
           id: doc.id,
-          jenis: d.jenis || "barangKeluar",
+          jenis: jenis,
           tanggal: d.tanggal,
-          kodeBarang: d.kodeBarang || "",
-          namaBarang: d.namaBarang || "",
-          unit: d.unit || "ZAK",
-          jumlahZAK: d.jumlahZAK || 0,
-          fot: d.fot || "",
+          kodeBarang: kodeBarangValue,
+          namaBarang: namaBarangValue,
+          unit: unitValue,
+          jumlahZAK: jumlahZAKValue,
+          fot: fotValue,
           createdBy: d.createdBy,
           createdAt: d.createdAt?.toDate(),
           namaCustomer: d.namaCustomer,
@@ -367,9 +415,20 @@ export default function RiwayatTransaksiPage() {
           botolPerDus: d.botolPerDus,
           bobotPerBotol: d.bobotPerBotol,
           nomorSeri: d.nomorSeri,
-          items: d.items,
+          items: d.items ? d.items.map((it: any) => ({
+            nomorSubDO: it.nomorSubDO || "",
+            nomorPO: it.nomorPO || "",
+            jenisPupuk: it.jenisPupuk || "",
+            party: it.party || "",
+            pengambilanZAK: it.pengambilanZAK || 0,
+            bobotPerUnit: it.bobotPerUnit || 50,
+            totalKG: it.totalKG || 0,
+            sisa: it.sisa || "",
+            nomorPI: it.nomorPI || "",
+            fot: it.fot || "",
+          })) : [],
           totalPengambilanKG: d.totalPengambilanKG,
-          nomorPIList: d.nomorPIList,
+          nomorPIList: Array.isArray(d.nomorPI) ? d.nomorPI : (d.nomorPI ? [d.nomorPI] : []),
           driverUnit: d.driverUnit,
           nomorPolisi: d.nomorPolisi,
           nomorSIM: d.nomorSIM,
@@ -391,6 +450,11 @@ export default function RiwayatTransaksiPage() {
       const fotSet = new Set<string>();
       allData.forEach((item) => {
         if (item.fot && item.fot.trim()) fotSet.add(item.fot.trim().toUpperCase());
+        if (item.items) {
+          item.items.forEach((it) => {
+            if (it.fot && it.fot.trim()) fotSet.add(it.fot.trim().toUpperCase());
+          });
+        }
       });
       setFotList(Array.from(fotSet).sort());
     } catch (error) { console.error(error); } finally { setIsLoading(false); }
@@ -411,6 +475,8 @@ export default function RiwayatTransaksiPage() {
         barangKeluarKG: doc.data().barangKeluarKG || 0,
         barangMasukUnit: doc.data().barangMasukUnit || 0,
         barangMasukKG: doc.data().barangMasukKG || 0,
+        unit: doc.data().unit || "ZAK",
+        botolPerDus: doc.data().botolPerDus || doc.data().jumlahIsiBotol || 20,
       } as StockItem));
       setStockList(data);
     } catch (error) { console.error(error); }
@@ -498,14 +564,24 @@ export default function RiwayatTransaksiPage() {
       (item.nomorSeri && item.nomorSeri.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.driverUnit && item.driverUnit.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (item.nomorKontainer && item.nomorKontainer.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.nomorDO && item.nomorDO.toLowerCase().includes(searchTerm.toLowerCase()));
+      (item.nomorDO && item.nomorDO.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (item.items && item.items.some((it) =>
+        it.jenisPupuk?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        it.nomorSubDO?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        it.nomorPO?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        it.nomorPI?.toLowerCase().includes(searchTerm.toLowerCase())
+      ));
 
     const matchJenis = filterJenis === "semua" ? true :
       filterJenis === "suratPengangkutan" ?
         (item.jenis === "suratPengangkutanGudangInduk" || item.jenis === "suratPengangkutanDO") :
         item.jenis === filterJenis;
 
-    const matchFot = filterFot ? item.fot?.toUpperCase() === filterFot.toUpperCase() : true;
+    const matchFot = filterFot ? (() => {
+      if (item.fot?.toUpperCase() === filterFot.toUpperCase()) return true;
+      if (item.items?.some((it) => it.fot?.toUpperCase() === filterFot.toUpperCase())) return true;
+      return false;
+    })() : true;
 
     const matchBulanTahun = (() => {
       if (!filterBulan && !filterTahun) return true;
@@ -537,15 +613,19 @@ export default function RiwayatTransaksiPage() {
         items: (item.items || []).map((it) => {
           const pengambilan = it.pengambilanZAK || 0;
           const sisa = parseFloat(it.sisa || "0") || 0;
+          const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+          const bobot = isDusBotol ? 1 : (it.bobotPerUnit || 50);
           return {
             nomorSubDO: it.nomorSubDO || "",
             nomorPO: it.nomorPO || "",
             jenisPupuk: it.jenisPupuk || "",
             party: it.party || "",
             pengambilanZAK: String(pengambilan),
-            bobotPerUnit: it.bobotPerUnit || 50,
+            bobotPerUnit: bobot,
             sisa: String(sisa),
             maxZAK: pengambilan + sisa,
+            fot: it.fot || "",
+            nomorPI: it.nomorPI || "",
           };
         }),
       });
@@ -682,17 +762,24 @@ export default function RiwayatTransaksiPage() {
     if (checkNomorSeriExists(newNomorSeri, selectedItem!.nomorSeri)) { throw new Error("Nomor seri sudah ada"); }
 
     const oldItems = selectedItem!.items || [];
-    const newItems = editSuratForm.items.map((it) => ({
-      nomorSubDO: it.nomorSubDO,
-      nomorPO: it.nomorPO,
-      jenisPupuk: it.jenisPupuk,
-      party: it.party,
-      pengambilanZAK: parseFloat(it.pengambilanZAK) || 0,
-      bobotPerUnit: it.bobotPerUnit,
-      totalKG: (parseFloat(it.pengambilanZAK) || 0) * it.bobotPerUnit,
-      sisa: it.sisa,
-      fot: "",
-    }));
+    const newItems = editSuratForm.items.map((it) => {
+      const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+      const botolPerDus = getBotolPerDus(stockList, it.jenisPupuk);
+      const pengambilan = parseFloat(it.pengambilanZAK) || 0;
+      const bobot = isDusBotol ? 1 : (it.bobotPerUnit || 50);
+      return {
+        nomorSubDO: it.nomorSubDO,
+        nomorPO: it.nomorPO,
+        jenisPupuk: it.jenisPupuk,
+        party: it.party,
+        pengambilanZAK: pengambilan,
+        bobotPerUnit: bobot,
+        totalKG: isDusBotol ? (pengambilan / botolPerDus) * bobot : pengambilan * bobot,
+        sisa: it.sisa,
+        fot: it.fot || "",
+        nomorPI: it.nomorPI || null,
+      };
+    });
     const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
     const updateData: any = {
       tanggal: editSuratForm.tanggal,
@@ -717,7 +804,14 @@ export default function RiwayatTransaksiPage() {
     if (selectedItem!.jenis === "suratPengangkutanGudangInduk" && selectedItem!.nomorPI) {
       const pi = getPIByNomor(selectedItem!.nomorPI);
       if (pi) {
-        const oldTotalKG = oldItems.reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+        const oldTotalKG = oldItems.reduce((sum, it) => {
+          const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+          const botolPerDus = getBotolPerDus(stockList, it.jenisPupuk);
+          if (isDusBotol) {
+            return sum + ((it.pengambilanZAK || 0) / botolPerDus) * (it.bobotPerUnit || 50);
+          }
+          return sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+        }, 0);
         const delta = oldTotalKG - totalPengambilanKG;
         const piRef = doc(db, "proformaInvoice", pi.id);
         const piSnap = await getDoc(piRef);
@@ -725,7 +819,15 @@ export default function RiwayatTransaksiPage() {
           const piData = piSnap.data();
           const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
           const newSisa = Math.max(0, currentSisa + delta);
-          const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+          const totalOrdered = pi.produkItems.reduce((sum, p) => {
+            const isDusBotol = isDusOrBotolProduct(stockList, p.namaProduk);
+            const botolPerDus = getBotolPerDus(stockList, p.namaProduk);
+            let qty = p.kuantitas || 0;
+            if (p.satuan === "DUS" && isDusBotol) {
+              qty = qty * botolPerDus;
+            }
+            return sum + qty;
+          }, 0);
           let newStatus = "pending";
           if (newSisa <= 0) newStatus = "complete";
           else if (newSisa < totalOrdered) newStatus = "partial";
@@ -742,7 +844,13 @@ export default function RiwayatTransaksiPage() {
     const productMapNew: Record<string, number> = {};
     oldItems.forEach((it) => {
       const key = it.jenisPupuk;
-      productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+      const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+      const botolPerDus = getBotolPerDus(stockList, it.jenisPupuk);
+      if (isDusBotol) {
+        productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) / botolPerDus) * (it.bobotPerUnit || 50);
+      } else {
+        productMapOld[key] = (productMapOld[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+      }
     });
     newItems.forEach((it) => {
       const key = it.jenisPupuk;
@@ -763,15 +871,28 @@ export default function RiwayatTransaksiPage() {
           const currentKG = sData.stokAkhirKG || 0;
           const currentKeluarUnit = sData.barangKeluarUnit || 0;
           const currentKeluarKG = sData.barangKeluarKG || 0;
-          const bobot = stock.bobotPerUnit || 50;
-          const deltaUnit = deltaKG / bobot;
-          await updateDoc(stockRef, {
-            stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
-            stokAkhirKG: Math.max(0, currentKG + deltaKG),
-            barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
-            barangKeluarKG: Math.max(0, currentKeluarKG - deltaKG),
-            updatedAt: serverTimestamp(),
-          });
+          const isDusBotol = stock.unit === "DUS" || stock.unit === "BOTOL";
+          if (isDusBotol) {
+            const botolPerDus = stock.botolPerDus || 20;
+            const deltaUnit = deltaKG / botolPerDus;
+            await updateDoc(stockRef, {
+              stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
+              stokAkhirKG: 0,
+              barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
+              barangKeluarKG: 0,
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            const bobot = stock.bobotPerUnit || 50;
+            const deltaUnit = deltaKG / bobot;
+            await updateDoc(stockRef, {
+              stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
+              stokAkhirKG: Math.max(0, currentKG + deltaKG),
+              barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
+              barangKeluarKG: Math.max(0, currentKeluarKG - deltaKG),
+              updatedAt: serverTimestamp(),
+            });
+          }
         }
       }
     }
@@ -828,14 +949,29 @@ export default function RiwayatTransaksiPage() {
       if (item.jenis === "suratPengangkutanGudangInduk" && item.nomorPI) {
         const pi = getPIByNomor(item.nomorPI);
         if (pi) {
-          const totalKG = (item.items || []).reduce((sum, it) => sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50)), 0);
+          const totalKG = (item.items || []).reduce((sum, it) => {
+            const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+            const botolPerDus = getBotolPerDus(stockList, it.jenisPupuk);
+            if (isDusBotol) {
+              return sum + ((it.pengambilanZAK || 0) / botolPerDus) * (it.bobotPerUnit || 50);
+            }
+            return sum + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+          }, 0);
           const piRef = doc(db, "proformaInvoice", pi.id);
           const piSnap = await getDoc(piRef);
           if (piSnap.exists()) {
             const piData = piSnap.data();
             const currentSisa = piData.sisaPengambilanKG !== undefined ? piData.sisaPengambilanKG : 0;
             const newSisa = currentSisa + totalKG;
-            const totalOrdered = pi.produkItems.reduce((sum, p) => sum + (p.kuantitas || 0), 0);
+            const totalOrdered = pi.produkItems.reduce((sum, p) => {
+              const isDusBotol = isDusOrBotolProduct(stockList, p.namaProduk);
+              const botolPerDus = getBotolPerDus(stockList, p.namaProduk);
+              let qty = p.kuantitas || 0;
+              if (p.satuan === "DUS" && isDusBotol) {
+                qty = qty * botolPerDus;
+              }
+              return sum + qty;
+            }, 0);
             let newStatus = "pending";
             if (newSisa >= totalOrdered) newStatus = "pending";
             else if (newSisa > 0) newStatus = "partial";
@@ -850,7 +986,13 @@ export default function RiwayatTransaksiPage() {
         const productMap: Record<string, number> = {};
         (item.items || []).forEach((it) => {
           const key = it.jenisPupuk;
-          productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+          const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+          const botolPerDus = getBotolPerDus(stockList, it.jenisPupuk);
+          if (isDusBotol) {
+            productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) / botolPerDus) * (it.bobotPerUnit || 50);
+          } else {
+            productMap[key] = (productMap[key] || 0) + ((it.pengambilanZAK || 0) * (it.bobotPerUnit || 50));
+          }
         });
         for (const prod of Object.keys(productMap)) {
           const kg = productMap[prod];
@@ -864,15 +1006,28 @@ export default function RiwayatTransaksiPage() {
               const currentKG = sData.stokAkhirKG || 0;
               const currentKeluarUnit = sData.barangKeluarUnit || 0;
               const currentKeluarKG = sData.barangKeluarKG || 0;
-              const bobot = stock.bobotPerUnit || 50;
-              const unit = kg / bobot;
-              await updateDoc(stockRef, {
-                stokAkhirUnit: currentUnit + unit,
-                stokAkhirKG: currentKG + kg,
-                barangKeluarUnit: Math.max(0, currentKeluarUnit - unit),
-                barangKeluarKG: Math.max(0, currentKeluarKG - kg),
-                updatedAt: serverTimestamp(),
-              });
+              const isDusBotol = stock.unit === "DUS" || stock.unit === "BOTOL";
+              if (isDusBotol) {
+                const botolPerDus = stock.botolPerDus || 20;
+                const unit = kg / botolPerDus;
+                await updateDoc(stockRef, {
+                  stokAkhirUnit: currentUnit + unit,
+                  stokAkhirKG: 0,
+                  barangKeluarUnit: Math.max(0, currentKeluarUnit - unit),
+                  barangKeluarKG: 0,
+                  updatedAt: serverTimestamp(),
+                });
+              } else {
+                const bobot = stock.bobotPerUnit || 50;
+                const unit = kg / bobot;
+                await updateDoc(stockRef, {
+                  stokAkhirUnit: currentUnit + unit,
+                  stokAkhirKG: currentKG + kg,
+                  barangKeluarUnit: Math.max(0, currentKeluarUnit - unit),
+                  barangKeluarKG: Math.max(0, currentKeluarKG - kg),
+                  updatedAt: serverTimestamp(),
+                });
+              }
             }
           }
         }
@@ -899,32 +1054,67 @@ export default function RiwayatTransaksiPage() {
   };
 
   const handleExportExcel = () => {
-    const exportData = filteredData.map((item) => ({
-      "Jenis Transaksi": item.jenis === "barangMasuk" ? "Barang Masuk" :
-        item.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" :
-        item.jenis === "suratPengangkutanGudangInduk" ? "Surat Pengangkutan Gudang Induk" :
-        item.jenis === "suratPengangkutanDO" ? "Surat Pengangkutan DO" : "Barang Keluar",
-      "Tanggal": item.tanggal,
-      "Nomor Seri": item.nomorSeri || "-",
-      "Kode Barang": item.kodeBarang || "-",
-      "Nama Barang": item.namaBarang || "-",
-      "Unit": item.unit || "-",
-      "Jumlah": item.jumlahZAK || 0,
-      "Total KG": item.totalPengambilanKG || (item.items ? item.items.reduce((sum, it) => sum + (it.totalKG || 0), 0) : 0),
-      "FOT": item.fot || "-",
-      "Nomor Kontainer": item.nomorKontainer || "-",
-      "Nomor DO": item.nomorDO || "-",
-      "Customer": item.namaCustomer || "-",
-      "No PI": item.nomorPI || (item.nomorPIList ? item.nomorPIList.join("; ") : "-"),
-      "No Invoice": item.nomorInvoice || "-",
-      "Driver Unit": item.driverUnit || "-",
-      "No Polisi": item.nomorPolisi || "-",
-      "No Surat Pengangkutan": item.nomorSuratPengangkutan || item.nomorSeri || "-",
-      "Total Pengambilan KG": item.totalPengambilanKG || 0,
-      "Ada Barang Rusak": item.adaBarangRusak ? "Ya" : "Tidak",
-      "Dibuat Oleh": item.createdBy,
-      "Tanggal Dibuat": item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-",
-    }));
+    const exportData = filteredData.map((item) => {
+      const isSurat = item.jenis === "suratPengangkutanGudangInduk" || item.jenis === "suratPengangkutanDO";
+      let jenisLabel = "";
+      if (item.jenis === "barangMasuk") jenisLabel = "Barang Masuk";
+      else if (item.jenis === "penggantianRusak") jenisLabel = "Penggantian Barang Rusak";
+      else if (item.jenis === "suratPengangkutanGudangInduk") jenisLabel = "Surat Pengangkutan Gudang Induk";
+      else if (item.jenis === "suratPengangkutanDO") jenisLabel = "Surat Pengangkutan DO";
+      else jenisLabel = "Barang Keluar";
+
+      let jumlahDisplay = "";
+      let unitDisplay = item.unit || "-";
+      if (isSurat && item.items) {
+        const totalBotol = item.items.reduce((sum, it) => {
+          const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+          return sum + (isDusBotol ? (it.pengambilanZAK || 0) : 0);
+        }, 0);
+        const totalZak = item.items.reduce((sum, it) => {
+          const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+          return sum + (isDusBotol ? 0 : (it.pengambilanZAK || 0));
+        }, 0);
+        if (totalBotol > 0) {
+          jumlahDisplay = totalBotol.toLocaleString("id-ID");
+          unitDisplay = "BOTOL";
+        } else if (totalZak > 0) {
+          jumlahDisplay = totalZak.toLocaleString("id-ID");
+          unitDisplay = "ZAK";
+        } else {
+          jumlahDisplay = "0";
+          unitDisplay = "ZAK";
+        }
+      } else {
+        jumlahDisplay = (item.jumlahZAK || 0).toLocaleString("id-ID");
+      }
+
+      return {
+        "Jenis Transaksi": jenisLabel,
+        "Tanggal": item.tanggal,
+        "Nomor Seri": item.nomorSeri || "-",
+        "Kode Barang": item.kodeBarang || "-",
+        "Nama Barang": item.namaBarang || (isSurat && item.items ? item.items.map((it) => it.jenisPupuk).join("; ") : "-"),
+        "Unit": unitDisplay,
+        "Jumlah": jumlahDisplay,
+        "Total KG": item.totalPengambilanKG || (item.items ? item.items.reduce((sum, it) => {
+          const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+          return sum + (isDusBotol ? 0 : (it.totalKG || 0));
+        }, 0) : 0),
+        "FOT": item.fot || (item.items && item.items[0] ? item.items[0].fot : "-"),
+        "Nomor Kontainer": item.nomorKontainer || "-",
+        "Nomor DO": item.nomorDO || "-",
+        "Customer": item.namaCustomer || (item.kepadaNama || item.kepadaPerusahaan || "-"),
+        "No PI": item.nomorPI || (item.nomorPIList ? item.nomorPIList.join("; ") : "-"),
+        "No Invoice": item.nomorInvoice || "-",
+        "Driver Unit": item.driverUnit || "-",
+        "No Polisi": item.nomorPolisi || "-",
+        "No Surat Pengangkutan": item.nomorSuratPengangkutan || item.nomorSeri || "-",
+        "Total Pengambilan KG": item.totalPengambilanKG || 0,
+        "Ada Barang Rusak": item.adaBarangRusak ? "Ya" : "Tidak",
+        "Dibuat Oleh": item.createdBy,
+        "Tanggal Dibuat": item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-",
+      };
+    });
     exportToExcel(exportData, `Riwayat_Transaksi_${new Date().toISOString().split("T")[0]}`, "Riwayat Transaksi");
   };
 
@@ -940,7 +1130,10 @@ export default function RiwayatTransaksiPage() {
 
     const itemsHtml = (item.items || [])
       .map(
-        (it, idx) => `
+        (it, idx) => {
+          const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+          const unitLabel = isDusBotol ? "BOTOL" : "ZAK";
+          return `
         <tr>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${idx + 1}</td>
           ${isMandiri ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorSubDO || "-"}</td>` : ""}
@@ -948,10 +1141,11 @@ export default function RiwayatTransaksiPage() {
           ${isMandiri || isDikuasakan ? `<td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.nomorPO || "-"}</td>` : ""}
           <td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; vertical-align: top; font-weight: 600;">${it.jenisPupuk || ""}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.party || "-"}</td>
-          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ZAK</td>
+          <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.pengambilanZAK || "-"} ${unitLabel}</td>
           <td style="text-align: center; padding: 6px 4px; font-size: 10px; border: 1px solid #000; vertical-align: top;">${it.sisa || "-"}</td>
         </tr>
-      `
+      `;
+        }
       )
       .join("");
 
@@ -1011,7 +1205,7 @@ export default function RiwayatTransaksiPage() {
           </div>${recipientBox}
           <div class="salutation"><p>Dengan Hormat,</p><p>Dengan ini mohon dimuatkan pupuk dengan rincian sebagai berikut :</p></div>
           <div class="table-section"><div class="table-title">DASAR PENGANGKUTAN</div>
-            <table class="data-table"><thead><tr><th style="width: 30px;">NO</th>${isMandiri ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}${isGI || isDikuasakan ? `<th style="width: 100px;">NOMOR PI</th>` : ""}${isMandiri || isDikuasakan ? `<th style="width: 100px;">NOMOR PO</th>` : ""}<th>JENIS PUPUK</th><th style="width: 60px;">PARTY</th><th style="width: 100px;">PENGAMBILAN<br>ZAK</th><th style="width: 60px;">SISA</th></tr></thead><tbody>${itemsHtml}</tbody></table></div>
+            <table class="data-table"><thead><tr><th style="width: 30px;">NO</th>${isMandiri ? `<th style="width: 100px;">NOMOR SUB DO</th>` : ""}${isGI || isDikuasakan ? `<th style="width: 100px;">NOMOR PI</th>` : ""}${isMandiri || isDikuasakan ? `<th style="width: 100px;">NOMOR PO</th>` : ""}<th>JENIS PUPUK</th><th style="width: 60px;">PARTY</th><th style="width: 100px;">PENGAMBILAN<br>${item.items && item.items.some((it) => it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk)) ? "BOTOL" : "ZAK"}</th><th style="width: 60px;">SISA</th></tr></thead><tbody>${itemsHtml}</tbody></table></div>
           <div class="table-section"><div class="table-title">DATA UNIT ANGKUTAN</div>
             <table class="data-table"><tbody><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600; width: 120px;">NO. POLISI :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorPolisi || "-"}</td></tr><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">DRIVER UNIT :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.driverUnit || "-"}</td></tr><tr><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000; font-weight: 600;">NOMOR SIM :</td><td style="padding: 6px 8px; font-size: 10px; border: 1px solid #000;">${item.nomorSIM || "-"}</td></tr></tbody></table></div>
           <div class="notes-section"><p style="font-weight: 700;">Notes :</p><p>- Jika terdapat coretan / tip-ex Sub DO dianggap batal.</p><p>- Sub DO berlaku selama 3 hari dari tanggal Sub DO diterbitkan.</p><p>- Untuk konfirmasi dengan Customer Service kami, silahkan scan QRcode di atas.</p></div>
@@ -1215,10 +1409,49 @@ export default function RiwayatTransaksiPage() {
   const getTotalKGForSurat = (item: UnifiedTransaksi) => {
     if (item.totalPengambilanKG) return item.totalPengambilanKG;
     if (item.items) return item.items.reduce((sum, it) => {
-      const isDusBotol = it.bobotPerUnit === 1;
+      const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
       return sum + (isDusBotol ? 0 : (it.totalKG || 0));
     }, 0);
     return 0;
+  };
+
+  const getSuratJumlahDisplay = (item: UnifiedTransaksi) => {
+    if (!item.items || item.items.length === 0) return "-";
+    const totalBotol = item.items.reduce((sum, it) => {
+      const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+      return sum + (isDusBotol ? (it.pengambilanZAK || 0) : 0);
+    }, 0);
+    const totalZak = item.items.reduce((sum, it) => {
+      const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+      return sum + (isDusBotol ? 0 : (it.pengambilanZAK || 0));
+    }, 0);
+    if (totalBotol > 0) return `${totalBotol.toLocaleString("id-ID")} BOTOL`;
+    if (totalZak > 0) return `${totalZak.toLocaleString("id-ID")} ZAK`;
+    return "-";
+  };
+
+  const getSuratUnitDisplay = (item: UnifiedTransaksi) => {
+    if (!item.items || item.items.length === 0) return "ZAK";
+    const hasBotol = item.items.some((it) => it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk));
+    if (hasBotol) return "BOTOL";
+    return "ZAK";
+  };
+
+  const getSuratFOTDisplay = (item: UnifiedTransaksi) => {
+    if (item.fot && item.fot.trim()) return item.fot;
+    if (item.items && item.items.length > 0) {
+      const fots = item.items.map((it) => it.fot).filter((f) => f && f.trim());
+      if (fots.length > 0) return fots[0];
+    }
+    return "-";
+  };
+
+  const getSuratNamaBarangDisplay = (item: UnifiedTransaksi) => {
+    if (item.namaBarang && item.namaBarang.trim()) return item.namaBarang;
+    if (item.items && item.items.length > 0) {
+      return item.items.map((it) => it.jenisPupuk).filter((n) => n && n.trim()).join(", ");
+    }
+    return "-";
   };
 
   const columns = [
@@ -1274,7 +1507,7 @@ export default function RiwayatTransaksiPage() {
           {row.jenis === "suratPengangkutanGudangInduk" || row.jenis === "suratPengangkutanDO" ? (
             <div className="space-y-1">
               {(row.items || []).map((it, idx) => {
-                const isDusBotol = it.bobotPerUnit === 1;
+                const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
                 const unitLabel = isDusBotol ? "BOTOL" : "ZAK";
                 return (
                   <p key={idx} className="font-semibold text-gray-800">
@@ -1287,7 +1520,7 @@ export default function RiwayatTransaksiPage() {
               )}
               {(() => {
                 const totalBotol = (row.items || []).reduce((sum, it) => {
-                  const isDusBotol = it.bobotPerUnit === 1;
+                  const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
                   return sum + (isDusBotol ? (it.pengambilanZAK || 0) : 0);
                 }, 0);
                 const totalKg = getTotalKGForSurat(row);
@@ -1306,50 +1539,47 @@ export default function RiwayatTransaksiPage() {
       key: "unit",
       header: "Unit",
       width: "80px",
-      render: (row: UnifiedTransaksi) => (
-        <span className={`px-2 py-1 rounded-md text-xs font-bold ${
-          row.unit === "ZAK" ? "bg-blue-100 text-blue-700" :
-          row.unit === "DUS" ? "bg-purple-100 text-purple-700" :
-          row.unit === "BOTOL" ? "bg-pink-100 text-pink-700" :
-          "bg-gray-100 text-gray-700"
-        }`}>
-          {row.unit || "-"}
-        </span>
-      ),
+      render: (row: UnifiedTransaksi) => {
+        const isSurat = row.jenis === "suratPengangkutanGudangInduk" || row.jenis === "suratPengangkutanDO";
+        const displayUnit = isSurat ? getSuratUnitDisplay(row) : (row.unit || "-");
+        return (
+          <span className={`px-2 py-1 rounded-md text-xs font-bold ${
+            displayUnit === "ZAK" ? "bg-blue-100 text-blue-700" :
+            displayUnit === "DUS" ? "bg-purple-100 text-purple-700" :
+            displayUnit === "BOTOL" ? "bg-pink-100 text-pink-700" :
+            "bg-gray-100 text-gray-700"
+          }`}>
+            {displayUnit}
+          </span>
+        );
+      },
     },
     {
       key: "jumlah",
       header: "Jumlah",
       width: "120px",
-      render: (row: UnifiedTransaksi) => (
-        <span className="font-mono font-bold text-gray-700">
-          {row.jenis === "suratPengangkutanGudangInduk" || row.jenis === "suratPengangkutanDO"
-            ? (() => {
-                const totalBotol = (row.items || []).reduce((sum, it) => {
-                  const isDusBotol = it.bobotPerUnit === 1;
-                  return sum + (isDusBotol ? (it.pengambilanZAK || 0) : 0);
-                }, 0);
-                const totalZak = (row.items || []).reduce((sum, it) => {
-                  const isDusBotol = it.bobotPerUnit === 1;
-                  return sum + (isDusBotol ? 0 : (it.pengambilanZAK || 0));
-                }, 0);
-                const totalKg = getTotalKGForSurat(row);
-                if (totalBotol > 0) return `${totalBotol.toLocaleString("id-ID")} BOTOL`;
-                if (totalZak > 0) return `${totalZak.toLocaleString("id-ID")} ZAK`;
-                return `${totalKg.toLocaleString("id-ID")} KG`;
-              })()
-            : `${row.jumlahZAK.toLocaleString()} ${row.unit === "KG" ? "KG" : "ZAK"}`
-          }
-        </span>
-      ),
+      render: (row: UnifiedTransaksi) => {
+        const isSurat = row.jenis === "suratPengangkutanGudangInduk" || row.jenis === "suratPengangkutanDO";
+        return (
+          <span className="font-mono font-bold text-gray-700">
+            {isSurat
+              ? getSuratJumlahDisplay(row)
+              : `${row.jumlahZAK.toLocaleString()} ${row.unit === "KG" ? "KG" : "ZAK"}`
+            }
+          </span>
+        );
+      },
     },
     {
       key: "fot",
       header: "FOT",
       width: "100px",
-      render: (row: UnifiedTransaksi) => (
-        <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">{row.fot || "-"}</span>
-      ),
+      render: (row: UnifiedTransaksi) => {
+        const fotDisplay = getSuratFOTDisplay(row);
+        return (
+          <span className="font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-1 rounded">{fotDisplay}</span>
+        );
+      },
     },
     {
       key: "status",
@@ -1440,7 +1670,7 @@ export default function RiwayatTransaksiPage() {
   const addSuratItem = () => {
     setEditSuratForm((prev) => ({
       ...prev,
-      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0 }],
+      items: [...prev.items, { nomorSubDO: "", nomorPO: "", jenisPupuk: "", party: "", pengambilanZAK: "", bobotPerUnit: 50, sisa: "", maxZAK: 0, fot: "", nomorPI: "" }],
     }));
   };
 
@@ -1693,13 +1923,15 @@ export default function RiwayatTransaksiPage() {
                         )}
                         <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Jenis Pupuk</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Party</th>
-                        <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase border">ZAK</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase border">{selectedItem.items && selectedItem.items.some((it) => it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk)) ? "BOTOL" : "ZAK"}</th>
                         <th className="px-4 py-3 text-right text-xs font-semibold text-green-800 uppercase border">Total KG</th>
                         <th className="px-4 py-3 text-left text-xs font-semibold text-green-800 uppercase border">Sisa</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {(selectedItem.items || []).map((item, idx) => (
+                      {(selectedItem.items || []).map((item, idx) => {
+                        const isDusBotol = item.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, item.jenisPupuk);
+                        return (
                         <tr key={idx} className="border-b">
                           <td className="px-4 py-3 text-sm text-gray-900 border">{idx + 1}</td>
                           {selectedItem.jenis === "suratPengangkutanDO" && (
@@ -1711,10 +1943,11 @@ export default function RiwayatTransaksiPage() {
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 border">{item.jenisPupuk}</td>
                           <td className="px-4 py-3 text-sm text-gray-600 border">{item.party || "-"}</td>
                           <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono border">{item.pengambilanZAK || 0}</td>
-                          <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right font-mono border">{(item.totalKG || 0).toLocaleString()}</td>
+                          <td className="px-4 py-3 text-sm font-bold text-gray-900 text-right font-mono border">{isDusBotol ? "-" : (item.totalKG || 0).toLocaleString()}</td>
                           <td className="px-4 py-3 text-sm text-gray-600 border">{item.sisa || "-"}</td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
