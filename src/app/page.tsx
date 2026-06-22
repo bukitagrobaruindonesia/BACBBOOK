@@ -312,10 +312,9 @@ export default function PublicPage() {
           50% { border-color: rgba(16,185,129,0.4); }
         }
         @keyframes logoFloat {
-          0%, 100% { transform: rotateY(-8deg) rotateX(5deg) translateY(0); }
-          25% { transform: rotateY(-12deg) rotateX(8deg) translateY(-8px); }
-          50% { transform: rotateY(-4deg) rotateX(2deg) translateY(-4px); }
-          75% { transform: rotateY(-10deg) rotateX(6deg) translateY(-10px); }
+          0%, 100% { transform: rotateY(-6deg) rotateX(4deg) translateY(0); }
+          33% { transform: rotateY(6deg) rotateX(-2deg) translateY(-12px); }
+          66% { transform: rotateY(-3deg) rotateX(6deg) translateY(-6px); }
         }
         @keyframes logoPulse {
           0%, 100% { box-shadow: 0 0 30px rgba(16,185,129,0.2), 0 0 60px rgba(16,185,129,0.1); }
@@ -414,15 +413,16 @@ export default function PublicPage() {
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
               <div className="flex items-center gap-4">
-                <div className="group relative w-14 h-14" style={{ perspective: "600px" }}>
-                  <div className="relative w-full h-full transition-transform duration-500" style={{ transformStyle: "preserve-3d" }}>
-                    <div className="absolute inset-0 rounded-2xl overflow-hidden shadow-lg shadow-emerald-500/30 border border-emerald-500/20 bg-white/10 backdrop-blur-sm" style={{ transform: "rotateY(0deg) translateZ(8px)" }}>
-                      <img src="/LogoAGRO.png" alt="Logo" className="w-full h-full object-contain p-1" />
-                    </div>
-                    <div className="absolute inset-0 rounded-2xl overflow-hidden opacity-20 shadow-inner" style={{ transform: "rotateY(180deg) translateZ(8px)" }}>
-                      <img src="/LogoAGRO.png" alt="Logo" className="w-full h-full object-contain p-1" />
-                    </div>
-                  </div>
+                <div className="w-12 h-12" style={{ perspective: "600px" }}>
+                  <img 
+                    src="/LogoAGRO.png" 
+                    alt="Logo" 
+                    className="w-full h-full object-contain transition-transform duration-300 hover:scale-110"
+                    style={{ 
+                      filter: "drop-shadow(0 0 12px rgba(16,185,129,0.4))",
+                      transform: "translateZ(10px)"
+                    }}
+                  />
                 </div>
                 <div>
                   <h1 className="text-lg font-bold text-white tracking-tight">REKAP DATA</h1>
@@ -444,12 +444,20 @@ export default function PublicPage() {
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
           <section className="text-center py-12 animate-fade-in-up animate-delay-100">
             <div className="relative mb-8" style={{ perspective: "800px" }}>
-              <div className="relative w-28 h-28 mx-auto transition-all duration-700 hover:scale-110" style={{ transformStyle: "preserve-3d", animation: "logoFloat 4s ease-in-out infinite" }}>
-                <div className="absolute inset-0 rounded-3xl overflow-hidden shadow-2xl shadow-emerald-500/40 border-2 border-emerald-500/30 bg-gradient-to-br from-emerald-500/20 to-emerald-900/40 backdrop-blur-md" style={{ transform: "rotateY(-8deg) rotateX(5deg) translateZ(20px)" }}>
-                  <img src="/LogoAGRO.png" alt="Logo PT Bukit Agrochemical Baru" className="w-full h-full object-contain p-3" />
-                </div>
-                <div className="absolute -inset-2 rounded-3xl bg-emerald-500/10 blur-xl" style={{ transform: "translateZ(-10px)" }} />
-                <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 w-20 h-4 bg-emerald-500/20 rounded-full blur-md" style={{ transform: "translateZ(-30px)" }} />
+              <div 
+                className="relative w-36 h-36 mx-auto transition-all duration-500 hover:scale-105 cursor-pointer"
+                style={{ 
+                  transformStyle: "preserve-3d",
+                  animation: "logoFloat 5s ease-in-out infinite",
+                  filter: "drop-shadow(0 0 30px rgba(16,185,129,0.3)) drop-shadow(0 0 60px rgba(16,185,129,0.15))"
+                }}
+              >
+                <img 
+                  src="/LogoAGRO.png" 
+                  alt="Logo PT Bukit Agrochemical Baru" 
+                  className="w-full h-full object-contain"
+                  style={{ transform: "translateZ(30px)" }}
+                />
               </div>
             </div>
             <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 tracking-tight">PT Bukit Agrochemical Baru</h2>
