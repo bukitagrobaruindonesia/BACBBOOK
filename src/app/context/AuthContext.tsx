@@ -18,7 +18,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 function setCookie(name: string, value: string, days = 7) {
   const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  const secure = window.location.protocol === "https:" ? "Secure;" : "";
+  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "Secure;" : "";
   document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Strict; ${secure}`;
 }
 
@@ -50,7 +50,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       deleteCookie("userSession");
       deleteCookie("userVerified");
-      deleteCookie("session");
     }
     setLoading(false);
   }, []);
@@ -80,18 +79,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userData);
       setCookie("userSession", JSON.stringify(userData));
 
-      const { createToken } = await import("@/middleware");
-      const session = {
-        id: doc.id,
-        email: data.email,
-        nama: data.nama,
-        role: data.role,
-        iat: Date.now(),
-        exp: Date.now() + 24 * 60 * 60 * 1000,
-      };
-      const token = createToken(session);
-      setCookie("session", token, 1);
-
       return true;
     } catch (error) {
       console.error("Login error:", error);
@@ -109,7 +96,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setVerified(false);
     deleteCookie("userSession");
     deleteCookie("userVerified");
-    deleteCookie("session");
   };
 
   return (
