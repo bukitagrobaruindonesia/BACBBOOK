@@ -10,7 +10,6 @@ export const metadata: Metadata = {
   description: "Sistem Administrasi Distributor Pupuk - PT Bukit Agrochemical",
   keywords: ["pupuk", "agrochemical", "administrasi", "stock gudang", "proforma invoice"],
   authors: [{ name: "PT Bukit Agrochemical" }],
-  manifest: "/manifest.json",
   icons: {
     icon: [
       { url: "/LogoAGRO.png", sizes: "512x512", type: "image/png" },
