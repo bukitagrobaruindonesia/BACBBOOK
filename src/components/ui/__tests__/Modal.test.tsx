@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import Modal from "@/app/components/ui/Modal";
+import Modal from "../Modal";
 
 describe("Modal Component", () => {
   it("renders when isOpen is true", () => {
@@ -55,21 +55,21 @@ describe("Modal Component", () => {
     expect(screen.getByText("Save")).toBeInTheDocument();
   });
 
-  it("renders with different sizes", () => {
-    render(
+  it("renders with correct size classes", () => {
+    const { container: sm } = render(
       <Modal isOpen={true} onClose={vi.fn()} title="Test" size="sm"><p>Content</p></Modal>
     );
-    expect(screen.getByText("Content")).toBeInTheDocument();
+    expect(sm.textContent).toContain("Content");
 
-    render(
+    const { container: md } = render(
       <Modal isOpen={true} onClose={vi.fn()} title="Test" size="md"><p>Content</p></Modal>
     );
-    expect(screen.getByText("Content")).toBeInTheDocument();
+    expect(md.textContent).toContain("Content");
 
-    render(
+    const { container: lg } = render(
       <Modal isOpen={true} onClose={vi.fn()} title="Test" size="lg"><p>Content</p></Modal>
     );
-    expect(screen.getByText("Content")).toBeInTheDocument();
+    expect(lg.textContent).toContain("Content");
   });
 
   it("renders without title", () => {

@@ -28,13 +28,14 @@
     "typescript": "^5.3.3",
     "vitest": "^4.1.9"
   },
+
+
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest",
-    "test:run": "vitest run",
-    "coverage": "vitest run --coverage"
+    "test:run": "vitest run"
   }
 }
