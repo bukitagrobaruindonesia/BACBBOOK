@@ -6,6 +6,9 @@ const nextConfig = {
   images: {
     domains: [],
   },
+  experimental: {
+    serverComponentsExternalPackages: ["firebase-admin"],
+  },
   async headers() {
     return [
       {

@@ -4,6 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { UserSession } from "@/app/types";
+import { getAuth, signInWithCustomToken, onAuthStateChanged, signOut } from "firebase/auth";
 
 interface AuthContextType {
   user: UserSession | null;
@@ -23,27 +24,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [verified, setVerified] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
+  const firebaseAuth = getAuth();
 
   useEffect(() => {
-    try {
-      const storedUser = localStorage.getItem("userSession");
-      const storedVerified = localStorage.getItem("userVerified");
-      if (storedUser) {
-        const parsed = JSON.parse(storedUser);
-        setUser(parsed);
-        if (storedVerified === "true") {
-          setVerified(true);
+    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+      try {
+        const storedUser = localStorage.getItem("userSession");
+        const storedVerified = localStorage.getItem("userVerified");
+        if (storedUser && firebaseUser) {
+          const parsed = JSON.parse(storedUser);
+          setUser(parsed);
+          if (storedVerified === "true") {
+            setVerified(true);
+            setNeedsVerification(false);
+          } else {
+            setVerified(false);
+            setNeedsVerification(true);
+          }
+        } else {
+          setUser(null);
+          setVerified(false);
+          setNeedsVerification(false);
         }
+      } catch (e) {
+        localStorage.removeItem("userSession");
+        localStorage.removeItem("userVerified");
+        setUser(null);
+        setVerified(false);
+        setNeedsVerification(false);
       }
-    } catch (e) {
-      localStorage.removeItem("userSession");
-      localStorage.removeItem("userVerified");
-    }
-    setLoading(false);
-  }, []);
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, [firebaseAuth]);
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    console.log("Login attempt:", email);
     try {
       const q = query(
         collection(db, "karyawan"),
@@ -51,7 +66,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         where("password", "==", password)
       );
       const snapshot = await getDocs(q);
-      console.log("Query result:", snapshot.empty ? "empty" : "found");
 
       if (snapshot.empty) {
         return false;
@@ -66,12 +80,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: data.role,
       };
 
+      const res = await fetch("/api/custom-token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, uid: doc.id }),
+      });
+
+      if (!res.ok) {
+        return false;
+      }
+
+      const { token } = await res.json();
+      await signInWithCustomToken(firebaseAuth, token);
+
       setUser(userData);
       setVerified(false);
       setNeedsVerification(true);
       localStorage.setItem("userSession", JSON.stringify(userData));
       localStorage.removeItem("userVerified");
-      console.log("User set, returning true");
       return true;
     } catch (error) {
       console.error("Login error:", error);
@@ -80,6 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
+    signOut(firebaseAuth);
     setUser(null);
     setVerified(false);
     setNeedsVerification(false);
