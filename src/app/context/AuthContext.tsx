@@ -8,6 +8,7 @@ import { UserSession } from "@/app/types";
 interface AuthContextType {
   user: UserSession | null;
   loading: boolean;
+  verified: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
 }
@@ -71,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, verified: true, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

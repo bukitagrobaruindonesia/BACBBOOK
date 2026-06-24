@@ -2,17 +2,17 @@
 
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "@/app/context/AuthContext";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, verified, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && (!user || !verified)) {
       router.push("/login");
     }
-  }, [user, loading, router]);
+  }, [user, verified, loading, router]);
 
   if (loading) {
     return (
@@ -22,7 +22,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     );
   }
 
-  if (!user) {
+  if (!user || !verified) {
     return null;
   }
 
