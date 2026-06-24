@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import emailjs from "@emailjs/nodejs";
 
 export async function POST(request: Request) {
   try {
@@ -31,16 +30,49 @@ export async function POST(request: Request) {
       expiry_time: "10 menit",
     };
 
-    await emailjs.send(serviceId, templateId, templateParams, {
-      publicKey: publicKey,
-      privateKey: privateKey,
+    const payload: any = {
+      service_id: serviceId,
+      template_id: templateId,
+      user_id: publicKey,
+      template_params: templateParams,
+    };
+
+    if (privateKey && privateKey.trim() !== "") {
+      payload.accessToken = privateKey;
+    }
+
+    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Origin": "https://bacbbook-brown.vercel.app",
+      },
+      body: JSON.stringify(payload),
     });
+
+    const responseText = await response.text();
+
+    if (!response.ok) {
+      console.error("EmailJS API error:", {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseText,
+        serviceId: serviceId ? "set" : "missing",
+        templateId: templateId ? "set" : "missing",
+        publicKey: publicKey ? "set" : "missing",
+        privateKey: privateKey ? "set" : "missing",
+      });
+      return NextResponse.json(
+        { error: "Gagal mengirim email", detail: responseText, status: response.status },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({ success: true, message: "Email terkirim" });
   } catch (error: any) {
-    console.error("EmailJS error:", error);
+    console.error("API route error:", error);
     return NextResponse.json(
-      { error: "Gagal mengirim email: " + (error.message || error.text || "Unknown error") },
+      { error: "Terjadi kesalahan server: " + (error.message || "Unknown") },
       { status: 500 }
     );
   }
