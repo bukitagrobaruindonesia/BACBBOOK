@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import emailjs from "@emailjs/nodejs";
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
 
     if (!serviceId || !templateId || !publicKey) {
       return NextResponse.json(
-        { error: "Konfigurasi email tidak lengkap. NEXT_PUBLIC_EMAILJS_SERVICE_ID, NEXT_PUBLIC_EMAILJS_TEMPLATE_ID, NEXT_PUBLIC_EMAILJS_PUBLIC_KEY wajib diisi di environment variables." },
+        { error: "Konfigurasi email tidak lengkap" },
         { status: 500 }
       );
     }
@@ -30,36 +31,16 @@ export async function POST(request: Request) {
       expiry_time: "10 menit",
     };
 
-    const payload = {
-      service_id: serviceId,
-      template_id: templateId,
-      user_id: publicKey,
-      template_params: templateParams,
-      accessToken: privateKey,
-    };
-
-    const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
+    await emailjs.send(serviceId, templateId, templateParams, {
+      publicKey: publicKey,
+      privateKey: privateKey,
     });
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error("EmailJS error:", errorData);
-      return NextResponse.json(
-        { error: "Gagal mengirim email: " + errorData },
-        { status: 500 }
-      );
-    }
 
     return NextResponse.json({ success: true, message: "Email terkirim" });
   } catch (error: any) {
-    console.error("API route error:", error);
+    console.error("EmailJS error:", error);
     return NextResponse.json(
-      { error: "Terjadi kesalahan server: " + error.message },
+      { error: "Gagal mengirim email: " + (error.message || error.text || "Unknown error") },
       { status: 500 }
     );
   }
