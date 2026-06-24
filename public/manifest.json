@@ -1,0 +1,23 @@
+{
+  "name": "REKAP PI - PT Bukit Agrochemical Baru",
+  "short_name": "REKAP PI",
+  "description": "Sistem Admin Distributor PT Bukit Agrochemical Baru",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -7,54 +7,32 @@ import { UserSession } from "@/app/types";
 
 interface AuthContextType {
   user: UserSession | null;
-  verified: boolean;
   loading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  markVerified: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-function setCookie(name: string, value: string, days = 7) {
-  const expires = new Date(Date.now() + days * 864e5).toUTCString();
-  const secure = typeof window !== "undefined" && window.location.protocol === "https:" ? "Secure;" : "";
-  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${expires}; path=/; SameSite=Strict; ${secure}`;
-}
-
-function getCookie(name: string): string | null {
-  const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
-  return match ? decodeURIComponent(match[2]) : null;
-}
-
-function deleteCookie(name: string) {
-  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null);
-  const [verified, setVerified] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     try {
-      const storedUser = getCookie("userSession");
+      const storedUser = localStorage.getItem("userSession");
       if (storedUser) {
         const parsed = JSON.parse(storedUser);
         setUser(parsed);
       }
-      const storedVerified = getCookie("userVerified");
-      if (storedVerified === "true") {
-        setVerified(true);
-      }
     } catch (e) {
-      deleteCookie("userSession");
-      deleteCookie("userVerified");
+      localStorage.removeItem("userSession");
     }
     setLoading(false);
   }, []);
 
   const login = async (email: string, password: string): Promise<boolean> => {
+    console.log("Login attempt:", email);
     try {
       const q = query(
         collection(db, "karyawan"),
@@ -62,6 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         where("password", "==", password)
       );
       const snapshot = await getDocs(q);
+      console.log("Query result:", snapshot.empty ? "empty" : "found");
 
       if (snapshot.empty) {
         return false;
@@ -77,8 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       setUser(userData);
-      setCookie("userSession", JSON.stringify(userData));
-
+      localStorage.setItem("userSession", JSON.stringify(userData));
+      console.log("User set, returning true");
       return true;
     } catch (error) {
       console.error("Login error:", error);
@@ -86,20 +65,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const markVerified = () => {
-    setVerified(true);
-    setCookie("userVerified", "true");
-  };
-
   const logout = () => {
     setUser(null);
-    setVerified(false);
-    deleteCookie("userSession");
-    deleteCookie("userVerified");
+    localStorage.removeItem("userSession");
   };
 
   return (
-    <AuthContext.Provider value={{ user, verified, loading, login, logout, markVerified }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
