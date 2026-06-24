@@ -16,15 +16,6 @@ export async function POST(request: Request) {
     const publicKey = process.env.EMAILJS_PUBLIC_KEY || process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
     const privateKey = process.env.EMAILJS_PRIVATE_KEY;
 
-    console.log("ENV CHECK:", {
-      serviceId: serviceId ? "set" : "missing",
-      templateId: templateId ? "set" : "missing",
-      publicKey: publicKey ? "set" : "missing",
-      privateKey: privateKey ? "set" : "missing",
-      privateKeyLength: privateKey?.length || 0,
-      allEnvKeys: Object.keys(process.env).filter(k => k.includes("EMAILJS")),
-    });
-
     if (!serviceId || !templateId || !publicKey) {
       return NextResponse.json(
         { error: "Konfigurasi email tidak lengkap" },
@@ -39,30 +30,35 @@ export async function POST(request: Request) {
       expiry_time: "10 menit",
     };
 
-    const payload: any = {
+    const payload = {
       service_id: serviceId,
       template_id: templateId,
       user_id: publicKey,
       template_params: templateParams,
     };
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
     if (privateKey && privateKey.trim() !== "") {
-      payload.accessToken = privateKey;
-      console.log("Private key added, length:", privateKey.length);
-    } else {
-      console.log("Private key NOT added - value:", privateKey);
+      headers.Authorization = `Bearer ${privateKey}`;
     }
 
     const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
     });
 
     const responseText = await response.text();
-    console.log("EmailJS response:", response.status, responseText);
 
     if (!response.ok) {
+      console.error("EmailJS API error:", {
+        status: response.status,
+        statusText: response.statusText,
+        body: responseText,
+      });
       return NextResponse.json(
         { error: "Gagal mengirim email: " + responseText },
         { status: 500 }
