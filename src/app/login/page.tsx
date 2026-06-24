@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 import Input from "@/app/components/ui/Input";
@@ -15,15 +15,14 @@ export default function LoginPage() {
   const [step, setStep] = useState<"login" | "verify">("login");
   const [countdown, setCountdown] = useState(0);
   const [generatedCode, setGeneratedCode] = useState("");
-  const { login, user, loading } = useAuth();
+  const { login, user, verified, loading, needsVerification, markVerified } = useAuth();
   const router = useRouter();
-  const emailjsRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!loading && user && step === "login") {
+    if (!loading && user && verified && !needsVerification) {
       router.replace("/dashboard");
     }
-  }, [loading, user, router, step]);
+  }, [loading, user, verified, needsVerification, router]);
 
   useEffect(() => {
     if (countdown > 0) {
@@ -36,33 +35,21 @@ export default function LoginPage() {
     return Math.floor(100000 + Math.random() * 900000).toString();
   };
 
-  const loadEmailJS = async () => {
-    if (emailjsRef.current) return emailjsRef.current;
-    const emailjs = await import("@emailjs/browser");
-    emailjsRef.current = emailjs;
-    return emailjs;
-  };
-
   const sendVerificationEmail = async (targetEmail: string, code: string) => {
-    const emailjs = await loadEmailJS();
-    const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID || "";
-    const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID || "";
-    const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY || "";
-
-    if (!serviceId || !templateId || !publicKey) {
-      throw new Error("EmailJS configuration missing");
+    try {
+      const response = await fetch("/api/send-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: targetEmail,
+          code: code,
+        }),
+      });
+      return response.ok;
+    } catch (err) {
+      console.error("Send verification error:", err);
+      return false;
     }
-
-    const templateParams = {
-      email: targetEmail,
-      verification_code: code,
-      company_name: "PT Bukit Agrochemical Baru",
-      logo_url: "https://bacbbook-brown.vercel.app/LogoAGRO.png",
-      user_email: targetEmail,
-      expiry_time: "10 menit",
-    };
-
-    await emailjs.send(serviceId, templateId, templateParams, publicKey);
   };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
@@ -113,7 +100,7 @@ export default function LoginPage() {
 
     try {
       if (verificationCode === generatedCode) {
-        window.location.href = "/dashboard";
+        markVerified();
       } else {
         setError("Kode verifikasi tidak valid. Silakan coba lagi.");
       }
@@ -143,7 +130,7 @@ export default function LoginPage() {
     );
   }
 
-  if (user && step === "login") {
+  if (user && verified && !needsVerification) {
     return null;
   }
 
