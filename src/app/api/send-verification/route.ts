@@ -11,14 +11,23 @@ export async function POST(request: Request) {
       );
     }
 
-    const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID || process.env.EMAILJS_SERVICE_ID;
-    const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID || process.env.EMAILJS_TEMPLATE_ID;
-    const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY || process.env.EMAILJS_PUBLIC_KEY;
+    const serviceId = process.env.EMAILJS_SERVICE_ID || process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+    const templateId = process.env.EMAILJS_TEMPLATE_ID || process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
+    const publicKey = process.env.EMAILJS_PUBLIC_KEY || process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
     const privateKey = process.env.EMAILJS_PRIVATE_KEY;
+
+    console.log("ENV CHECK:", {
+      serviceId: serviceId ? "set" : "missing",
+      templateId: templateId ? "set" : "missing",
+      publicKey: publicKey ? "set" : "missing",
+      privateKey: privateKey ? "set" : "missing",
+      privateKeyLength: privateKey?.length || 0,
+      allEnvKeys: Object.keys(process.env).filter(k => k.includes("EMAILJS")),
+    });
 
     if (!serviceId || !templateId || !publicKey) {
       return NextResponse.json(
-        { error: "Konfigurasi email tidak lengkap. EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY wajib diisi di environment variables." },
+        { error: "Konfigurasi email tidak lengkap" },
         { status: 500 }
       );
     }
@@ -39,36 +48,30 @@ export async function POST(request: Request) {
 
     if (privateKey && privateKey.trim() !== "") {
       payload.accessToken = privateKey;
+      console.log("Private key added, length:", privateKey.length);
+    } else {
+      console.log("Private key NOT added - value:", privateKey);
     }
 
     const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
 
     const responseText = await response.text();
+    console.log("EmailJS response:", response.status, responseText);
 
     if (!response.ok) {
-      console.error("EmailJS API error:", {
-        status: response.status,
-        statusText: response.statusText,
-        body: responseText,
-        serviceId: serviceId ? "set" : "missing",
-        templateId: templateId ? "set" : "missing",
-        publicKey: publicKey ? "set" : "missing",
-      });
       return NextResponse.json(
-        { error: "Gagal mengirim email: " + responseText, status: response.status },
+        { error: "Gagal mengirim email: " + responseText },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ success: true, message: "Email terkirim" });
   } catch (error: any) {
-    console.error("API route error:", error);
+    console.error("API error:", error);
     return NextResponse.json(
       { error: "Terjadi kesalahan server: " + (error.message || "Unknown") },
       { status: 500 }
