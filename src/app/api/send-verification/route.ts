@@ -11,14 +11,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
-    const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
-    const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+    const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID || process.env.EMAILJS_SERVICE_ID;
+    const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID || process.env.EMAILJS_TEMPLATE_ID;
+    const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY || process.env.EMAILJS_PUBLIC_KEY;
     const privateKey = process.env.EMAILJS_PRIVATE_KEY;
 
     if (!serviceId || !templateId || !publicKey) {
       return NextResponse.json(
-        { error: "Konfigurasi email tidak lengkap" },
+        { error: "Konfigurasi email tidak lengkap. EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY wajib diisi di environment variables." },
         { status: 500 }
       );
     }
@@ -45,7 +45,6 @@ export async function POST(request: Request) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Origin": "https://bacbbook-brown.vercel.app",
       },
       body: JSON.stringify(payload),
     });
@@ -60,10 +59,9 @@ export async function POST(request: Request) {
         serviceId: serviceId ? "set" : "missing",
         templateId: templateId ? "set" : "missing",
         publicKey: publicKey ? "set" : "missing",
-        privateKey: privateKey ? "set" : "missing",
       });
       return NextResponse.json(
-        { error: "Gagal mengirim email", detail: responseText, status: response.status },
+        { error: "Gagal mengirim email: " + responseText, status: response.status },
         { status: 500 }
       );
     }

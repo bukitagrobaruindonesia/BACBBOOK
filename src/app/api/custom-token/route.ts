@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error("Custom token error:", error);
     return NextResponse.json(
-      { error: "Gagal membuat token: " + error.message },
+      { error: "Gagal membuat token: " + (error.message || "Unknown") },
       { status: 500 }
     );
   }
