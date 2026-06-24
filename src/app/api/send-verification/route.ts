@@ -11,14 +11,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const serviceId = process.env.EMAILJS_SERVICE_ID || "";
-    const templateId = process.env.EMAILJS_TEMPLATE_ID || "";
-    const publicKey = process.env.EMAILJS_PUBLIC_KEY || "";
-    const privateKey = process.env.EMAILJS_PRIVATE_KEY || "";
+    const serviceId = process.env.EMAILJS_SERVICE_ID;
+    const templateId = process.env.EMAILJS_TEMPLATE_ID;
+    const publicKey = process.env.EMAILJS_PUBLIC_KEY;
+    const privateKey = process.env.EMAILJS_PRIVATE_KEY;
 
     if (!serviceId || !templateId || !publicKey) {
       return NextResponse.json(
-        { error: "Konfigurasi email tidak lengkap" },
+        { error: "Konfigurasi email tidak lengkap. EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY wajib diisi di environment variables." },
         { status: 500 }
       );
     }
@@ -30,16 +30,13 @@ export async function POST(request: Request) {
       expiry_time: "10 menit",
     };
 
-    const payload: any = {
+    const payload = {
       service_id: serviceId,
       template_id: templateId,
       user_id: publicKey,
       template_params: templateParams,
+      accessToken: privateKey,
     };
-
-    if (privateKey) {
-      payload.accessToken = privateKey;
-    }
 
     const response = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
@@ -53,16 +50,16 @@ export async function POST(request: Request) {
       const errorData = await response.text();
       console.error("EmailJS error:", errorData);
       return NextResponse.json(
-        { error: "Gagal mengirim email" },
+        { error: "Gagal mengirim email: " + errorData },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true });
-  } catch (error) {
+    return NextResponse.json({ success: true, message: "Email terkirim" });
+  } catch (error: any) {
     console.error("API route error:", error);
     return NextResponse.json(
-      { error: "Terjadi kesalahan server" },
+      { error: "Terjadi kesalahan server: " + error.message },
       { status: 500 }
     );
   }
