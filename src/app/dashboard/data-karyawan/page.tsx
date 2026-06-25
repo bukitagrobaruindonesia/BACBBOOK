@@ -48,6 +48,7 @@ const menuOptions = [
   { key: "/dashboard/arsip-invoice-sementara", label: "Arsip Invoice Sementara" },
   { key: "/dashboard/laporan-stock-gudang", label: "Laporan & Input Stock" },
   { key: "/dashboard/transaksi-barang-masuk", label: "Barang Masuk" },
+  { key: "/dashboard/barang-keluar-backup", label: "Barang Keluar Backup" },
   { key: "/dashboard/input-do", label: "Input DO" },
   { key: "/dashboard/surat-pengangkutan", label: "Surat Pengangkutan" },
   { key: "/dashboard/riwayat-transaksi", label: "Riwayat Transaksi" },
