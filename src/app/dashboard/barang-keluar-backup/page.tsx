@@ -14,8 +14,7 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/app/lib/firebase";
+import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
 import Input from "@/app/components/ui/Input";
@@ -73,54 +72,43 @@ interface BackupDoc {
   createdAt?: Date;
 }
 
-const compressImage = (file: File, maxSizeMB: number = 2): Promise<Blob> => {
+const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
   return new Promise((resolve, reject) => {
-    if (file.size <= maxSizeMB * 1024 * 1024) {
-      resolve(file);
-      return;
-    }
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
         let width = img.width;
         let height = img.height;
-        const maxDim = 1920;
-        if (width > maxDim || height > maxDim) {
+        const maxDimension = 1920;
+        if (width > maxDimension || height > maxDimension) {
           if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
           } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
           }
         }
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext("2d");
-        ctx?.drawImage(img, 0, 0, width, height);
+        if (!ctx) { reject(new Error("Canvas context failed")); return; }
+        ctx.drawImage(img, 0, 0, width, height);
         let quality = 0.9;
-        const tryCompress = () => {
-          canvas.toBlob((blob) => {
-            if (!blob) {
-              reject(new Error("Gagal kompres foto"));
-              return;
-            }
-            if (blob.size <= maxSizeMB * 1024 * 1024 || quality <= 0.1) {
-              resolve(blob);
-            } else {
-              quality -= 0.1;
-              tryCompress();
-            }
-          }, "image/jpeg", quality);
-        };
-        tryCompress();
+        let result = canvas.toDataURL("image/jpeg", quality);
+        const maxBytes = maxSizeMB * 1024 * 1024;
+        while (result.length > maxBytes && quality > 0.1) {
+          quality -= 0.1;
+          result = canvas.toDataURL("image/jpeg", quality);
+        }
+        resolve(result);
       };
-      img.onerror = reject;
-      img.src = e.target?.result as string;
+      img.onerror = () => reject(new Error("Image load failed"));
+      img.src = event.target?.result as string;
     };
-    reader.onerror = reject;
+    reader.onerror = () => reject(new Error("File read failed"));
     reader.readAsDataURL(file);
   });
 };
@@ -146,7 +134,7 @@ export default function BarangKeluarBackupPage() {
     items: [{ stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0 }] as BackupItem[],
   });
 
-  const [fotoFiles, setFotoFiles] = useState<File[]>([]);
+  const [fotoFiles, setFotoFiles] = useState<string[]>([]);
   const [fotoPreviews, setFotoPreviews] = useState<string[]>([]);
   const [existingFotoUrls, setExistingFotoUrls] = useState<string[]>([]);
 
@@ -297,42 +285,24 @@ export default function BarangKeluarBackupPage() {
     }));
   };
 
-  const handleFotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    setFotoFiles((prev) => [...prev, ...files]);
-    const newPreviews = files.map((file) => URL.createObjectURL(file));
-    setFotoPreviews((prev) => [...prev, ...newPreviews]);
+    const compressed = await Promise.all(files.map((f) => compressImage(f)));
+    setFotoFiles((prev) => [...prev, ...compressed]);
+    setFotoPreviews((prev) => [...prev, ...compressed]);
   };
 
   const removeFoto = (idx: number) => {
     setFotoFiles((prev) => prev.filter((_, i) => i !== idx));
-    setFotoPreviews((prev) => {
-      const removed = prev[idx];
-      const newPreviews = prev.filter((_, i) => i !== idx);
-      if (removed && removed.startsWith("blob:")) {
-        URL.revokeObjectURL(removed);
-      }
-      return newPreviews;
-    });
+    setFotoPreviews((prev) => prev.filter((_, i) => i !== idx));
   };
 
   const removeExistingFoto = (idx: number) => {
     setExistingFotoUrls((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const uploadPhotos = async (files: File[], docId: string): Promise<string[]> => {
-    const urls: string[] = [];
-    for (const file of files) {
-      const compressed = await compressImage(file);
-      const fileName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.]/g, "_")}`;
-      const storageRef = ref(storage, `barangKeluarBackup/${docId}/${fileName}`);
-      await uploadBytes(storageRef, compressed);
-      const url = await getDownloadURL(storageRef);
-      urls.push(url);
-    }
-    return urls;
-  };
+  
 
   const updateStockFromItems = async (
     items: Array<{ stockId: string; unit: string; pengambilanUnit: number; totalKG: number; botolPerDus: number }>,
@@ -409,9 +379,7 @@ export default function BarangKeluarBackupPage() {
       nomorSIM: "",
       items: [{ stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0 }],
     });
-    fotoPreviews.forEach((url) => {
-      if (url.startsWith("blob:")) URL.revokeObjectURL(url);
-    });
+
     setFotoFiles([]);
     setFotoPreviews([]);
     setExistingFotoUrls([]);
@@ -460,10 +428,9 @@ export default function BarangKeluarBackupPage() {
 
       const docRef = await addDoc(collection(db, "transaksiBarangKeluar"), docData);
 
-      let fotoUrls: string[] = [];
-      if (fotoFiles.length > 0) {
-        fotoUrls = await uploadPhotos(fotoFiles, docRef.id);
-        await updateDoc(docRef, { fotoUrls });
+      const allFotoUrls = [...fotoFiles];
+      if (allFotoUrls.length > 0) {
+        await updateDoc(docRef, { fotoUrls: allFotoUrls });
       }
 
       await updateStockFromItems(itemsData, false);
@@ -534,11 +501,7 @@ export default function BarangKeluarBackupPage() {
 
       const totalPengambilanKG = newItemsData.reduce((sum, it) => sum + it.totalKG, 0);
 
-      let allFotoUrls = [...existingFotoUrls];
-      if (fotoFiles.length > 0) {
-        const newUrls = await uploadPhotos(fotoFiles, editId);
-        allFotoUrls = [...allFotoUrls, ...newUrls];
-      }
+      const allFotoUrls = [...existingFotoUrls, ...fotoFiles];
 
       await updateDoc(oldDocRef, {
         nomorSeri: formData.nomorSeri.trim().toUpperCase(),
@@ -1010,7 +973,7 @@ export default function BarangKeluarBackupPage() {
               </label>
             </div>
             {errors.foto && <p className="text-sm text-red-600">{errors.foto}</p>}
-            <p className="text-xs text-gray-500">Foto akan otomatis dikompres jika lebih dari 2MB</p>
+
           </div>
 
           <div className="mt-8 flex items-center justify-end gap-4">

@@ -14,6 +14,7 @@ import {
   where,
   Timestamp,
 } from "firebase/firestore";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword, updateProfile } from "firebase/auth";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -23,6 +24,7 @@ import Card from "@/app/components/ui/Card";
 
 interface Karyawan {
   id: string;
+  uid?: string;
   nama: string;
   email: string;
   password: string;
@@ -98,6 +100,7 @@ export default function DataKaryawanPage() {
       const snapshot = await getDocs(q);
       const data = snapshot.docs.map((doc) => ({
         id: doc.id,
+        uid: doc.data().uid || "",
         nama: doc.data().nama || "",
         email: doc.data().email || "",
         password: doc.data().password || "",
@@ -146,6 +149,7 @@ export default function DataKaryawanPage() {
     if (!validateForm()) return;
     setIsSubmitting(true);
     setSuccessMessage("");
+    const auth = getAuth();
     try {
       if (editingId) {
         const updateData: Record<string, string | string[] | ReturnType<typeof serverTimestamp> | undefined> = {
@@ -158,6 +162,18 @@ export default function DataKaryawanPage() {
         };
         if (formData.password.trim()) {
           updateData.password = formData.password.trim();
+          const karyawan = karyawanList.find((k) => k.id === editingId);
+          if (karyawan && karyawan.email && karyawan.password) {
+            try {
+              const userCredential = await signInWithEmailAndPassword(auth, karyawan.email, karyawan.password);
+              await updatePassword(userCredential.user, formData.password.trim());
+              if (formData.nama.trim()) {
+                await updateProfile(userCredential.user, { displayName: formData.nama.trim() });
+              }
+            } catch (authErr: any) {
+              console.error("Gagal update password auth:", authErr);
+            }
+          }
         }
         await updateDoc(doc(db, "karyawan", editingId), updateData);
         setSuccessMessage("Karyawan berhasil diperbarui!");
@@ -170,7 +186,10 @@ export default function DataKaryawanPage() {
           setIsSubmitting(false);
           return;
         }
+        const userCredential = await createUserWithEmailAndPassword(auth, formData.email.trim(), formData.password.trim());
+        await updateProfile(userCredential.user, { displayName: formData.nama.trim() });
         await addDoc(collection(db, "karyawan"), {
+          uid: userCredential.user.uid,
           nama: formData.nama.trim(),
           email: formData.email.trim(),
           password: formData.password.trim(),
@@ -186,9 +205,15 @@ export default function DataKaryawanPage() {
       resetForm();
       fetchKaryawan();
       setTimeout(() => setSuccessMessage(""), 5000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrors({ submit: "Gagal menyimpan data. Silakan coba lagi." });
+      if (error.code === "auth/email-already-in-use") {
+        setErrors({ email: "Email sudah terdaftar di Firebase Auth" });
+      } else if (error.code === "auth/weak-password") {
+        setErrors({ password: "Password minimal 6 karakter" });
+      } else {
+        setErrors({ submit: "Gagal menyimpan data. Silakan coba lagi." });
+      }
     } finally {
       setIsSubmitting(false);
     }

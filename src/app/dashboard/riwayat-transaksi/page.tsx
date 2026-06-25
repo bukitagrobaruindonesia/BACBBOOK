@@ -15,6 +15,47 @@ import Select from "@/app/components/ui/Select";
 import Card from "@/app/components/ui/Card";
 import * as XLSX from "xlsx-js-style";
 
+const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        const maxDimension = 1920;
+        if (width > maxDimension || height > maxDimension) {
+          if (width > height) {
+            height = Math.round((height * maxDimension) / width);
+            width = maxDimension;
+          } else {
+            width = Math.round((width * maxDimension) / height);
+            height = maxDimension;
+          }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Canvas context failed")); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+        let quality = 0.9;
+        let result = canvas.toDataURL("image/jpeg", quality);
+        const maxBytes = maxSizeMB * 1024 * 1024;
+        while (result.length > maxBytes && quality > 0.1) {
+          quality -= 0.1;
+          result = canvas.toDataURL("image/jpeg", quality);
+        }
+        resolve(result);
+      };
+      img.onerror = () => reject(new Error("Image load failed"));
+      img.src = event.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+};
+
 interface BarangRusakItem {
   unit: string;
   jumlah: number;
@@ -273,6 +314,11 @@ export default function RiwayatTransaksiPage() {
   const [selectedFotoIndex, setSelectedFotoIndex] = useState<number | null>(null);
   const [selectedRusakFoto, setSelectedRusakFoto] = useState<{ urls: string[]; index: number } | null>(null);
   const [ttdList, setTtdList] = useState<TTDData[]>([]);
+  const [editMasukExistingFotoUrls, setEditMasukExistingFotoUrls] = useState<string[]>([]);
+  const [editMasukFotoFiles, setEditMasukFotoFiles] = useState<string[]>([]);
+  const [editBackupFotoFiles, setEditBackupFotoFiles] = useState<string[]>([]);
+  const [editBackupFotoPreviews, setEditBackupFotoPreviews] = useState<string[]>([]);
+  const [editBackupExistingFotoUrls, setEditBackupExistingFotoUrls] = useState<string[]>([]);
 
   const [editForm, setEditForm] = useState({
     tanggal: "",
@@ -698,6 +744,8 @@ export default function RiwayatTransaksiPage() {
         nomorKontainer: item.nomorKontainer || "",
         nomorDO: item.nomorDO || "",
       });
+      setEditMasukExistingFotoUrls(item.fotoUrls || []);
+      setEditMasukFotoFiles([]);
     }
     setIsEditModalOpen(true);
   };
@@ -764,6 +812,10 @@ export default function RiwayatTransaksiPage() {
       updateData.nomorPI = editForm.nomorPI.trim();
       updateData.nomorInvoice = editForm.nomorInvoice.trim();
       updateData.nomorSuratPengangkutan = editForm.nomorSuratPengangkutan.trim();
+    }
+    const allFotoUrls = [...editMasukExistingFotoUrls, ...editMasukFotoFiles];
+    if (allFotoUrls.length > 0) {
+      updateData.fotoUrls = allFotoUrls;
     }
     await updateDoc(doc(db, collectionName, selectedItem!.id), updateData);
 
@@ -1992,6 +2044,26 @@ export default function RiwayatTransaksiPage() {
     checkNomorSeriExists(value, selectedItem?.nomorSeri);
   };
 
+
+  const removeEditMasukExistingFoto = (index: number) => {
+    setEditMasukExistingFotoUrls((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const removeEditMasukFoto = (index: number) => {
+    setEditMasukFotoFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleEditMasukFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    const newFiles: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const compressed = await compressImage(files[i]);
+      newFiles.push(compressed);
+    }
+    setEditMasukFotoFiles((prev) => [...prev, ...newFiles]);
+  };
+
   return (
     <div className="space-y-6">
       <Header title="Riwayat Transaksi" subtitle="Lihat dan kelola riwayat transaksi barang masuk, keluar, dan surat pengangkutan" />
@@ -2477,7 +2549,7 @@ export default function RiwayatTransaksiPage() {
         </div>
       )}
 
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={isSuratEdit ? "Edit Surat Pengangkutan" : isBackupEdit ? "Edit Barang Keluar Backup" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : selectedItem?.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" : "Transaksi Barang Keluar"}`} size="lg" footer={
+      <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditMasukFotoFiles([]); setEditMasukExistingFotoUrls([]); setEditBackupFotoFiles([]); setEditBackupFotoPreviews([]); setEditBackupExistingFotoUrls([]); }} title={isSuratEdit ? "Edit Surat Pengangkutan" : isBackupEdit ? "Edit Barang Keluar Backup" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : selectedItem?.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" : "Transaksi Barang Keluar"}`} size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Batal</Button>
           <Button variant="primary" onClick={handleUpdate} isLoading={isSubmitting} disabled={isSuratEdit && !!nomorSeriError}>Simpan Perubahan</Button>
@@ -2540,10 +2612,53 @@ export default function RiwayatTransaksiPage() {
               <Input label="FOT" type="text" value={editForm.fot} onChange={(e) => setEditForm((prev) => ({ ...prev, fot: e.target.value }))} required />
             </div>
             {selectedItem?.jenis === "barangMasuk" && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Input label="Nomor Kontainer" type="text" value={editForm.nomorKontainer} onChange={(e) => setEditForm((prev) => ({ ...prev, nomorKontainer: e.target.value }))} required />
-                <Input label="Nomor DO" type="text" value={editForm.nomorDO} onChange={(e) => setEditForm((prev) => ({ ...prev, nomorDO: e.target.value }))} />
-              </div>
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <Input label="Nomor Kontainer" type="text" value={editForm.nomorKontainer} onChange={(e) => setEditForm((prev) => ({ ...prev, nomorKontainer: e.target.value }))} required />
+                  <Input label="Nomor DO" type="text" value={editForm.nomorDO} onChange={(e) => setEditForm((prev) => ({ ...prev, nomorDO: e.target.value }))} />
+                </div>
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Foto Dokumentasi</label>
+                  <div className="flex flex-wrap gap-3 mb-3">
+                    {editMasukExistingFotoUrls.map((url: string, idx: number) => (
+                      <div key={`existing_${idx}`} className="relative group">
+                        <img src={url} alt={`Foto ${idx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          type="button"
+                          onClick={() => removeEditMasukExistingFoto(idx)}
+                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                    {editMasukFotoFiles.map((url: string, idx: number) => (
+                      <div key={`new_${idx}`} className="relative group">
+                        <img src={url} alt={`Preview ${idx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          type="button"
+                          onClick={() => removeEditMasukFoto(idx)}
+                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                    <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors">
+                      <svg className="w-6 h-6 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span className="text-[10px] text-gray-500">Tambah Foto</span>
+                      <input type="file" accept="image/*" multiple onChange={handleEditMasukFotoUpload} className="hidden" />
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-500">Foto akan otomatis dikompres jika lebih dari 2MB</p>
+                </div>
+              </>
             )}
             {isBotol && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

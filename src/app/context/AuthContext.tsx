@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { UserSession } from "@/app/types";
-import { getAuth, signInWithCustomToken, onAuthStateChanged, signOut } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
 
 interface AuthContextType {
   user: UserSession | null;
@@ -21,13 +21,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const firebaseAuth = getAuth();
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
       try {
-        const storedUser = localStorage.getItem("userSession");
-        if (storedUser && firebaseUser) {
-          setUser(JSON.parse(storedUser));
+        if (firebaseUser) {
+          const storedUser = localStorage.getItem("userSession");
+          if (storedUser) {
+            setUser(JSON.parse(storedUser));
+          } else {
+            const q = query(collection(db, "karyawan"), where("email", "==", firebaseUser.email));
+            const snapshot = await getDocs(q);
+            if (!snapshot.empty) {
+              const doc = snapshot.docs[0];
+              const data = doc.data();
+              const userData: UserSession = {
+                id: doc.id,
+                email: data.email,
+                nama: data.nama,
+                role: data.role,
+              };
+              setUser(userData);
+              localStorage.setItem("userSession", JSON.stringify(userData));
+            } else {
+              setUser(null);
+              localStorage.removeItem("userSession");
+            }
+          }
         } else {
           setUser(null);
+          localStorage.removeItem("userSession");
         }
       } catch {
         localStorage.removeItem("userSession");
@@ -40,15 +61,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const q = query(
-        collection(db, "karyawan"),
-        where("email", "==", email),
-        where("password", "==", password)
-      );
+      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      const firebaseUser = userCredential.user;
+      const q = query(collection(db, "karyawan"), where("email", "==", email));
       const snapshot = await getDocs(q);
-
-      if (snapshot.empty) return false;
-
+      if (snapshot.empty) {
+        await signOut(firebaseAuth);
+        return false;
+      }
       const doc = snapshot.docs[0];
       const data = doc.data();
       const userData: UserSession = {
@@ -57,18 +77,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         nama: data.nama,
         role: data.role,
       };
-
-      const res = await fetch("/api/custom-token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, uid: doc.id }),
-      });
-
-      if (!res.ok) return false;
-
-      const { token } = await res.json();
-      await signInWithCustomToken(firebaseAuth, token);
-
       setUser(userData);
       localStorage.setItem("userSession", JSON.stringify(userData));
       return true;
