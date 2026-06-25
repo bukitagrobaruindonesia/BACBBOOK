@@ -13,6 +13,7 @@ import {
   deleteDoc,
   where,
   Timestamp,
+  setDoc,
 } from "firebase/firestore";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, updatePassword, updateProfile } from "firebase/auth";
 import { db } from "@/app/lib/firebase";
@@ -188,7 +189,7 @@ export default function DataKaryawanPage() {
         }
         const userCredential = await createUserWithEmailAndPassword(auth, formData.email.trim(), formData.password.trim());
         await updateProfile(userCredential.user, { displayName: formData.nama.trim() });
-        await addDoc(collection(db, "karyawan"), {
+        await setDoc(doc(db, "karyawan", userCredential.user.uid), {
           uid: userCredential.user.uid,
           nama: formData.nama.trim(),
           email: formData.email.trim(),

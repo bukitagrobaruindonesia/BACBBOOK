@@ -61,35 +61,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+      await userCredential.user.getIdToken(true);
+
       const q = query(collection(db, "karyawan"), where("email", "==", email));
       const snapshot = await getDocs(q);
-      if (snapshot.empty) return false;
+      if (snapshot.empty) {
+        await signOut(firebaseAuth);
+        return false;
+      }
 
       const docSnap = snapshot.docs[0];
       const data = docSnap.data();
       const karyawanId = docSnap.id;
 
-      try {
-        const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
-        if (!data.uid) {
-          await updateDoc(doc(db, "karyawan", karyawanId), { uid: userCredential.user.uid });
-        }
-      } catch (authErr: any) {
-        if (authErr.code === "auth/invalid-credential" || authErr.code === "auth/user-not-found") {
-          if (data.password === password) {
-            const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
-            await updateProfile(userCredential.user, { displayName: data.nama });
-            await updateDoc(doc(db, "karyawan", karyawanId), {
-              uid: userCredential.user.uid,
-              password: null,
-              updatedAt: new Date(),
-            });
-          } else {
-            return false;
-          }
-        } else {
-          throw authErr;
-        }
+      if (!data.uid) {
+        await updateDoc(doc(db, "karyawan", karyawanId), { uid: userCredential.user.uid });
       }
 
       const userData: UserSession = {
@@ -101,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(userData);
       localStorage.setItem("userSession", JSON.stringify(userData));
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Login error:", error);
       return false;
     }
