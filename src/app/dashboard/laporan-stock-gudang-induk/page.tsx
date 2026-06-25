@@ -401,8 +401,8 @@ export default function LaporanInputStockGudangPage() {
       const isKG = formData.unit === "KG";
       const isZAK = formData.unit === "ZAK";
       const stokTersediaUnit = parseFloat(formData.stokTersediaUnit) || 0;
-      const bobotPerUnit = isBotol ? (parseFloat(formData.botolPerDus) || 20) : (parseFloat(formData.bobotPerUnit) || 50);
-      const botolPerDus = isBotol ? parseFloat(formData.botolPerDus) || 20 : null;
+      const bobotPerUnit = isBotol || isDus ? (parseFloat(formData.botolPerDus) || 20) : (parseFloat(formData.bobotPerUnit) || 50);
+      const botolPerDus = (isBotol || isDus) ? (parseFloat(formData.botolPerDus) || 20) : null;
 
       const hitungStokAwalKG = () => {
         if (isKG) return 0;
