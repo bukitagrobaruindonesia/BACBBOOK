@@ -55,6 +55,9 @@ export default function LaporanInputStockGudangPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterFot, setFilterFot] = useState("");
+  const [filterTanggal, setFilterTanggal] = useState("");
+  const [filterBulan, setFilterBulan] = useState("");
+  const [filterTahun, setFilterTahun] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
@@ -112,7 +115,7 @@ export default function LaporanInputStockGudangPage() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, filterFot, itemsPerPage]);
+  }, [searchQuery, filterFot, filterTanggal, filterBulan, filterTahun, itemsPerPage]);
 
   useEffect(() => {
     setRusakCurrentPage(1);
@@ -468,7 +471,15 @@ export default function LaporanInputStockGudangPage() {
       stock.fot.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (stock.namaProdusen || "").toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFot = filterFot ? stock.fot === filterFot : true;
-    return matchesSearch && matchesFot;
+    const matchesTanggal = (() => {
+      if (!filterTanggal && !filterBulan && !filterTahun) return true;
+      const date = stock.createdAt ? new Date(stock.createdAt) : new Date();
+      const matchTanggal = filterTanggal ? date.getDate().toString().padStart(2, "0") === filterTanggal : true;
+      const matchBulan = filterBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === filterBulan : true;
+      const matchTahun = filterTahun ? date.getFullYear().toString() === filterTahun : true;
+      return matchTanggal && matchBulan && matchTahun;
+    })();
+    return matchesSearch && matchesFot && matchesTanggal;
   });
 
   const uniqueFotList = Array.from(new Set(stockList.map((s) => s.fot))).sort();
@@ -1084,8 +1095,8 @@ export default function LaporanInputStockGudangPage() {
               </svg>
             }
           >
-            <div className="mb-4 flex flex-col sm:flex-row gap-3">
-              <div className="flex-1">
+            <div className="mb-4 flex flex-col sm:flex-row gap-3 flex-wrap">
+              <div className="flex-1 min-w-[200px]">
                 <Input
                   type="text"
                   placeholder="Cari nama barang, kode, produsen, atau FOT..."
@@ -1094,7 +1105,7 @@ export default function LaporanInputStockGudangPage() {
                   className="w-full"
                 />
               </div>
-              <div className="sm:w-48">
+              <div className="sm:w-40">
                 <Select
                   value={filterFot}
                   onChange={(e) => setFilterFot(e.target.value)}
@@ -1104,6 +1115,61 @@ export default function LaporanInputStockGudangPage() {
                   ]}
                 />
               </div>
+              <div className="sm:w-28">
+                <Select
+                  value={filterTanggal}
+                  onChange={(e) => setFilterTanggal(e.target.value)}
+                  options={[
+                    { value: "", label: "Tanggal" },
+                    ...Array.from({ length: 31 }, (_, i) => {
+                      const d = (i + 1).toString().padStart(2, "0");
+                      return { value: d, label: d };
+                    }),
+                  ]}
+                />
+              </div>
+              <div className="sm:w-36">
+                <Select
+                  value={filterBulan}
+                  onChange={(e) => setFilterBulan(e.target.value)}
+                  options={[
+                    { value: "", label: "Bulan" },
+                    { value: "01", label: "Januari" },
+                    { value: "02", label: "Februari" },
+                    { value: "03", label: "Maret" },
+                    { value: "04", label: "April" },
+                    { value: "05", label: "Mei" },
+                    { value: "06", label: "Juni" },
+                    { value: "07", label: "Juli" },
+                    { value: "08", label: "Agustus" },
+                    { value: "09", label: "September" },
+                    { value: "10", label: "Oktober" },
+                    { value: "11", label: "November" },
+                    { value: "12", label: "Desember" },
+                  ]}
+                />
+              </div>
+              <div className="sm:w-28">
+                <Select
+                  value={filterTahun}
+                  onChange={(e) => setFilterTahun(e.target.value)}
+                  options={[
+                    { value: "", label: "Tahun" },
+                    ...Array.from({ length: 5 }, (_, i) => {
+                      const year = (new Date().getFullYear() - 2 + i).toString();
+                      return { value: year, label: year };
+                    }),
+                  ]}
+                />
+              </div>
+              {(filterTanggal || filterBulan || filterTahun) && (
+                <button
+                  onClick={() => { setFilterTanggal(""); setFilterBulan(""); setFilterTahun(""); }}
+                  className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
+                >
+                  Reset Tanggal
+                </button>
+              )}
             </div>
 
             <Table
