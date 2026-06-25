@@ -89,6 +89,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.setItem("userSession", JSON.stringify(userData));
       return true;
     } catch (error: any) {
+      if (error.code === "auth/invalid-credential" || error.code === "auth/user-not-found") {
+        try {
+          const q = query(collection(db, "karyawan"), where("email", "==", email));
+          const snapshot = await getDocs(q);
+          if (snapshot.empty) return false;
+
+          const docSnap = snapshot.docs[0];
+          const data = docSnap.data();
+          const karyawanId = docSnap.id;
+
+          if (data.password === password) {
+            const newCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+            await updateProfile(newCredential.user, { displayName: data.nama });
+            await newCredential.user.getIdToken(true);
+            await updateDoc(doc(db, "karyawan", karyawanId), {
+              uid: newCredential.user.uid,
+              password: null,
+              updatedAt: new Date(),
+            });
+
+            const userData: UserSession = {
+              id: karyawanId,
+              email: data.email,
+              nama: data.nama,
+              role: data.role,
+            };
+            setUser(userData);
+            localStorage.setItem("userSession", JSON.stringify(userData));
+            return true;
+          }
+          return false;
+        } catch (fallbackErr: any) {
+          console.error("Fallback login error:", fallbackErr);
+          if (fallbackErr.code === "auth/email-already-in-use") {
+            return false;
+          }
+          return false;
+        }
+      }
       console.error("Login error:", error);
       return false;
     }
