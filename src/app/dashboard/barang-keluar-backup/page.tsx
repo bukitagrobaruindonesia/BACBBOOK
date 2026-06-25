@@ -247,7 +247,7 @@ export default function BarangKeluarBackupPage() {
           item.namaBarang = stock.namaBarang;
           item.unit = stock.unit;
           item.bobotPerUnit = stock.bobotPerUnit || 0;
-          item.botolPerDus = stock.botolPerDus || 0;
+          item.botolPerDus = stock.botolPerDus || 20;
         }
       }
       if ((field === "pengambilanUnit" || field === "stockId") && item.stockId) {
@@ -320,7 +320,7 @@ export default function BarangKeluarBackupPage() {
   };
 
   const updateStockFromItems = async (
-    items: Array<{ stockId: string; unit: string; pengambilanUnit: number; totalKG: number }>,
+    items: Array<{ stockId: string; unit: string; pengambilanUnit: number; totalKG: number; botolPerDus: number }>,
     isReverse: boolean
   ) => {
     for (const item of items) {
@@ -329,23 +329,35 @@ export default function BarangKeluarBackupPage() {
       const stockSnap = await getDoc(stockRef);
       if (!stockSnap.exists()) continue;
       const sData = stockSnap.data();
-      const qty = item.pengambilanUnit || 0;
-      const kg = item.totalKG || 0;
       const factor = isReverse ? -1 : 1;
 
       const updates: any = { updatedAt: serverTimestamp() };
 
       if (item.unit === "ZAK") {
+        const qty = item.pengambilanUnit || 0;
+        const kg = item.totalKG || 0;
         updates.barangKeluarUnit = Math.max(0, (sData.barangKeluarUnit || 0) + qty * factor);
         updates.barangKeluarKG = Math.max(0, (sData.barangKeluarKG || 0) + kg * factor);
         updates.stokAkhirUnit = Math.max(0, (sData.stokAkhirUnit || 0) - qty * factor);
         updates.stokAkhirKG = Math.max(0, (sData.stokAkhirKG || 0) - kg * factor);
       } else if (item.unit === "KG") {
+        const kg = item.totalKG || 0;
         updates.barangKeluarKG = Math.max(0, (sData.barangKeluarKG || 0) + kg * factor);
         updates.stokAkhirKG = Math.max(0, (sData.stokAkhirKG || 0) - kg * factor);
-      } else {
+      } else if (item.unit === "DUS") {
+        const botolPerDus = item.botolPerDus || sData.botolPerDus || 20;
+        const botolQty = item.pengambilanUnit || 0;
+        const dusQty = botolQty / botolPerDus;
+        updates.barangKeluarUnit = Math.max(0, (sData.barangKeluarUnit || 0) + dusQty * factor);
+        updates.stokAkhirUnit = Math.max(0, (sData.stokAkhirUnit || 0) - dusQty * factor);
+        updates.stokAkhirKG = 0;
+        updates.barangKeluarKG = 0;
+      } else if (item.unit === "BOTOL") {
+        const qty = item.pengambilanUnit || 0;
         updates.barangKeluarUnit = Math.max(0, (sData.barangKeluarUnit || 0) + qty * factor);
         updates.stokAkhirUnit = Math.max(0, (sData.stokAkhirUnit || 0) - qty * factor);
+        updates.stokAkhirKG = 0;
+        updates.barangKeluarKG = 0;
       }
 
       await updateDoc(stockRef, updates);
@@ -408,7 +420,7 @@ export default function BarangKeluarBackupPage() {
         namaBarang: item.namaBarang,
         unit: item.unit,
         bobotPerUnit: item.bobotPerUnit,
-        botolPerDus: item.botolPerDus || 0,
+        botolPerDus: item.botolPerDus || 20,
         pengambilanUnit: parseFloat(item.pengambilanUnit) || 0,
         totalKG: item.totalKG,
         nomorPI: item.nomorPI.trim(),
@@ -499,7 +511,7 @@ export default function BarangKeluarBackupPage() {
         namaBarang: item.namaBarang,
         unit: item.unit,
         bobotPerUnit: item.bobotPerUnit,
-        botolPerDus: item.botolPerDus || 0,
+        botolPerDus: item.botolPerDus || 20,
         pengambilanUnit: parseFloat(item.pengambilanUnit) || 0,
         totalKG: item.totalKG,
         nomorPI: item.nomorPI.trim(),
@@ -558,16 +570,27 @@ export default function BarangKeluarBackupPage() {
 
     const itemsHtml = item.items
       .map(
-        (it, idx) =>
-          `<tr>
+        (it, idx) => {
+          let qtyDisplay = it.pengambilanUnit.toLocaleString("id-ID");
+          let unitDisplay = it.unit;
+          if (it.unit === "DUS") {
+            const dusQty = it.pengambilanUnit / (it.botolPerDus || 20);
+            qtyDisplay = `${dusQty.toLocaleString("id-ID", { maximumFractionDigits: 2 })} DUS (${it.pengambilanUnit.toLocaleString("id-ID")} botol)`;
+            unitDisplay = "DUS";
+          } else if (it.unit === "BOTOL") {
+            qtyDisplay = `${it.pengambilanUnit.toLocaleString("id-ID")} botol`;
+            unitDisplay = "BOTOL";
+          }
+          return `<tr>
             <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${idx + 1}</td>
             <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;font-weight:600;">${it.kodeBarang || "-"}</td>
             <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.namaBarang || "-"}</td>
-            <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.unit}</td>
-            <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.pengambilanUnit.toLocaleString("id-ID")}</td>
+            <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${unitDisplay}</td>
+            <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${qtyDisplay}</td>
             <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.totalKG > 0 ? it.totalKG.toLocaleString("id-ID") + " KG" : "-"}</td>
             <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.nomorPI || "-"}</td>
-          </tr>`
+          </tr>`;
+        }
       )
       .join("");
 
@@ -701,6 +724,15 @@ export default function BarangKeluarBackupPage() {
           <p className="text-xs text-gray-500">
             {row.totalPengambilanKG > 0 ? `${row.totalPengambilanKG.toLocaleString("id-ID")} KG` : "DUS/BOTOL"}
           </p>
+          {row.items.map((it, i) => (
+            <p key={i} className="text-xs text-gray-400">
+              {it.unit === "DUS"
+                ? `${(it.pengambilanUnit / (it.botolPerDus || 20)).toLocaleString("id-ID", { maximumFractionDigits: 2 })} DUS (${it.pengambilanUnit.toLocaleString("id-ID")} botol)`
+                : it.unit === "BOTOL"
+                ? `${it.pengambilanUnit.toLocaleString("id-ID")} botol`
+                : `${it.pengambilanUnit.toLocaleString("id-ID")} ${it.unit}`}
+            </p>
+          ))}
         </div>
       ),
     },
@@ -883,11 +915,11 @@ export default function BarangKeluarBackupPage() {
                   />
 
                   <Input
-                    label={`Jumlah (${item.unit || "unit"})`}
+                    label={item.unit === "DUS" ? "Jumlah (BOTOL)" : item.unit === "BOTOL" ? "Jumlah (BOTOL)" : `Jumlah (${item.unit || "unit"})`}
                     type="number"
                     value={item.pengambilanUnit}
                     onChange={(e) => handleItemChange(idx, "pengambilanUnit", e.target.value)}
-                    placeholder="0"
+                    placeholder={item.unit === "DUS" ? "Contoh: 5 (botol)" : item.unit === "BOTOL" ? "Contoh: 5 (botol)" : "0"}
                     required
                   />
                 </div>
@@ -898,6 +930,15 @@ export default function BarangKeluarBackupPage() {
                     <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-md font-mono">Unit: {item.unit}</span>
                     {item.unit === "ZAK" && (
                       <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-md font-mono">Bobot: {item.bobotPerUnit} KG/ZAK</span>
+                    )}
+                    {item.unit === "DUS" && (
+                      <span className="px-2 py-1 bg-pink-100 text-pink-700 rounded-md font-mono">{item.botolPerDus || 20} botol/DUS</span>
+                    )}
+                    {item.unit === "DUS" && item.pengambilanUnit && (
+                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded-md font-mono">
+                        {(parseFloat(item.pengambilanUnit) || 0) / (item.botolPerDus || 20)} DUS
+                        ({parseFloat(item.pengambilanUnit) || 0} botol)
+                      </span>
                     )}
                     {item.totalKG > 0 && (
                       <span className="px-2 py-1 bg-green-100 text-green-700 rounded-md font-mono">Total: {item.totalKG.toLocaleString("id-ID")} KG</span>
