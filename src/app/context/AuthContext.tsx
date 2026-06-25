@@ -1,10 +1,10 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import { UserSession } from "@/app/types";
-import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, onAuthStateChanged, signOut } from "firebase/auth";
 
 interface AuthContextType {
   user: UserSession | null;
@@ -31,10 +31,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const q = query(collection(db, "karyawan"), where("email", "==", firebaseUser.email));
             const snapshot = await getDocs(q);
             if (!snapshot.empty) {
-              const doc = snapshot.docs[0];
-              const data = doc.data();
+              const docSnap = snapshot.docs[0];
+              const data = docSnap.data();
               const userData: UserSession = {
-                id: doc.id,
+                id: docSnap.id,
                 email: data.email,
                 nama: data.nama,
                 role: data.role,
@@ -61,18 +61,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
-      const firebaseUser = userCredential.user;
       const q = query(collection(db, "karyawan"), where("email", "==", email));
       const snapshot = await getDocs(q);
-      if (snapshot.empty) {
-        await signOut(firebaseAuth);
-        return false;
+      if (snapshot.empty) return false;
+
+      const docSnap = snapshot.docs[0];
+      const data = docSnap.data();
+      const karyawanId = docSnap.id;
+
+      try {
+        const userCredential = await signInWithEmailAndPassword(firebaseAuth, email, password);
+        if (!data.uid) {
+          await updateDoc(doc(db, "karyawan", karyawanId), { uid: userCredential.user.uid });
+        }
+      } catch (authErr: any) {
+        if (authErr.code === "auth/invalid-credential" || authErr.code === "auth/user-not-found") {
+          if (data.password === password) {
+            const userCredential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
+            await updateProfile(userCredential.user, { displayName: data.nama });
+            await updateDoc(doc(db, "karyawan", karyawanId), {
+              uid: userCredential.user.uid,
+              password: null,
+              updatedAt: new Date(),
+            });
+          } else {
+            return false;
+          }
+        } else {
+          throw authErr;
+        }
       }
-      const doc = snapshot.docs[0];
-      const data = doc.data();
+
       const userData: UserSession = {
-        id: doc.id,
+        id: karyawanId,
         email: data.email,
         nama: data.nama,
         role: data.role,
