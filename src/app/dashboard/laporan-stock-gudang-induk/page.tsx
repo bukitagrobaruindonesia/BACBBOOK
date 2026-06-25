@@ -255,7 +255,11 @@ export default function LaporanInputStockGudangPage() {
         ...doc.data(),
         createdAt: doc.data().createdAt?.toDate(),
         updatedAt: doc.data().updatedAt?.toDate(),
-      } as StockGudang));
+      } as StockGudang)).sort((a, b) => {
+        const numA = parseInt(a.kodeBarang.replace(/\D/g, "")) || 0;
+        const numB = parseInt(b.kodeBarang.replace(/\D/g, "")) || 0;
+        return numA - numB;
+      });
       setStockList(data);
     } catch (error) {
       console.error(error);
