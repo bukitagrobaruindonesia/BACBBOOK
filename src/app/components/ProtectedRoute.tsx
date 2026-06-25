@@ -5,14 +5,14 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/context/AuthContext";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { user, verified, loading } = useAuth();
+  const { user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && (!user || !verified)) {
+    if (!loading && !user) {
       router.push("/login");
     }
-  }, [user, verified, loading, router]);
+  }, [user, loading, router]);
 
   if (loading) {
     return (
@@ -22,9 +22,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     );
   }
 
-  if (!user || !verified) {
-    return null;
-  }
+  if (!user) return null;
 
   return <>{children}</>;
 }

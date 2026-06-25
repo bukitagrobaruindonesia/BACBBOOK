@@ -9,12 +9,8 @@ import { getAuth, signInWithCustomToken, onAuthStateChanged, signOut } from "fir
 interface AuthContextType {
   user: UserSession | null;
   loading: boolean;
-  verified: boolean;
-  needsVerification: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  markVerified: () => void;
-  setNeedsVerification: (value: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,36 +18,20 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [verified, setVerified] = useState(false);
-  const [needsVerification, setNeedsVerification] = useState(false);
   const firebaseAuth = getAuth();
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(firebaseAuth, (firebaseUser) => {
       try {
         const storedUser = localStorage.getItem("userSession");
-        const storedVerified = localStorage.getItem("userVerified");
         if (storedUser && firebaseUser) {
-          const parsed = JSON.parse(storedUser);
-          setUser(parsed);
-          if (storedVerified === "true") {
-            setVerified(true);
-            setNeedsVerification(false);
-          } else {
-            setVerified(false);
-            setNeedsVerification(true);
-          }
+          setUser(JSON.parse(storedUser));
         } else {
           setUser(null);
-          setVerified(false);
-          setNeedsVerification(false);
         }
-      } catch (e) {
+      } catch {
         localStorage.removeItem("userSession");
-        localStorage.removeItem("userVerified");
         setUser(null);
-        setVerified(false);
-        setNeedsVerification(false);
       }
       setLoading(false);
     });
@@ -67,9 +47,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       );
       const snapshot = await getDocs(q);
 
-      if (snapshot.empty) {
-        return false;
-      }
+      if (snapshot.empty) return false;
 
       const doc = snapshot.docs[0];
       const data = doc.data();
@@ -86,18 +64,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ email, uid: doc.id }),
       });
 
-      if (!res.ok) {
-        return false;
-      }
+      if (!res.ok) return false;
 
       const { token } = await res.json();
       await signInWithCustomToken(firebaseAuth, token);
 
       setUser(userData);
-      setVerified(false);
-      setNeedsVerification(true);
       localStorage.setItem("userSession", JSON.stringify(userData));
-      localStorage.removeItem("userVerified");
       return true;
     } catch (error) {
       console.error("Login error:", error);
@@ -108,20 +81,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     signOut(firebaseAuth);
     setUser(null);
-    setVerified(false);
-    setNeedsVerification(false);
     localStorage.removeItem("userSession");
-    localStorage.removeItem("userVerified");
-  };
-
-  const markVerified = () => {
-    setVerified(true);
-    setNeedsVerification(false);
-    localStorage.setItem("userVerified", "true");
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, verified, needsVerification, login, logout, markVerified, setNeedsVerification }}>
+    <AuthContext.Provider value={{ user, loading, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

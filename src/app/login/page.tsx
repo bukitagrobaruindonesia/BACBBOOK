@@ -9,48 +9,16 @@ import Button from "@/app/components/ui/Button";
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [step, setStep] = useState<"login" | "verify">("login");
-  const [countdown, setCountdown] = useState(0);
-  const [generatedCode, setGeneratedCode] = useState("");
-  const { login, user, verified, loading, needsVerification, markVerified } = useAuth();
+  const { login, user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && user && verified && !needsVerification) {
+    if (!loading && user) {
       router.replace("/dashboard");
     }
-  }, [loading, user, verified, needsVerification, router]);
-
-  useEffect(() => {
-    if (countdown > 0) {
-      const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [countdown]);
-
-  const generateCode = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  };
-
-  const sendVerificationEmail = async (targetEmail: string, code: string) => {
-    try {
-      const response = await fetch("/api/send-verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: targetEmail,
-          code: code,
-        }),
-      });
-      return response.ok;
-    } catch (err) {
-      console.error("Send verification error:", err);
-      return false;
-    }
-  };
+  }, [loading, user, router]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,12 +28,7 @@ export default function LoginPage() {
     try {
       const success = await login(email, password);
       if (success) {
-        const code = generateCode();
-        setGeneratedCode(code);
-        await sendVerificationEmail(email, code);
-        setStep("verify");
-        setCountdown(60);
-        setPassword("");
+        router.replace("/dashboard");
       } else {
         setError("Email atau password salah. Silakan coba lagi.");
       }
@@ -74,49 +37,6 @@ export default function LoginPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handleResendCode = async () => {
-    if (countdown > 0) return;
-    setIsLoading(true);
-    try {
-      const code = generateCode();
-      setGeneratedCode(code);
-      await sendVerificationEmail(email, code);
-      setCountdown(60);
-      setVerificationCode("");
-      setError("");
-    } catch (err: any) {
-      setError("Gagal mengirim ulang kode. Silakan coba lagi.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleVerifySubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
-    setIsLoading(true);
-
-    try {
-      if (verificationCode === generatedCode) {
-        markVerified();
-      } else {
-        setError("Kode verifikasi tidak valid. Silakan coba lagi.");
-      }
-    } catch (err: any) {
-      setError("Terjadi kesalahan verifikasi. Silakan coba lagi.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleBackToLogin = () => {
-    setStep("login");
-    setVerificationCode("");
-    setGeneratedCode("");
-    setError("");
-    setCountdown(0);
   };
 
   if (loading) {
@@ -130,7 +50,7 @@ export default function LoginPage() {
     );
   }
 
-  if (user && verified && !needsVerification) {
+  if (user) {
     return null;
   }
 
@@ -149,119 +69,47 @@ export default function LoginPage() {
             <p className="text-xs sm:text-sm text-gray-500 mt-1">Sistem Administrasi Distributor Pupuk</p>
           </div>
 
-          {step === "login" ? (
-            <form onSubmit={handleLoginSubmit} className="space-y-4 sm:space-y-5">
-              <Input
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Masukkan email"
-                required
-              />
+          <form onSubmit={handleLoginSubmit} className="space-y-4 sm:space-y-5">
+            <Input
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Masukkan email"
+              required
+            />
 
-              <Input
-                label="Password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Masukkan Password"
-                required
-              />
+            <Input
+              label="Password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Masukkan Password"
+              required
+            />
 
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
-                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-sm">{error}</span>
-                </div>
-              )}
-
-              <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isLoading}>
-                Masuk ke Sistem
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifySubmit} className="space-y-4 sm:space-y-5">
-              <div className="text-center mb-4">
-                <div className="inline-flex items-center justify-center w-12 h-12 bg-green-100 rounded-full mb-3">
-                  <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
-                </div>
-                <p className="text-sm text-gray-600">
-                  Kode verifikasi 6 digit telah dikirim ke
-                </p>
-                <p className="text-sm font-semibold text-green-800 mt-1">{email}</p>
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
+                <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm">{error}</span>
               </div>
+            )}
 
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Kode Verifikasi
-                </label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={verificationCode}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, "").slice(0, 6);
-                    setVerificationCode(val);
-                  }}
-                  placeholder="000000"
-                  className="w-full px-4 py-3 text-center text-2xl tracking-[0.5em] font-mono border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
-                  required
-                />
-              </div>
+            <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isLoading}>
+              Masuk ke Sistem
+            </Button>
+          </form>
 
-              {error && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
-                  <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-sm">{error}</span>
-                </div>
-              )}
-
-              <Button type="submit" variant="primary" size="lg" className="w-full" isLoading={isLoading}>
-                Verifikasi & Masuk
-              </Button>
-
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={handleBackToLogin}
-                  className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
-                >
-                  Kembali
-                </button>
-                <button
-                  type="button"
-                  onClick={handleResendCode}
-                  disabled={countdown > 0 || isLoading}
-                  className={`text-sm font-medium transition-colors ${
-                    countdown > 0 || isLoading
-                      ? "text-gray-400 cursor-not-allowed"
-                      : "text-green-600 hover:text-green-800"
-                  }`}
-                >
-                  {countdown > 0 ? `Kirim ulang (${countdown}s)` : "Kirim Ulang Kode"}
-                </button>
-              </div>
-            </form>
-          )}
-
-          {step === "login" && (
-            <div className="mt-6 text-center">
-              <button
-                onClick={() => router.push("/")}
-                className="text-sm text-green-600 hover:text-green-800 font-medium transition-colors"
-              >
-                Kembali ke Halaman Utama
-              </button>
-            </div>
-          )}
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => router.push("/")}
+              className="text-sm text-green-600 hover:text-green-800 font-medium transition-colors"
+            >
+              Kembali ke Halaman Utama
+            </button>
+          </div>
         </div>
       </div>
     </div>
