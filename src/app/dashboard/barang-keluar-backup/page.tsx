@@ -155,6 +155,21 @@ export default function BarangKeluarBackupPage() {
     fetchBackupList();
   }, []);
 
+  useEffect(() => {
+    const handler = (e: Event) => {
+      (e.target as HTMLInputElement).blur();
+    };
+    const inputs = document.querySelectorAll('input[type="number"]');
+    inputs.forEach((input) => {
+      input.addEventListener('wheel', handler, { passive: true });
+    });
+    return () => {
+      inputs.forEach((input) => {
+        input.removeEventListener('wheel', handler);
+      });
+    };
+  }, [formData.items, isEditing]);
+
   const fetchStockList = async () => {
     try {
       const q = query(collection(db, "stockGudang"), orderBy("namaBarang", "asc"));

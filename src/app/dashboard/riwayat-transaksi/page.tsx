@@ -13,7 +13,7 @@ import Modal from "@/app/components/ui/Modal";
 import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
 import Card from "@/app/components/ui/Card";
-import { exportToExcel } from "@/app/utils/exportExcel";
+import * as XLSX from "xlsx-js-style";
 
 interface BarangRusakItem {
   unit: string;
@@ -59,6 +59,17 @@ interface UnifiedTransaksi {
     sisa: string;
     nomorPI?: string;
     fot?: string;
+  }>;
+  backupItems?: Array<{
+    stockId: string;
+    kodeBarang: string;
+    namaBarang: string;
+    unit: string;
+    bobotPerUnit: number;
+    botolPerDus: number;
+    pengambilanUnit: number;
+    totalKG: number;
+    nomorPI: string;
   }>;
   totalPengambilanKG?: number;
   nomorPIList?: string[];
@@ -375,8 +386,9 @@ export default function RiwayatTransaksiPage() {
       const keluarSnapshot = await getDocs(keluarQuery);
       const keluarData = keluarSnapshot.docs.map((doc) => {
         const d = doc.data();
-        const jenis = d.jenist || d.jenis || "barangKeluar";
+        const jenis = d.jenis || "barangKeluar";
         const isSurat = jenis === "suratPengangkutanGudangInduk" || jenis === "suratPengangkutanDO";
+        const isBackup = jenis === "barangKeluarBackup";
 
         let fotValue = d.fot || "";
         if (isSurat && d.items && d.items.length > 0) {
@@ -397,6 +409,13 @@ export default function RiwayatTransaksiPage() {
           unitValue = firstItem.bobotPerUnit === 1 ? "BOTOL" : "ZAK";
         }
 
+        if (isBackup && d.items && d.items.length > 0) {
+          namaBarangValue = d.items.map((it: any) => it.namaBarang).join(", ");
+          kodeBarangValue = d.items.map((it: any) => it.kodeBarang).join(", ");
+          unitValue = d.items[0].unit || "ZAK";
+          jumlahZAKValue = d.items.reduce((sum: number, it: any) => sum + (it.pengambilanUnit || 0), 0);
+        }
+
         return {
           id: doc.id,
           jenis: jenis,
@@ -415,7 +434,7 @@ export default function RiwayatTransaksiPage() {
           botolPerDus: d.botolPerDus,
           bobotPerBotol: d.bobotPerBotol,
           nomorSeri: d.nomorSeri,
-          items: d.items ? d.items.map((it: any) => ({
+          items: d.items && !isBackup ? d.items.map((it: any) => ({
             nomorSubDO: it.nomorSubDO || "",
             nomorPO: it.nomorPO || "",
             jenisPupuk: it.jenisPupuk || "",
@@ -427,6 +446,17 @@ export default function RiwayatTransaksiPage() {
             nomorPI: it.nomorPI || "",
             fot: it.fot || "",
           })) : [],
+          backupItems: isBackup && d.items ? d.items.map((it: any) => ({
+            stockId: it.stockId || "",
+            kodeBarang: it.kodeBarang || "",
+            namaBarang: it.namaBarang || "",
+            unit: it.unit || "ZAK",
+            bobotPerUnit: it.bobotPerUnit || 50,
+            botolPerDus: it.botolPerDus || 20,
+            pengambilanUnit: it.pengambilanUnit || 0,
+            totalKG: it.totalKG || 0,
+            nomorPI: it.nomorPI || "",
+          })) : [],
           totalPengambilanKG: d.totalPengambilanKG,
           nomorPIList: Array.isArray(d.nomorPI) ? d.nomorPI : (d.nomorPI ? [d.nomorPI] : []),
           driverUnit: d.driverUnit,
@@ -437,6 +467,7 @@ export default function RiwayatTransaksiPage() {
           kepadaNama: d.kepadaNama || "",
           kepadaPerusahaan: d.kepadaPerusahaan || "",
           kepadaAlamat: d.kepadaAlamat || "",
+          fotoUrls: d.fotoUrls || [],
         } as UnifiedTransaksi;
       });
 
@@ -629,6 +660,26 @@ export default function RiwayatTransaksiPage() {
           };
         }),
       });
+    } else if (item.jenis === "barangKeluarBackup") {
+      setEditSuratForm({
+        tanggal: item.tanggal,
+        nomorSeri: item.nomorSeri || "",
+        nomorPolisi: item.nomorPolisi || "",
+        driverUnit: item.driverUnit || "",
+        nomorSIM: item.nomorSIM || "",
+        items: (item.backupItems || []).map((it) => ({
+          nomorSubDO: "",
+          nomorPO: "",
+          jenisPupuk: it.namaBarang || "",
+          party: it.kodeBarang || "",
+          pengambilanZAK: String(it.pengambilanUnit || 0),
+          bobotPerUnit: it.unit === "DUS" ? 1 : (it.bobotPerUnit || 50),
+          sisa: "",
+          maxZAK: 0,
+          fot: "",
+          nomorPI: it.nomorPI || "",
+        })),
+      });
     } else {
       setEditForm({
         tanggal: item.tanggal,
@@ -658,6 +709,8 @@ export default function RiwayatTransaksiPage() {
     try {
       if (selectedItem.jenis === "suratPengangkutanGudangInduk" || selectedItem.jenis === "suratPengangkutanDO") {
         await handleUpdateSuratPengangkutan();
+      } else if (selectedItem.jenis === "barangKeluarBackup") {
+        await handleUpdateBackup();
       } else {
         await handleUpdateRegular();
       }
@@ -755,6 +808,110 @@ export default function RiwayatTransaksiPage() {
         }
       }
     }
+  };
+
+  const handleUpdateBackup = async () => {
+    const newNomorSeri = editSuratForm.nomorSeri.trim();
+    if (checkNomorSeriExists(newNomorSeri, selectedItem!.nomorSeri)) { throw new Error("Nomor seri sudah ada"); }
+
+    const oldItems = selectedItem!.backupItems || [];
+    const newItems = editSuratForm.items.map((it) => {
+      const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
+      const botolPerDus = getBotolPerDus(stockList, it.jenisPupuk);
+      const pengambilan = parseFloat(it.pengambilanZAK) || 0;
+      return {
+        stockId: "",
+        kodeBarang: it.party || "",
+        namaBarang: it.jenisPupuk || "",
+        unit: isDusBotol ? "DUS" : "ZAK",
+        bobotPerUnit: isDusBotol ? 1 : (it.bobotPerUnit || 50),
+        botolPerDus: botolPerDus,
+        pengambilanUnit: pengambilan,
+        totalKG: isDusBotol ? 0 : pengambilan * (it.bobotPerUnit || 50),
+        nomorPI: it.nomorPI || "",
+      };
+    });
+
+    const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
+    const updateData: any = {
+      tanggal: editSuratForm.tanggal,
+      nomorSeri: newNomorSeri,
+      nomorPolisi: editSuratForm.nomorPolisi.trim(),
+      driverUnit: editSuratForm.driverUnit.trim(),
+      nomorSIM: editSuratForm.nomorSIM.trim() || null,
+      items: newItems,
+      totalPengambilanKG: totalPengambilanKG,
+      updatedAt: serverTimestamp(),
+    };
+
+    await updateDoc(doc(db, "transaksiBarangKeluar", selectedItem!.id), updateData);
+
+    const productMapOld: Record<string, number> = {};
+    const productMapNew: Record<string, number> = {};
+    oldItems.forEach((it) => {
+      const key = it.stockId || it.namaBarang;
+      if (it.unit === "DUS") {
+        const botolPerDus = it.botolPerDus || 20;
+        productMapOld[key] = (productMapOld[key] || 0) + (it.pengambilanUnit / botolPerDus);
+      } else if (it.unit === "ZAK") {
+        productMapOld[key] = (productMapOld[key] || 0) + (it.pengambilanUnit * (it.bobotPerUnit || 50));
+      } else {
+        productMapOld[key] = (productMapOld[key] || 0) + it.pengambilanUnit;
+      }
+    });
+    newItems.forEach((it) => {
+      const key = it.namaBarang;
+      if (it.unit === "DUS") {
+        const botolPerDus = it.botolPerDus || 20;
+        productMapNew[key] = (productMapNew[key] || 0) + (it.pengambilanUnit / botolPerDus);
+      } else if (it.unit === "ZAK") {
+        productMapNew[key] = (productMapNew[key] || 0) + (it.pengambilanUnit * (it.bobotPerUnit || 50));
+      } else {
+        productMapNew[key] = (productMapNew[key] || 0) + it.pengambilanUnit;
+      }
+    });
+
+    const allProducts = new Set([...Object.keys(productMapOld), ...Object.keys(productMapNew)]);
+    for (const prod of allProducts) {
+      const oldVal = productMapOld[prod] || 0;
+      const newVal = productMapNew[prod] || 0;
+      const delta = oldVal - newVal;
+      const stock = getStockForProduct(prod);
+      if (stock && delta !== 0) {
+        const stockRef = doc(db, "stockGudang", stock.id);
+        const stockSnap = await getDoc(stockRef);
+        if (stockSnap.exists()) {
+          const sData = stockSnap.data();
+          const currentUnit = sData.stokAkhirUnit || 0;
+          const currentKG = sData.stokAkhirKG || 0;
+          const currentKeluarUnit = sData.barangKeluarUnit || 0;
+          const currentKeluarKG = sData.barangKeluarKG || 0;
+          const isDusBotol = stock.unit === "DUS" || stock.unit === "BOTOL";
+          if (isDusBotol) {
+            const botolPerDus = stock.botolPerDus || 20;
+            const deltaUnit = delta / botolPerDus;
+            await updateDoc(stockRef, {
+              stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
+              stokAkhirKG: 0,
+              barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
+              barangKeluarKG: 0,
+              updatedAt: serverTimestamp(),
+            });
+          } else {
+            const bobot = stock.bobotPerUnit || 50;
+            const deltaUnit = delta / bobot;
+            await updateDoc(stockRef, {
+              stokAkhirUnit: Math.max(0, currentUnit + deltaUnit),
+              stokAkhirKG: Math.max(0, currentKG + delta),
+              barangKeluarUnit: Math.max(0, currentKeluarUnit - deltaUnit),
+              barangKeluarKG: Math.max(0, currentKeluarKG - delta),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+      }
+    }
+    fetchExistingSurat();
   };
 
   const handleUpdateSuratPengangkutan = async () => {
@@ -946,6 +1103,58 @@ export default function RiwayatTransaksiPage() {
         }
       }
 
+      if (item.jenis === "barangKeluarBackup" && item.backupItems) {
+        const productMap: Record<string, number> = {};
+        item.backupItems.forEach((it) => {
+          const key = it.stockId || it.namaBarang;
+          if (it.unit === "DUS") {
+            const botolPerDus = it.botolPerDus || 20;
+            productMap[key] = (productMap[key] || 0) + (it.pengambilanUnit / botolPerDus);
+          } else if (it.unit === "ZAK") {
+            productMap[key] = (productMap[key] || 0) + (it.pengambilanUnit * (it.bobotPerUnit || 50));
+          } else {
+            productMap[key] = (productMap[key] || 0) + it.pengambilanUnit;
+          }
+        });
+        for (const prod of Object.keys(productMap)) {
+          const val = productMap[prod];
+          const stock = getStockForProduct(prod);
+          if (stock) {
+            const stockRef = doc(db, "stockGudang", stock.id);
+            const stockSnap = await getDoc(stockRef);
+            if (stockSnap.exists()) {
+              const sData = stockSnap.data();
+              const currentUnit = sData.stokAkhirUnit || 0;
+              const currentKG = sData.stokAkhirKG || 0;
+              const currentKeluarUnit = sData.barangKeluarUnit || 0;
+              const currentKeluarKG = sData.barangKeluarKG || 0;
+              const isDusBotol = stock.unit === "DUS" || stock.unit === "BOTOL";
+              if (isDusBotol) {
+                const botolPerDus = stock.botolPerDus || 20;
+                const unitVal = val / botolPerDus;
+                await updateDoc(stockRef, {
+                  stokAkhirUnit: currentUnit + unitVal,
+                  stokAkhirKG: 0,
+                  barangKeluarUnit: Math.max(0, currentKeluarUnit - unitVal),
+                  barangKeluarKG: 0,
+                  updatedAt: serverTimestamp(),
+                });
+              } else {
+                const bobot = stock.bobotPerUnit || 50;
+                const unitVal = val / bobot;
+                await updateDoc(stockRef, {
+                  stokAkhirUnit: currentUnit + unitVal,
+                  stokAkhirKG: currentKG + val,
+                  barangKeluarUnit: Math.max(0, currentKeluarUnit - unitVal),
+                  barangKeluarKG: Math.max(0, currentKeluarKG - val),
+                  updatedAt: serverTimestamp(),
+                });
+              }
+            }
+          }
+        }
+      }
+
       if (item.jenis === "suratPengangkutanGudangInduk" && item.nomorPI) {
         const pi = getPIByNomor(item.nomorPI);
         if (pi) {
@@ -1054,13 +1263,23 @@ export default function RiwayatTransaksiPage() {
   };
 
   const handleExportExcel = () => {
-    const exportData = filteredData.map((item) => {
+    const headers = [
+      "No", "Jenis Transaksi", "Tanggal", "Nomor Seri", "Kode Barang", "Nama Barang",
+      "Unit", "Jumlah", "Total KG", "FOT", "Nomor Kontainer", "Nomor DO",
+      "Customer", "No PI", "No Invoice", "Driver Unit", "No Polisi",
+      "No Surat Pengangkutan", "Total Pengambilan KG", "Ada Barang Rusak",
+      "Dibuat Oleh", "Tanggal Dibuat"
+    ];
+
+    const rows = filteredData.map((item, idx) => {
       const isSurat = item.jenis === "suratPengangkutanGudangInduk" || item.jenis === "suratPengangkutanDO";
+      const isBackup = item.jenis === "barangKeluarBackup";
       let jenisLabel = "";
       if (item.jenis === "barangMasuk") jenisLabel = "Barang Masuk";
       else if (item.jenis === "penggantianRusak") jenisLabel = "Penggantian Barang Rusak";
       else if (item.jenis === "suratPengangkutanGudangInduk") jenisLabel = "Surat Pengangkutan Gudang Induk";
       else if (item.jenis === "suratPengangkutanDO") jenisLabel = "Surat Pengangkutan DO";
+      else if (item.jenis === "barangKeluarBackup") jenisLabel = "Barang Keluar Backup";
       else jenisLabel = "Barang Keluar";
 
       let jumlahDisplay = "";
@@ -1084,38 +1303,111 @@ export default function RiwayatTransaksiPage() {
           jumlahDisplay = "0";
           unitDisplay = "ZAK";
         }
+      } else if (isBackup && item.backupItems) {
+        const totalBotol = item.backupItems.reduce((sum, it) => sum + (it.unit === "BOTOL" || it.unit === "DUS" ? it.pengambilanUnit : 0), 0);
+        const totalZak = item.backupItems.reduce((sum, it) => sum + (it.unit === "ZAK" ? it.pengambilanUnit : 0), 0);
+        if (totalBotol > 0) {
+          jumlahDisplay = totalBotol.toLocaleString("id-ID");
+          unitDisplay = "BOTOL";
+        } else if (totalZak > 0) {
+          jumlahDisplay = totalZak.toLocaleString("id-ID");
+          unitDisplay = "ZAK";
+        } else {
+          jumlahDisplay = (item.jumlahZAK || 0).toLocaleString("id-ID");
+        }
       } else {
         jumlahDisplay = (item.jumlahZAK || 0).toLocaleString("id-ID");
       }
 
-      return {
-        "Jenis Transaksi": jenisLabel,
-        "Tanggal": item.tanggal,
-        "Nomor Seri": item.nomorSeri || "-",
-        "Kode Barang": item.kodeBarang || "-",
-        "Nama Barang": item.namaBarang || (isSurat && item.items ? item.items.map((it) => it.jenisPupuk).join("; ") : "-"),
-        "Unit": unitDisplay,
-        "Jumlah": jumlahDisplay,
-        "Total KG": item.totalPengambilanKG || (item.items ? item.items.reduce((sum, it) => {
+      return [
+        idx + 1,
+        jenisLabel,
+        item.tanggal,
+        item.nomorSeri || "-",
+        item.kodeBarang || (isBackup && item.backupItems ? item.backupItems.map((it) => it.kodeBarang).join("; ") : "-"),
+        item.namaBarang || (isSurat && item.items ? item.items.map((it) => it.jenisPupuk).join("; ") : isBackup && item.backupItems ? item.backupItems.map((it) => it.namaBarang).join("; ") : "-"),
+        unitDisplay,
+        jumlahDisplay,
+        item.totalPengambilanKG || (item.items ? item.items.reduce((sum, it) => {
           const isDusBotol = it.bobotPerUnit === 1 && isDusOrBotolProduct(stockList, it.jenisPupuk);
           return sum + (isDusBotol ? 0 : (it.totalKG || 0));
         }, 0) : 0),
-        "FOT": item.fot || (item.items && item.items[0] ? item.items[0].fot : "-"),
-        "Nomor Kontainer": item.nomorKontainer || "-",
-        "Nomor DO": item.nomorDO || "-",
-        "Customer": item.namaCustomer || (item.kepadaNama || item.kepadaPerusahaan || "-"),
-        "No PI": item.nomorPI || (item.nomorPIList ? item.nomorPIList.join("; ") : "-"),
-        "No Invoice": item.nomorInvoice || "-",
-        "Driver Unit": item.driverUnit || "-",
-        "No Polisi": item.nomorPolisi || "-",
-        "No Surat Pengangkutan": item.nomorSuratPengangkutan || item.nomorSeri || "-",
-        "Total Pengambilan KG": item.totalPengambilanKG || 0,
-        "Ada Barang Rusak": item.adaBarangRusak ? "Ya" : "Tidak",
-        "Dibuat Oleh": item.createdBy,
-        "Tanggal Dibuat": item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-",
-      };
+        item.fot || (item.items && item.items[0] ? item.items[0].fot : "-"),
+        item.nomorKontainer || "-",
+        item.nomorDO || "-",
+        item.namaCustomer || (item.kepadaNama || item.kepadaPerusahaan || "-"),
+        item.nomorPI || (item.nomorPIList ? item.nomorPIList.join("; ") : "-"),
+        item.nomorInvoice || "-",
+        item.driverUnit || "-",
+        item.nomorPolisi || "-",
+        item.nomorSuratPengangkutan || item.nomorSeri || "-",
+        item.totalPengambilanKG || 0,
+        item.adaBarangRusak ? "Ya" : "Tidak",
+        item.createdBy,
+        item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "-"
+      ];
     });
-    exportToExcel(exportData, `Riwayat_Transaksi_${new Date().toISOString().split("T")[0]}`, "Riwayat Transaksi");
+
+    const wsData = [headers, ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+
+    const thinBorder = {
+      top: { style: "thin", color: { rgb: "D1D5DB" } },
+      bottom: { style: "thin", color: { rgb: "D1D5DB" } },
+      left: { style: "thin", color: { rgb: "D1D5DB" } },
+      right: { style: "thin", color: { rgb: "D1D5DB" } }
+    };
+
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11, name: "Calibri" },
+      fill: { patternType: "solid", fgColor: { rgb: "15803D" }, bgColor: { rgb: "15803D" } },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border: thinBorder
+    };
+
+    const evenRowStyle = {
+      font: { color: { rgb: "374151" }, sz: 10, name: "Calibri" },
+      fill: { patternType: "solid", fgColor: { rgb: "F0FDF4" }, bgColor: { rgb: "F0FDF4" } },
+      alignment: { vertical: "center" },
+      border: thinBorder
+    };
+
+    const oddRowStyle = {
+      font: { color: { rgb: "374151" }, sz: 10, name: "Calibri" },
+      fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" }, bgColor: { rgb: "FFFFFF" } },
+      alignment: { vertical: "center" },
+      border: thinBorder
+    };
+
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[cellRef]) ws[cellRef] = { v: "" };
+        if (R === 0) {
+          ws[cellRef].s = headerStyle;
+        } else {
+          ws[cellRef].s = R % 2 === 0 ? evenRowStyle : oddRowStyle;
+          if (C === 0) ws[cellRef].s = { ...ws[cellRef].s, alignment: { ...ws[cellRef].s.alignment, horizontal: "center" } };
+          if (C === 7 || C === 8 || C === 18) ws[cellRef].s = { ...ws[cellRef].s, alignment: { ...ws[cellRef].s.alignment, horizontal: "right" } };
+        }
+      }
+    }
+
+    ws["!cols"] = headers.map((h, i) => {
+      let maxLen = h.length;
+      rows.forEach((row) => {
+        const val = row[i]?.toString() || "";
+        if (val.length > maxLen) maxLen = val.length;
+      });
+      return { wch: Math.min(Math.max(maxLen + 2, 10), 40) };
+    });
+
+    ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Riwayat Transaksi");
+    XLSX.writeFile(wb, `Riwayat_Transaksi_${new Date().toISOString().split("T")[0]}.xlsx`);
   };
 
   const handlePrintSuratPDF = (item: UnifiedTransaksi) => {
@@ -1350,6 +1642,7 @@ export default function RiwayatTransaksiPage() {
     { value: "semua", label: "Semua Transaksi" },
     { value: "barangMasuk", label: "Barang Masuk" },
     { value: "barangKeluar", label: "Barang Keluar" },
+    { value: "barangKeluarBackup", label: "Barang Keluar Backup" },
     { value: "suratPengangkutan", label: "Surat Pengangkutan" },
     { value: "penggantianRusak", label: "Penggantian Barang Rusak" },
   ];
@@ -1395,6 +1688,7 @@ export default function RiwayatTransaksiPage() {
     if (jenis === "penggantianRusak") return "bg-teal-100 text-teal-700";
     if (jenis === "suratPengangkutanGudangInduk") return "bg-green-100 text-green-700";
     if (jenis === "suratPengangkutanDO") return "bg-purple-100 text-purple-700";
+    if (jenis === "barangKeluarBackup") return "bg-stone-100 text-stone-700";
     return "bg-orange-100 text-orange-700";
   };
 
@@ -1403,6 +1697,7 @@ export default function RiwayatTransaksiPage() {
     if (jenis === "penggantianRusak") return "PENGGANTIAN";
     if (jenis === "suratPengangkutanGudangInduk") return "GUDANG INDUK";
     if (jenis === "suratPengangkutanDO") return "DO";
+    if (jenis === "barangKeluarBackup") return "BACKUP";
     return "KELUAR";
   };
 
@@ -1529,6 +1824,15 @@ export default function RiwayatTransaksiPage() {
                 return null;
               })()}
             </div>
+          ) : row.jenis === "barangKeluarBackup" ? (
+            <div className="space-y-1">
+              {(row.backupItems || []).map((it, idx) => (
+                <p key={idx} className="font-semibold text-gray-800">
+                  {it.namaBarang} <span className="text-xs font-normal text-gray-500">({it.pengambilanUnit.toLocaleString("id-ID")} {it.unit})</span>
+                </p>
+              ))}
+              <p className="text-xs text-gray-500">{row.nomorSeri}</p>
+            </div>
           ) : (
             <span className="font-semibold text-gray-800">{row.namaBarang}</span>
           )}
@@ -1599,6 +1903,9 @@ export default function RiwayatTransaksiPage() {
           {row.isPenggantianRusak && (
             <span className="px-2 py-0.5 rounded text-xs font-bold bg-teal-100 text-teal-700">GANTI</span>
           )}
+          {row.jenis === "barangKeluarBackup" && (
+            <span className="px-2 py-0.5 rounded text-xs font-bold bg-stone-100 text-stone-700">BACKUP</span>
+          )}
         </div>
       ),
     },
@@ -1649,6 +1956,7 @@ export default function RiwayatTransaksiPage() {
   const getTotalPenggantian = () => filteredData.filter((d) => d.jenis === "penggantianRusak").length;
   const isBotol = editForm.unit === "BOTOL";
   const isSuratEdit = selectedItem?.jenis === "suratPengangkutanGudangInduk" || selectedItem?.jenis === "suratPengangkutanDO";
+  const isBackupEdit = selectedItem?.jenis === "barangKeluarBackup";
 
   const handleSuratItemChange = (idx: number, field: string, value: string) => {
     setEditSuratForm((prev) => {
@@ -1776,6 +2084,7 @@ export default function RiwayatTransaksiPage() {
                  selectedItem.jenis === "penggantianRusak" ? "PENGGANTIAN BARANG RUSAK" :
                  selectedItem.jenis === "suratPengangkutanGudangInduk" ? "SURAT PENGANGKUTAN GUDANG INDUK" :
                  selectedItem.jenis === "suratPengangkutanDO" ? "SURAT PENGANGKUTAN DO" :
+                 selectedItem.jenis === "barangKeluarBackup" ? "BARANG KELUAR BACKUP" :
                  "TRANSAKSI BARANG KELUAR"}
               </span>
               <span className="text-sm text-gray-500">{selectedItem.tanggal}</span>
@@ -1785,6 +2094,24 @@ export default function RiwayatTransaksiPage() {
               <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Nomor Seri</p>
                 <p className="text-lg font-bold text-green-700 font-mono">{selectedItem.nomorSeri}</p>
+              </div>
+            )}
+
+            {selectedItem.jenis === "barangKeluarBackup" && selectedItem.fotoUrls && selectedItem.fotoUrls.length > 0 && (
+              <div className="p-4 bg-gray-50 rounded-xl">
+                <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-3">Dokumentasi Foto ({selectedItem.fotoUrls.length})</p>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                  {selectedItem.fotoUrls.map((foto, idx) => (
+                    <div key={idx} className="relative cursor-pointer group" onClick={() => setSelectedFotoIndex(idx)}>
+                      <img
+                        src={foto}
+                        alt={`Foto ${idx + 1}`}
+                        className="w-full h-24 object-cover rounded-lg border border-gray-200 group-hover:border-indigo-400 transition-colors"
+                      />
+                      <span className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">{idx + 1}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -1972,6 +2299,63 @@ export default function RiwayatTransaksiPage() {
                   </div>
                 </div>
               </>
+            ) : selectedItem.jenis === "barangKeluarBackup" ? (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Driver</p>
+                    <p className="text-lg font-semibold text-blue-700">{selectedItem.driverUnit}</p>
+                  </div>
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Nomor Polisi</p>
+                    <p className="text-lg font-semibold text-blue-700 font-mono">{selectedItem.nomorPolisi}</p>
+                  </div>
+                </div>
+                {selectedItem.nomorSIM && (
+                  <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                    <p className="text-xs text-blue-600 uppercase tracking-wide font-semibold">Nomor SIM</p>
+                    <p className="text-lg font-semibold text-blue-700 font-mono">{selectedItem.nomorSIM}</p>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse">
+                    <thead>
+                      <tr className="bg-stone-50">
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-stone-800 uppercase border">No</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-stone-800 uppercase border">Kode</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-stone-800 uppercase border">Nama Barang</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-stone-800 uppercase border">Unit</th>
+                        <th className="px-4 py-3 text-right text-xs font-semibold text-stone-800 uppercase border">Jumlah</th>
+                        <th className="px-4 py-3 text-left text-xs font-semibold text-stone-800 uppercase border">Nomor PI</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(selectedItem.backupItems || []).map((it, idx) => (
+                        <tr key={idx} className="border-b">
+                          <td className="px-4 py-3 text-sm text-gray-900 border">{idx + 1}</td>
+                          <td className="px-4 py-3 text-sm font-mono text-gray-600 border">{it.kodeBarang}</td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900 border">{it.namaBarang}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 border">{it.unit}</td>
+                          <td className="px-4 py-3 text-sm text-gray-900 text-right font-mono border">
+                            {it.unit === "DUS"
+                              ? `${(it.pengambilanUnit / (it.botolPerDus || 20)).toLocaleString("id-ID", { maximumFractionDigits: 2 })} DUS (${it.pengambilanUnit.toLocaleString("id-ID")} botol)`
+                              : it.unit === "BOTOL"
+                              ? `${it.pengambilanUnit.toLocaleString("id-ID")} botol`
+                              : `${it.pengambilanUnit.toLocaleString("id-ID")} ${it.unit}`}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600 border">{it.nomorPI}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {(selectedItem.totalPengambilanKG || 0) > 0 && (
+                  <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                    <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold">Total Pengambilan</p>
+                    <p className="text-2xl font-bold text-amber-700 font-mono">{(selectedItem.totalPengambilanKG || 0).toLocaleString("id-ID")} KG</p>
+                  </div>
+                )}
+              </>
             ) : selectedItem.jenis !== "barangMasuk" && selectedItem.jenis !== "penggantianRusak" ? (
               <>
                 <div className="grid grid-cols-2 gap-4">
@@ -2093,7 +2477,7 @@ export default function RiwayatTransaksiPage() {
         </div>
       )}
 
-      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={isSuratEdit ? "Edit Surat Pengangkutan" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : selectedItem?.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" : "Transaksi Barang Keluar"}`} size="lg" footer={
+      <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={isSuratEdit ? "Edit Surat Pengangkutan" : isBackupEdit ? "Edit Barang Keluar Backup" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : selectedItem?.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" : "Transaksi Barang Keluar"}`} size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Batal</Button>
           <Button variant="primary" onClick={handleUpdate} isLoading={isSubmitting} disabled={isSuratEdit && !!nomorSeriError}>Simpan Perubahan</Button>
