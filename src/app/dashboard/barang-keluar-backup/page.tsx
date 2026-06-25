@@ -46,6 +46,7 @@ interface BackupItem {
   pengambilanUnit: string;
   totalKG: number;
   nomorPI: string;
+  fotoUrls?: string[];
 }
 
 interface BackupDoc {
@@ -65,6 +66,7 @@ interface BackupDoc {
     pengambilanUnit: number;
     totalKG: number;
     nomorPI: string;
+    fotoUrls?: string[];
   }>;
   fotoUrls: string[];
   totalPengambilanKG: number;
@@ -131,12 +133,12 @@ export default function BarangKeluarBackupPage() {
     driverUnit: "",
     nomorPolisi: "",
     nomorSIM: "",
-    items: [{ stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0 }] as BackupItem[],
+    items: [{ stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0, fotoUrls: [] }] as BackupItem[],
   });
 
-  const [fotoFiles, setFotoFiles] = useState<string[]>([]);
-  const [fotoPreviews, setFotoPreviews] = useState<string[]>([]);
-  const [existingFotoUrls, setExistingFotoUrls] = useState<string[]>([]);
+  const [itemFotoFiles, setItemFotoFiles] = useState<Record<number, string[]>>({});
+  const [itemFotoPreviews, setItemFotoPreviews] = useState<Record<number, string[]>>({});
+  const [itemExistingFotoUrls, setItemExistingFotoUrls] = useState<Record<number, string[]>>({});
 
   useEffect(() => {
     fetchStockList();
@@ -269,13 +271,16 @@ export default function BarangKeluarBackupPage() {
   };
 
   const addItem = () => {
+    const newIdx = formData.items.length;
     setFormData((prev) => ({
       ...prev,
       items: [
         ...prev.items,
-        { stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0 },
+        { stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0, fotoUrls: [] },
       ],
     }));
+    setItemFotoFiles((prev) => ({ ...prev, [newIdx]: [] }));
+    setItemFotoPreviews((prev) => ({ ...prev, [newIdx]: [] }));
   };
 
   const removeItem = (idx: number) => {
@@ -283,23 +288,62 @@ export default function BarangKeluarBackupPage() {
       ...prev,
       items: prev.items.filter((_, i) => i !== idx),
     }));
+    setItemFotoFiles((prev) => {
+      const n: Record<number, string[]> = {};
+      Object.keys(prev).forEach((k) => {
+        const ki = parseInt(k);
+        if (ki < idx) n[ki] = prev[ki];
+        else if (ki > idx) n[ki - 1] = prev[ki];
+      });
+      return n;
+    });
+    setItemFotoPreviews((prev) => {
+      const n: Record<number, string[]> = {};
+      Object.keys(prev).forEach((k) => {
+        const ki = parseInt(k);
+        if (ki < idx) n[ki] = prev[ki];
+        else if (ki > idx) n[ki - 1] = prev[ki];
+      });
+      return n;
+    });
+    setItemExistingFotoUrls((prev) => {
+      const n: Record<number, string[]> = {};
+      Object.keys(prev).forEach((k) => {
+        const ki = parseInt(k);
+        if (ki < idx) n[ki] = prev[ki];
+        else if (ki > idx) n[ki - 1] = prev[ki];
+      });
+      return n;
+    });
   };
 
-  const handleFotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleItemFotoChange = async (itemIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     const compressed = await Promise.all(files.map((f) => compressImage(f)));
-    setFotoFiles((prev) => [...prev, ...compressed]);
-    setFotoPreviews((prev) => [...prev, ...compressed]);
+    setItemFotoFiles((prev) => ({ ...prev, [itemIdx]: [...(prev[itemIdx] || []), ...compressed] }));
+    setItemFotoPreviews((prev) => ({ ...prev, [itemIdx]: [...(prev[itemIdx] || []), ...compressed] }));
   };
 
-  const removeFoto = (idx: number) => {
-    setFotoFiles((prev) => prev.filter((_, i) => i !== idx));
-    setFotoPreviews((prev) => prev.filter((_, i) => i !== idx));
+  const removeItemFoto = (itemIdx: number, fotoIdx: number) => {
+    setItemFotoFiles((prev) => {
+      const arr = [...(prev[itemIdx] || [])];
+      arr.splice(fotoIdx, 1);
+      return { ...prev, [itemIdx]: arr };
+    });
+    setItemFotoPreviews((prev) => {
+      const arr = [...(prev[itemIdx] || [])];
+      arr.splice(fotoIdx, 1);
+      return { ...prev, [itemIdx]: arr };
+    });
   };
 
-  const removeExistingFoto = (idx: number) => {
-    setExistingFotoUrls((prev) => prev.filter((_, i) => i !== idx));
+  const removeItemExistingFoto = (itemIdx: number, fotoIdx: number) => {
+    setItemExistingFotoUrls((prev) => {
+      const arr = [...(prev[itemIdx] || [])];
+      arr.splice(fotoIdx, 1);
+      return { ...prev, [itemIdx]: arr };
+    });
   };
 
   
@@ -362,9 +406,13 @@ export default function BarangKeluarBackupPage() {
       if (!item.nomorPI.trim()) newErrors[`item_${idx}_pi`] = `Nomor PI wajib diisi`;
     });
 
-    if (!isEditing && fotoFiles.length === 0 && existingFotoUrls.length === 0) {
-      newErrors.foto = "Foto wajib diunggah minimal 1";
-    }
+    formData.items.forEach((item, idx) => {
+      const hasNew = (itemFotoFiles[idx] || []).length > 0;
+      const hasExisting = (itemExistingFotoUrls[idx] || []).length > 0;
+      if (!isEditing && !hasNew && !hasExisting) {
+        newErrors[`item_${idx}_foto`] = `Produk ${idx + 1}: foto wajib diunggah minimal 1`;
+      }
+    });
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -380,9 +428,9 @@ export default function BarangKeluarBackupPage() {
       items: [{ stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0 }],
     });
 
-    setFotoFiles([]);
-    setFotoPreviews([]);
-    setExistingFotoUrls([]);
+    setItemFotoFiles({});
+    setItemFotoPreviews({});
+    setItemExistingFotoUrls({});
     setIsEditing(false);
     setEditId(null);
     setErrors({});
@@ -397,7 +445,7 @@ export default function BarangKeluarBackupPage() {
     setIsSubmitting(true);
 
     try {
-      const itemsData = formData.items.map((item) => ({
+      const itemsData = formData.items.map((item, idx) => ({
         stockId: item.stockId,
         kodeBarang: item.kodeBarang,
         namaBarang: item.namaBarang,
@@ -407,6 +455,7 @@ export default function BarangKeluarBackupPage() {
         pengambilanUnit: parseFloat(item.pengambilanUnit) || 0,
         totalKG: item.totalKG,
         nomorPI: item.nomorPI.trim(),
+        fotoUrls: itemFotoFiles[idx] || [],
       }));
 
       const totalPengambilanKG = itemsData.reduce((sum, it) => sum + it.totalKG, 0);
@@ -420,7 +469,6 @@ export default function BarangKeluarBackupPage() {
         nomorSIM: formData.nomorSIM.trim() || null,
         items: itemsData,
         totalPengambilanKG: totalPengambilanKG,
-        fotoUrls: [],
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -428,10 +476,7 @@ export default function BarangKeluarBackupPage() {
 
       const docRef = await addDoc(collection(db, "transaksiBarangKeluar"), docData);
 
-      const allFotoUrls = [...fotoFiles];
-      if (allFotoUrls.length > 0) {
-        await updateDoc(docRef, { fotoUrls: allFotoUrls });
-      }
+
 
       await updateStockFromItems(itemsData, false);
 
@@ -467,9 +512,13 @@ export default function BarangKeluarBackupPage() {
         totalKG: it.totalKG,
       })),
     });
-    setExistingFotoUrls(item.fotoUrls || []);
-    setFotoFiles([]);
-    setFotoPreviews([]);
+    const existing: Record<number, string[]> = {};
+    item.items.forEach((it, idx) => {
+      existing[idx] = it.fotoUrls || [];
+    });
+    setItemExistingFotoUrls(existing);
+    setItemFotoFiles({});
+    setItemFotoPreviews({});
     setNomorSeriError("");
     setErrors({});
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -487,7 +536,7 @@ export default function BarangKeluarBackupPage() {
       const oldData = oldSnap.data();
       const oldItems = oldData?.items || [];
 
-      const newItemsData = formData.items.map((item) => ({
+      const newItemsData = formData.items.map((item, idx) => ({
         stockId: item.stockId,
         kodeBarang: item.kodeBarang,
         namaBarang: item.namaBarang,
@@ -497,11 +546,10 @@ export default function BarangKeluarBackupPage() {
         pengambilanUnit: parseFloat(item.pengambilanUnit) || 0,
         totalKG: item.totalKG,
         nomorPI: item.nomorPI.trim(),
+        fotoUrls: [...(itemExistingFotoUrls[idx] || []), ...(itemFotoFiles[idx] || [])],
       }));
 
       const totalPengambilanKG = newItemsData.reduce((sum, it) => sum + it.totalKG, 0);
-
-      const allFotoUrls = [...existingFotoUrls, ...fotoFiles];
 
       await updateDoc(oldDocRef, {
         nomorSeri: formData.nomorSeri.trim().toUpperCase(),
@@ -511,7 +559,6 @@ export default function BarangKeluarBackupPage() {
         nomorSIM: formData.nomorSIM.trim() || null,
         items: newItemsData,
         totalPengambilanKG: totalPengambilanKG,
-        fotoUrls: allFotoUrls,
         updatedAt: serverTimestamp(),
       });
 
@@ -546,115 +593,165 @@ export default function BarangKeluarBackupPage() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const itemsHtml = item.items
-      .map(
-        (it, idx) => {
-          let qtyDisplay = it.pengambilanUnit.toLocaleString("id-ID");
-          let unitDisplay = it.unit;
-          if (it.unit === "DUS") {
-            const dusQty = it.pengambilanUnit / (it.botolPerDus || 20);
-            qtyDisplay = `${dusQty.toLocaleString("id-ID", { maximumFractionDigits: 2 })} DUS (${it.pengambilanUnit.toLocaleString("id-ID")} botol)`;
-            unitDisplay = "DUS";
-          } else if (it.unit === "BOTOL") {
-            qtyDisplay = `${it.pengambilanUnit.toLocaleString("id-ID")} botol`;
-            unitDisplay = "BOTOL";
-          }
-          return `<tr>
-            <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${idx + 1}</td>
-            <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;font-weight:600;">${it.kodeBarang || "-"}</td>
-            <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.namaBarang || "-"}</td>
-            <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${unitDisplay}</td>
-            <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${qtyDisplay}</td>
-            <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.totalKG > 0 ? it.totalKG.toLocaleString("id-ID") + " KG" : "-"}</td>
-            <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.nomorPI || "-"}</td>
-          </tr>`;
-        }
-      )
-      .join("");
+    const commonStyle = `<style>
+      @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
+      @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
+      .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
+      .header-img { width: 100%; display: block; margin-bottom: 0; }
+      .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .info-section { margin-bottom: 12px; }
+      .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
+      .info-label { font-weight: 600; }
+      .table-section { margin-bottom: 10px; }
+      .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .data-table { width: 100%; border-collapse: collapse; }
+      .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
+      .notes-section { margin-top: 10px; font-size: 9px; }
+      .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; align-items: flex-end; }
+      .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+      .signature-title { font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4; }
+      .signature-name { font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
+      .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
+      .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+      .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+      @media print { .print-bar { display: none !important; } }
+      .foto-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
+      .foto-grid img { width: 100%; height: 200px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px; }
+      .foto-label { font-size: 9px; font-weight: 600; color: #333; margin-bottom: 4px; }
+      .product-info { border: 1px solid #000; padding: 8px; margin-bottom: 12px; background: #f9fafb; }
+      .product-info p { font-size: 10px; margin-bottom: 2px; }
+      .product-info .label { font-weight: 600; }
+    </style>`;
+
+    const summaryItemsHtml = item.items.map((it, idx) => {
+      let qtyDisplay = it.pengambilanUnit.toLocaleString("id-ID");
+      let unitDisplay = it.unit;
+      if (it.unit === "DUS") {
+        const dusQty = it.pengambilanUnit / (it.botolPerDus || 20);
+        qtyDisplay = `${dusQty.toLocaleString("id-ID", { maximumFractionDigits: 2 })} DUS (${it.pengambilanUnit.toLocaleString("id-ID")} botol)`;
+        unitDisplay = "DUS";
+      } else if (it.unit === "BOTOL") {
+        qtyDisplay = `${it.pengambilanUnit.toLocaleString("id-ID")} botol`;
+        unitDisplay = "BOTOL";
+      }
+      return `<tr>
+        <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${idx + 1}</td>
+        <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;font-weight:600;">${it.kodeBarang || "-"}</td>
+        <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.namaBarang || "-"}</td>
+        <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${unitDisplay}</td>
+        <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${qtyDisplay}</td>
+        <td style="text-align:center;padding:6px 4px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.totalKG > 0 ? it.totalKG.toLocaleString("id-ID") + " KG" : "-"}</td>
+        <td style="padding:6px 8px;font-size:10px;border:1px solid #000;vertical-align:top;">${it.nomorPI || "-"}</td>
+      </tr>`;
+    }).join("");
 
     const piList = item.items.map((it) => it.nomorPI).filter((v, i, a) => v && a.indexOf(v) === i);
     const piListHtml = piList.join(", ") || "-";
+
+    const summaryPage = `<div class="page">
+      <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+      <div class="title-bar">BARANG KELUAR BACKUP</div>
+      <div class="info-section">
+        <div class="info-row"><span class="info-label">Nomor Seri</span> <span>${item.nomorSeri || "-"}</span></div>
+        <div class="info-row"><span class="info-label">Tanggal</span> <span>${new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
+        <div class="info-row"><span class="info-label">Driver</span> <span>${item.driverUnit || "-"}</span></div>
+        <div class="info-row"><span class="info-label">Nomor Polisi</span> <span>${item.nomorPolisi || "-"}</span></div>
+        <div class="info-row"><span class="info-label">Nomor SIM</span> <span>${item.nomorSIM || "-"}</span></div>
+        <div class="info-row"><span class="info-label">Nomor PI</span> <span>${piListHtml}</span></div>
+      </div>
+      <div class="table-section">
+        <div class="table-title">RINCIAN BARANG KELUAR</div>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:30px;">NO</th>
+              <th style="width:100px;">KODE BARANG</th>
+              <th>NAMA BARANG</th>
+              <th style="width:60px;">UNIT</th>
+              <th style="width:80px;">JUMLAH</th>
+              <th style="width:80px;">TOTAL KG</th>
+              <th style="width:100px;">NO PI</th>
+            </tr>
+          </thead>
+          <tbody>${summaryItemsHtml}</tbody>
+        </table>
+      </div>
+      <div class="notes-section">
+        <p style="font-weight:700;">Keterangan:</p>
+        <p>Dokumen ini merupakan backup barang keluar untuk stok gudang induk.</p>
+        <p>Total pengambilan: ${item.totalPengambilanKG > 0 ? item.totalPengambilanKG.toLocaleString("id-ID") + " KG" : "-"}</p>
+        <p>Halaman berikutnya merupakan bukti foto dokumentasi per produk.</p>
+      </div>
+      <div class="signature-row">
+        <div class="signature-box">
+          <p class="signature-title">Dibuat oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+          <div style="min-height:60px;margin-bottom:4px;"></div>
+          <p class="signature-name">${item.createdBy || ""}</p>
+        </div>
+        <div class="signature-box">
+          <p class="signature-title">Driver,<br>Unit Angkut</p>
+          <div style="min-height:60px;margin-bottom:4px;"></div>
+          <p class="signature-name">${item.driverUnit || ""}</p>
+        </div>
+      </div>
+      <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+    </div>`;
+
+    const fotoPages = item.items.map((it, idx) => {
+      const fotos = it.fotoUrls || [];
+      const fotoHtml = fotos.length > 0
+        ? `<div class="foto-grid">${fotos.map((f, i) => `<div><div class="foto-label">Foto ${i + 1}</div><img src="${f}" alt="Foto ${i + 1}" /></div>`).join("")}</div>`
+        : `<p style="font-size:10px;color:#666;margin-top:12px;">Tidak ada foto dokumentasi.</p>`;
+      let qtyDisplay = it.pengambilanUnit.toLocaleString("id-ID");
+      if (it.unit === "DUS") {
+        const dusQty = it.pengambilanUnit / (it.botolPerDus || 20);
+        qtyDisplay = `${dusQty.toLocaleString("id-ID", { maximumFractionDigits: 2 })} DUS (${it.pengambilanUnit.toLocaleString("id-ID")} botol)`;
+      } else if (it.unit === "BOTOL") {
+        qtyDisplay = `${it.pengambilanUnit.toLocaleString("id-ID")} botol`;
+      }
+      return `<div class="page">
+        <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
+        <div class="title-bar">BUKTI FOTO DOKUMENTASI</div>
+        <div class="product-info">
+          <p><span class="label">Nomor Seri:</span> ${item.nomorSeri || "-"}</p>
+          <p><span class="label">Produk ${idx + 1}:</span> ${it.namaBarang || "-"} (${it.kodeBarang || "-"})</p>
+          <p><span class="label">Unit:</span> ${it.unit}</p>
+          <p><span class="label">Jumlah:</span> ${qtyDisplay}</p>
+          <p><span class="label">Nomor PI:</span> ${it.nomorPI || "-"}</p>
+          <p><span class="label">Tanggal:</span> ${new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
+        </div>
+        <div class="table-title">FOTO DOKUMENTASI PRODUK ${idx + 1}</div>
+        ${fotoHtml}
+        <div class="signature-row">
+          <div class="signature-box">
+            <p class="signature-title">Diverifikasi oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+            <div style="min-height:60px;margin-bottom:4px;"></div>
+            <p class="signature-name">${item.createdBy || ""}</p>
+          </div>
+          <div class="signature-box">
+            <p class="signature-title">Driver,<br>Unit Angkut</p>
+            <div style="min-height:60px;margin-bottom:4px;"></div>
+            <p class="signature-name">${item.driverUnit || ""}</p>
+          </div>
+        </div>
+        <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
+      </div>`;
+    }).join("");
 
     const html = `<!DOCTYPE html>
 <html>
 <head>
   <title>Barang Keluar Backup ${item.nomorSeri}</title>
-  <style>
-    @page { size: A4; margin: 10mm 12mm 10mm 12mm; }
-    @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, sans-serif; font-size: 10px; line-height: 1.4; color: #000; }
-    .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
-    .header-img { width: 100%; display: block; margin-bottom: 0; }
-    .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 12px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .info-section { margin-bottom: 12px; }
-    .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 10px; }
-    .info-label { font-weight: 600; }
-    .table-section { margin-bottom: 10px; }
-    .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 4px 0; font-size: 10px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .data-table { width: 100%; border-collapse: collapse; }
-    .data-table th { background: #f0fdf4; font-size: 9px; padding: 5px 3px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .data-table td { border: 1px solid #000; padding: 5px 3px; vertical-align: top; }
-    .notes-section { margin-top: 10px; font-size: 9px; }
-    .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 20px; align-items: flex-end; }
-    .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-    .signature-title { font-size: 9px; margin-bottom: 4px; min-height: 28px; line-height: 1.4; }
-    .signature-name { font-size: 10px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 3px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
-    .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
-    .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-    .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-    @media print { .print-bar { display: none !important; } }
-  </style>
+  ${commonStyle}
 </head>
 <body>
   <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
-  <div class="page">
-    <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
-    <div class="title-bar">BARANG KELUAR BACKUP</div>
-    <div class="info-section">
-      <div class="info-row"><span class="info-label">Nomor Seri</span> <span>${item.nomorSeri || "-"}</span></div>
-      <div class="info-row"><span class="info-label">Tanggal</span> <span>${new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
-      <div class="info-row"><span class="info-label">Driver</span> <span>${item.driverUnit || "-"}</span></div>
-      <div class="info-row"><span class="info-label">Nomor Polisi</span> <span>${item.nomorPolisi || "-"}</span></div>
-      <div class="info-row"><span class="info-label">Nomor SIM</span> <span>${item.nomorSIM || "-"}</span></div>
-      <div class="info-row"><span class="info-label">Nomor PI</span> <span>${piListHtml}</span></div>
-    </div>
-    <div class="table-section">
-      <div class="table-title">RINCIAN BARANG KELUAR</div>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th style="width:30px;">NO</th>
-            <th style="width:100px;">KODE BARANG</th>
-            <th>NAMA BARANG</th>
-            <th style="width:60px;">UNIT</th>
-            <th style="width:80px;">JUMLAH</th>
-            <th style="width:80px;">TOTAL KG</th>
-            <th style="width:100px;">NO PI</th>
-          </tr>
-        </thead>
-        <tbody>${itemsHtml}</tbody>
-      </table>
-    </div>
-    <div class="notes-section">
-      <p style="font-weight:700;">Keterangan:</p>
-      <p>Dokumen ini merupakan backup barang keluar untuk stok gudang induk.</p>
-      <p>Total pengambilan: ${item.totalPengambilanKG > 0 ? item.totalPengambilanKG.toLocaleString("id-ID") + " KG" : "-"}</p>
-    </div>
-    <div class="signature-row">
-      <div class="signature-box">
-        <p class="signature-title">Dibuat oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-        <div style="min-height:60px;margin-bottom:4px;"></div>
-        <p class="signature-name">${item.createdBy || ""}</p>
-      </div>
-      <div class="signature-box">
-        <p class="signature-title">Driver,<br>Unit Angkut</p>
-        <div style="min-height:60px;margin-bottom:4px;"></div>
-        <p class="signature-name">${item.driverUnit || ""}</p>
-      </div>
-    </div>
-    <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
-  </div>
+  ${summaryPage}
+  ${fotoPages}
 </body>
 </html>`;
 
@@ -718,11 +815,14 @@ export default function BarangKeluarBackupPage() {
       key: "foto",
       header: "Foto",
       width: "80px",
-      render: (row: BackupDoc) => (
-        <span className="px-2 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-700">
-          {row.fotoUrls?.length || 0} Foto
-        </span>
-      ),
+      render: (row: BackupDoc) => {
+        const totalFoto = row.items.reduce((sum, it) => sum + (it.fotoUrls?.length || 0), 0);
+        return (
+          <span className="px-2 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-700">
+            {totalFoto} Foto
+          </span>
+        );
+      },
     },
     {
       key: "aksi",
@@ -929,52 +1029,53 @@ export default function BarangKeluarBackupPage() {
                 {errors[`item_${idx}_pi`] && (
                   <p className="mt-1 text-sm text-red-600">{errors[`item_${idx}_pi`]}</p>
                 )}
+
+                <div className="mt-4 border-t border-gray-200 pt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Foto Dokumentasi Produk {idx + 1}</label>
+                  <div className="flex flex-wrap gap-3 mb-3">
+                    {(itemExistingFotoUrls[idx] || []).map((url, fidx) => (
+                      <div key={`existing_${idx}_${fidx}`} className="relative group">
+                        <img src={url} alt={`Foto ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          type="button"
+                          onClick={() => removeItemExistingFoto(idx, fidx)}
+                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                    {(itemFotoPreviews[idx] || []).map((url, fidx) => (
+                      <div key={`preview_${idx}_${fidx}`} className="relative group">
+                        <img src={url} alt={`Preview ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          type="button"
+                          onClick={() => removeItemFoto(idx, fidx)}
+                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </div>
+                    ))}
+                    <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors">
+                      <svg className="w-6 h-6 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      <span className="text-[10px] text-gray-500">Tambah Foto</span>
+                      <input type="file" accept="image/*" multiple onChange={(e) => handleItemFotoChange(idx, e)} className="hidden" />
+                    </label>
+                  </div>
+                  {errors[`item_${idx}_foto`] && <p className="text-sm text-red-600">{errors[`item_${idx}_foto`]}</p>}
+                </div>
               </div>
             ))}
           </div>
 
-          <div className="mt-8">
-            <label className="block text-sm font-medium text-gray-700 mb-2">Foto Dokumentasi</label>
-            <div className="flex flex-wrap gap-3 mb-3">
-              {existingFotoUrls.map((url, idx) => (
-                <div key={`existing_${idx}`} className="relative group">
-                  <img src={url} alt={`Foto ${idx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
-                  <button
-                    type="button"
-                    onClick={() => removeExistingFoto(idx)}
-                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-              {fotoPreviews.map((url, idx) => (
-                <div key={`preview_${idx}`} className="relative group">
-                  <img src={url} alt={`Preview ${idx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
-                  <button
-                    type="button"
-                    onClick={() => removeFoto(idx)}
-                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ))}
-              <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors">
-                <svg className="w-6 h-6 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <span className="text-[10px] text-gray-500">Tambah Foto</span>
-                <input type="file" accept="image/*" multiple onChange={handleFotoChange} className="hidden" />
-              </label>
-            </div>
-            {errors.foto && <p className="text-sm text-red-600">{errors.foto}</p>}
 
-          </div>
 
           <div className="mt-8 flex items-center justify-end gap-4">
             {isEditing && (
