@@ -22,6 +22,8 @@ import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 import Table from "@/app/components/ui/Table";
 import { StockGudang } from "@/app/types";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 
 interface BarangRusakRow {
   id: string;
@@ -679,6 +681,293 @@ export default function LaporanInputStockGudangPage() {
     return pages;
   };
 
+  const getFilterLabel = () => {
+    const parts: string[] = [];
+    if (filterTanggal) parts.push(`Tanggal ${filterTanggal}`);
+    if (filterBulan) {
+      const bulanNames = ["","Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+      parts.push(`Bulan ${bulanNames[parseInt(filterBulan)] || filterBulan}`);
+    }
+    if (filterTahun) parts.push(`Tahun ${filterTahun}`);
+    if (filterFot) parts.push(`FOT ${filterFot}`);
+    if (searchQuery) parts.push(`Pencarian "${searchQuery}"`);
+    return parts.length > 0 ? parts.join(" | ") : "Semua Data";
+  };
+
+  const handleExportExcel = () => {
+    const wb = XLSX.utils.book_new();
+    wb.Props = {
+      Title: "Laporan Stock Gudang",
+      Subject: "Stock Gudang",
+      Author: "PT Bukit Agrochemical Baru",
+      CreatedDate: new Date(),
+    };
+
+    const hasFilter = !!(filterTanggal || filterBulan || filterTahun);
+    const dataToExport = filteredStockList;
+
+    const wsData: any[][] = [];
+
+    wsData.push(["PT BUKIT AGROCHEMICAL BARU"]);
+    wsData.push(["LAPORAN STOCK GUDANG"]);
+    wsData.push([`Filter: ${getFilterLabel()}`]);
+    wsData.push([`Tanggal Export: ${new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`]);
+    wsData.push([]);
+
+    const headerRow = [
+      "No",
+      "FOT",
+      "Kode Barang",
+      "Nama Barang",
+      "Produsen",
+      "Unit",
+      "Konversi",
+      "Stok Awal",
+      "Barang Masuk",
+      "Barang Keluar",
+      "Stok Akhir",
+    ];
+    wsData.push(headerRow);
+
+    dataToExport.forEach((row, idx) => {
+      const key = `${row.kodeBarang}|${row.fot}`;
+      const masuk = hasFilter ? (transaksiMasukMap[key] || { unit: 0, kg: 0 }) : { unit: row.barangMasukUnit || 0, kg: row.barangMasukKG || 0 };
+      const keluar = hasFilter ? (transaksiKeluarMap[key] || { unit: 0, kg: 0 }) : { unit: row.barangKeluarUnit || 0, kg: row.barangKeluarKG || 0 };
+
+      let konversi = "";
+      if (row.unit === "BOTOL" || row.unit === "DUS") {
+        konversi = `${row.botolPerDus || 20} botol/DUS | ${row.volumeMl || 500}ml/botol`;
+      } else if (row.unit === "ZAK") {
+        konversi = `${row.bobotPerUnit || 50} KG/ZAK`;
+      } else {
+        konversi = "-";
+      }
+
+      let stokAwal = "";
+      if (row.unit !== "KG") {
+        stokAwal += formatDusDisplay(row, row.stokAwalUnit);
+      }
+      if (row.unit !== "DUS" && row.unit !== "BOTOL") {
+        if (stokAwal) stokAwal += "\n";
+        stokAwal += `${hitungStokAwalKG(row).toLocaleString("id-ID")} KG`;
+      }
+
+      let masukStr = "";
+      if (row.unit !== "KG" && masuk.unit > 0) {
+        masukStr += `+${formatDusDisplay(row, masuk.unit)}`;
+      }
+      if (row.unit !== "DUS" && row.unit !== "BOTOL" && masuk.kg > 0) {
+        if (masukStr) masukStr += "\n";
+        masukStr += `+${masuk.kg.toLocaleString("id-ID")} KG`;
+      }
+      if (!masukStr) masukStr = "-";
+
+      let keluarStr = "";
+      if (row.unit !== "KG" && keluar.unit > 0) {
+        keluarStr += `-${formatDusDisplay(row, keluar.unit)}`;
+      }
+      if (row.unit !== "DUS" && row.unit !== "BOTOL" && keluar.kg > 0) {
+        if (keluarStr) keluarStr += "\n";
+        keluarStr += `-${keluar.kg.toLocaleString("id-ID")} KG`;
+      }
+      if (!keluarStr) keluarStr = "-";
+
+      let stokAkhir = "";
+      if (row.unit !== "KG") {
+        stokAkhir += formatDusDisplay(row, row.stokAkhirUnit);
+      }
+      if (row.unit !== "DUS" && row.unit !== "BOTOL") {
+        if (stokAkhir) stokAkhir += "\n";
+        stokAkhir += `${hitungStokAkhirKG(row).toLocaleString("id-ID")} KG`;
+      }
+
+      wsData.push([
+        idx + 1,
+        row.fot,
+        row.kodeBarang,
+        row.namaBarang,
+        row.namaProdusen || "-",
+        row.unit,
+        konversi,
+        stokAwal,
+        masukStr,
+        keluarStr,
+        stokAkhir,
+      ]);
+    });
+
+    wsData.push([]);
+    wsData.push(["Total Item", dataToExport.length.toString()]);
+
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    const colWidths = [
+      { wch: 5 },
+      { wch: 12 },
+      { wch: 16 },
+      { wch: 28 },
+      { wch: 22 },
+      { wch: 10 },
+      { wch: 24 },
+      { wch: 24 },
+      { wch: 24 },
+      { wch: 24 },
+      { wch: 24 },
+    ];
+    ws["!cols"] = colWidths;
+
+    const mergeRanges = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 10 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 10 } },
+    ];
+    ws["!merges"] = mergeRanges;
+
+    const headerStyle = {
+      font: { bold: true, color: { rgb: "FFFFFF" }, sz: 11 },
+      fill: { fgColor: { rgb: "2E7D32" } },
+      alignment: { horizontal: "center", vertical: "center", wrapText: true },
+      border: {
+        top: { style: "thin", color: { rgb: "000000" } },
+        bottom: { style: "thin", color: { rgb: "000000" } },
+        left: { style: "thin", color: { rgb: "000000" } },
+        right: { style: "thin", color: { rgb: "000000" } },
+      },
+    };
+
+    const titleStyle = {
+      font: { bold: true, sz: 16, color: { rgb: "1B5E20" } },
+      alignment: { horizontal: "center", vertical: "center" },
+    };
+
+    const subtitleStyle = {
+      font: { bold: true, sz: 13, color: { rgb: "2E7D32" } },
+      alignment: { horizontal: "center", vertical: "center" },
+    };
+
+    const infoStyle = {
+      font: { sz: 10, color: { rgb: "555555" }, italic: true },
+      alignment: { horizontal: "center", vertical: "center" },
+    };
+
+    const dataStyle = {
+      font: { sz: 10, color: { rgb: "333333" } },
+      alignment: { horizontal: "left", vertical: "center", wrapText: true },
+      border: {
+        top: { style: "thin", color: { rgb: "CCCCCC" } },
+        bottom: { style: "thin", color: { rgb: "CCCCCC" } },
+        left: { style: "thin", color: { rgb: "CCCCCC" } },
+        right: { style: "thin", color: { rgb: "CCCCCC" } },
+      },
+    };
+
+    const altRowStyle = {
+      ...dataStyle,
+      fill: { fgColor: { rgb: "F1F8E9" } },
+    };
+
+    const totalStyle = {
+      font: { bold: true, sz: 11, color: { rgb: "1B5E20" } },
+      alignment: { horizontal: "left", vertical: "center" },
+      fill: { fgColor: { rgb: "C8E6C9" } },
+      border: {
+        top: { style: "medium", color: { rgb: "2E7D32" } },
+        bottom: { style: "medium", color: { rgb: "2E7D32" } },
+      },
+    };
+
+    const range = XLSX.utils.decode_range(ws["!ref"] || "A1");
+    for (let R = range.s.r; R <= range.e.r; ++R) {
+      for (let C = range.s.c; C <= range.e.c; ++C) {
+        const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+        if (!ws[cellRef]) continue;
+
+        if (R === 0) {
+          ws[cellRef].s = titleStyle;
+        } else if (R === 1) {
+          ws[cellRef].s = subtitleStyle;
+        } else if (R === 2 || R === 3) {
+          ws[cellRef].s = infoStyle;
+        } else if (R === 5) {
+          ws[cellRef].s = headerStyle;
+        } else if (R >= 6 && R < range.e.r - 1) {
+          ws[cellRef].s = (R - 6) % 2 === 0 ? dataStyle : altRowStyle;
+        } else if (R === range.e.r) {
+          ws[cellRef].s = totalStyle;
+        }
+      }
+    }
+
+    ws["!rows"] = [
+      { hpt: 30 },
+      { hpt: 24 },
+      { hpt: 18 },
+      { hpt: 18 },
+      { hpt: 12 },
+      { hpt: 28 },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, "Stock Gudang");
+
+    if (rusakFiltered.length > 0) {
+      const rusakData: any[][] = [];
+      rusakData.push(["PT BUKIT AGROCHEMICAL BARU"]);
+      rusakData.push(["LAPORAN BARANG RUSAK"]);
+      rusakData.push([`Filter: ${rusakFilterStatus ? (rusakFilterStatus === "sudah diganti" ? "Sudah Diganti" : "Belum Diganti") : "Semua Status"}${rusakFilterFot ? ` | FOT ${rusakFilterFot}` : ""}`]);
+      rusakData.push([`Tanggal Export: ${new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`]);
+      rusakData.push([]);
+      rusakData.push(["No", "FOT", "Tanggal", "Kode Barang", "Nama Barang", "Jumlah Rusak", "Unit", "Keterangan", "Status", "Jumlah Penggantian", "Tanggal Penggantian"]);
+
+      rusakFiltered.forEach((r, idx) => {
+        rusakData.push([
+          idx + 1,
+          r.fot,
+          r.tanggal,
+          r.kodeBarang,
+          r.namaBarang,
+          r.jumlah,
+          r.unit,
+          r.keterangan,
+          r.status === "sudah diganti" ? "SUDAH DIGANTI" : "BELUM DIGANTI",
+          r.status === "sudah diganti" ? r.jumlahPenggantian : "-",
+          r.status === "sudah diganti" ? r.tanggalPenggantian : "-",
+        ]);
+      });
+
+      const wsRusak = XLSX.utils.aoa_to_sheet(rusakData);
+      wsRusak["!cols"] = [
+        { wch: 5 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 18 }, { wch: 18 },
+      ];
+      wsRusak["!merges"] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 10 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 10 } },
+      ];
+
+      const rusakRange = XLSX.utils.decode_range(wsRusak["!ref"] || "A1");
+      for (let R = rusakRange.s.r; R <= rusakRange.e.r; ++R) {
+        for (let C = rusakRange.s.c; C <= rusakRange.e.c; ++C) {
+          const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+          if (!wsRusak[cellRef]) continue;
+          if (R === 0) wsRusak[cellRef].s = titleStyle;
+          else if (R === 1) wsRusak[cellRef].s = subtitleStyle;
+          else if (R === 2 || R === 3) wsRusak[cellRef].s = infoStyle;
+          else if (R === 5) wsRusak[cellRef].s = { ...headerStyle, fill: { fgColor: { rgb: "C62828" } } };
+          else if (R >= 6) wsRusak[cellRef].s = (R - 6) % 2 === 0 ? dataStyle : altRowStyle;
+        }
+      }
+      wsRusak["!rows"] = [{ hpt: 30 }, { hpt: 24 }, { hpt: 18 }, { hpt: 18 }, { hpt: 12 }, { hpt: 28 }];
+      XLSX.utils.book_append_sheet(wb, wsRusak, "Barang Rusak");
+    }
+
+    const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([wbout], { type: "application/octet-stream" });
+    const filename = `Laporan_Stock_Gudang_${new Date().toISOString().slice(0, 10)}_${new Date().toTimeString().slice(0, 5).replace(":", "-")}.xlsx`;
+    saveAs(blob, filename);
+  };
+
   const columns = [
     {
       key: "fot",
@@ -1286,6 +1575,18 @@ export default function LaporanInputStockGudangPage() {
                 Filter tanggal aktif: Menampilkan jumlah barang masuk & keluar pada periode yang dipilih
               </div>
             )}
+
+            <div className="mb-4 flex justify-end">
+              <button
+                onClick={handleExportExcel}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-semibold rounded-lg transition-colors shadow-sm"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                Unduh Excel
+              </button>
+            </div>
 
             <Table
               columns={columns}
