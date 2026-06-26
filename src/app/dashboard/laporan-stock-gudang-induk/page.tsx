@@ -613,7 +613,7 @@ export default function LaporanInputStockGudangPage() {
     if (row.unit === "DUS" || row.unit === "BOTOL") {
       return (unitField || 0) * (row.botolPerDus || 20);
     }
-    return unitField || 0;
+    return 0;
   };
 
   const hitungStokAkhirKG = (row: StockGudang) => {
@@ -722,12 +722,25 @@ export default function LaporanInputStockGudangPage() {
       "Produsen",
       "Unit",
       "Konversi",
-      "Stok Awal",
-      "Barang Masuk",
-      "Barang Keluar",
-      "Stok Akhir",
+      "Stok Awal (Unit)",
+      "Stok Awal (KG)",
+      "Stok Awal (Botol)",
+      "Barang Masuk (Unit)",
+      "Barang Masuk (KG)",
+      "Barang Masuk (Botol)",
+      "Barang Keluar (Unit)",
+      "Barang Keluar (KG)",
+      "Barang Keluar (Botol)",
+      "Stok Akhir (Unit)",
+      "Stok Akhir (KG)",
+      "Stok Akhir (Botol)",
     ];
     wsData.push(headerRow);
+
+    let totalZAK = 0;
+    let totalDUS = 0;
+    let totalBotol = 0;
+    let totalKG = 0;
 
     dataToExport.forEach((row, idx) => {
       const key = `${row.kodeBarang}|${row.fot}`;
@@ -743,42 +756,32 @@ export default function LaporanInputStockGudangPage() {
         konversi = "-";
       }
 
-      let stokAwal = "";
-      if (row.unit !== "KG") {
-        stokAwal += formatDusDisplay(row, row.stokAwalUnit);
-      }
-      if (row.unit !== "DUS" && row.unit !== "BOTOL") {
-        if (stokAwal) stokAwal += "\n";
-        stokAwal += `${hitungStokAwalKG(row).toLocaleString("id-ID")} KG`;
-      }
+      const stokAwalUnit = row.stokAwalUnit || 0;
+      const stokAwalKG = hitungStokAwalKG(row);
+      const stokAwalBotol = getBotolCount(row, stokAwalUnit);
 
-      let masukStr = "";
-      if (row.unit !== "KG" && masuk.unit > 0) {
-        masukStr += `+${formatDusDisplay(row, masuk.unit)}`;
-      }
-      if (row.unit !== "DUS" && row.unit !== "BOTOL" && masuk.kg > 0) {
-        if (masukStr) masukStr += "\n";
-        masukStr += `+${masuk.kg.toLocaleString("id-ID")} KG`;
-      }
-      if (!masukStr) masukStr = "-";
+      const masukUnit = masuk.unit;
+      const masukKG = masuk.kg;
+      const masukBotol = row.unit === "DUS" || row.unit === "BOTOL" ? masukUnit * (row.botolPerDus || 20) : 0;
 
-      let keluarStr = "";
-      if (row.unit !== "KG" && keluar.unit > 0) {
-        keluarStr += `-${formatDusDisplay(row, keluar.unit)}`;
-      }
-      if (row.unit !== "DUS" && row.unit !== "BOTOL" && keluar.kg > 0) {
-        if (keluarStr) keluarStr += "\n";
-        keluarStr += `-${keluar.kg.toLocaleString("id-ID")} KG`;
-      }
-      if (!keluarStr) keluarStr = "-";
+      const keluarUnit = keluar.unit;
+      const keluarKG = keluar.kg;
+      const keluarBotol = row.unit === "DUS" || row.unit === "BOTOL" ? keluarUnit * (row.botolPerDus || 20) : 0;
 
-      let stokAkhir = "";
-      if (row.unit !== "KG") {
-        stokAkhir += formatDusDisplay(row, row.stokAkhirUnit);
-      }
-      if (row.unit !== "DUS" && row.unit !== "BOTOL") {
-        if (stokAkhir) stokAkhir += "\n";
-        stokAkhir += `${hitungStokAkhirKG(row).toLocaleString("id-ID")} KG`;
+      const akhirUnit = row.stokAkhirUnit || 0;
+      const akhirKG = hitungStokAkhirKG(row);
+      const akhirBotol = getBotolCount(row, akhirUnit);
+
+      if (row.unit === "ZAK") {
+        totalZAK += akhirUnit;
+        totalKG += akhirKG;
+      } else if (row.unit === "DUS") {
+        totalDUS += akhirUnit;
+        totalBotol += akhirBotol;
+      } else if (row.unit === "BOTOL") {
+        totalBotol += akhirUnit;
+      } else if (row.unit === "KG") {
+        totalKG += akhirUnit;
       }
 
       wsData.push([
@@ -789,15 +792,28 @@ export default function LaporanInputStockGudangPage() {
         row.namaProdusen || "-",
         row.unit,
         konversi,
-        stokAwal,
-        masukStr,
-        keluarStr,
-        stokAkhir,
+        stokAwalUnit,
+        stokAwalKG,
+        stokAwalBotol,
+        masukUnit,
+        masukKG,
+        masukBotol,
+        keluarUnit,
+        keluarKG,
+        keluarBotol,
+        akhirUnit,
+        akhirKG,
+        akhirBotol,
       ]);
     });
 
     wsData.push([]);
-    wsData.push(["Total Item", dataToExport.length.toString()]);
+    wsData.push(["RINGKASAN TOTAL", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total ZAK", totalZAK, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total DUS", totalDUS, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total Botol", totalBotol, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total KG", totalKG, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total Item", dataToExport.length, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
@@ -809,18 +825,26 @@ export default function LaporanInputStockGudangPage() {
       { wch: 22 },
       { wch: 10 },
       { wch: 24 },
-      { wch: 24 },
-      { wch: 24 },
-      { wch: 24 },
-      { wch: 24 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 16 },
     ];
     ws["!cols"] = colWidths;
 
     const mergeRanges = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 10 } },
-      { s: { r: 3, c: 0 }, e: { r: 3, c: 10 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 18 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 18 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 18 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 18 } },
     ];
     ws["!merges"] = mergeRanges;
 
@@ -867,13 +891,51 @@ export default function LaporanInputStockGudangPage() {
       fill: { fgColor: { rgb: "F1F8E9" } },
     };
 
-    const totalStyle = {
+    const summaryLabelStyle = {
       font: { bold: true, sz: 11, color: { rgb: "1B5E20" } },
       alignment: { horizontal: "left", vertical: "center" },
       fill: { fgColor: { rgb: "C8E6C9" } },
       border: {
         top: { style: "medium", color: { rgb: "2E7D32" } },
         bottom: { style: "medium", color: { rgb: "2E7D32" } },
+        left: { style: "medium", color: { rgb: "2E7D32" } },
+        right: { style: "medium", color: { rgb: "2E7D32" } },
+      },
+    };
+
+    const summaryValueStyle = {
+      font: { bold: true, sz: 11, color: { rgb: "1B5E20" } },
+      alignment: { horizontal: "right", vertical: "center" },
+      fill: { fgColor: { rgb: "C8E6C9" } },
+      border: {
+        top: { style: "medium", color: { rgb: "2E7D32" } },
+        bottom: { style: "medium", color: { rgb: "2E7D32" } },
+        left: { style: "medium", color: { rgb: "2E7D32" } },
+        right: { style: "medium", color: { rgb: "2E7D32" } },
+      },
+    };
+
+    const totalItemStyle = {
+      font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
+      alignment: { horizontal: "left", vertical: "center" },
+      fill: { fgColor: { rgb: "1B5E20" } },
+      border: {
+        top: { style: "medium", color: { rgb: "000000" } },
+        bottom: { style: "medium", color: { rgb: "000000" } },
+        left: { style: "medium", color: { rgb: "000000" } },
+        right: { style: "medium", color: { rgb: "000000" } },
+      },
+    };
+
+    const totalItemValueStyle = {
+      font: { bold: true, sz: 11, color: { rgb: "FFFFFF" } },
+      alignment: { horizontal: "right", vertical: "center" },
+      fill: { fgColor: { rgb: "1B5E20" } },
+      border: {
+        top: { style: "medium", color: { rgb: "000000" } },
+        bottom: { style: "medium", color: { rgb: "000000" } },
+        left: { style: "medium", color: { rgb: "000000" } },
+        right: { style: "medium", color: { rgb: "000000" } },
       },
     };
 
@@ -891,10 +953,23 @@ export default function LaporanInputStockGudangPage() {
           ws[cellRef].s = infoStyle;
         } else if (R === 5) {
           ws[cellRef].s = headerStyle;
-        } else if (R >= 6 && R < range.e.r - 1) {
+        } else if (R >= 6 && R < range.e.r - 6) {
           ws[cellRef].s = (R - 6) % 2 === 0 ? dataStyle : altRowStyle;
-        } else if (R === range.e.r) {
-          ws[cellRef].s = totalStyle;
+        } else if (R === range.e.r - 6) {
+          ws[cellRef].s = summaryLabelStyle;
+          if (C === 1) ws[cellRef].s = summaryValueStyle;
+        } else if (R === range.e.r - 5) {
+          ws[cellRef].s = summaryLabelStyle;
+          if (C === 1) ws[cellRef].s = summaryValueStyle;
+        } else if (R === range.e.r - 4) {
+          ws[cellRef].s = summaryLabelStyle;
+          if (C === 1) ws[cellRef].s = summaryValueStyle;
+        } else if (R === range.e.r - 3) {
+          ws[cellRef].s = summaryLabelStyle;
+          if (C === 1) ws[cellRef].s = summaryValueStyle;
+        } else if (R === range.e.r - 2) {
+          ws[cellRef].s = totalItemStyle;
+          if (C === 1) ws[cellRef].s = totalItemValueStyle;
         }
       }
     }
