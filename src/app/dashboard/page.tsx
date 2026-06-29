@@ -18,6 +18,7 @@ export default function DashboardPage() {
     totalStock: 0,
     totalBarangMasuk: 0,
     totalBarangKeluar: 0,
+    totalBarangKeluarKG: 0,
     totalStokAkhirUnit: 0,
     totalStokAkhirKG: 0,
     recentPI: [] as ProformaInvoice[],
@@ -132,19 +133,43 @@ export default function DashboardPage() {
         limit(100)
       );
       const keluarSnapshot = await getDocs(keluarQuery);
-      const keluarData = keluarSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        tanggal: doc.data().tanggal || "",
-        kodeBarang: doc.data().kodeBarang || "",
-        namaBarang: doc.data().namaBarang || "",
-        unit: doc.data().unit || "ZAK",
-        jumlahZAK: doc.data().jumlahZAK || 0,
-        totalKG: doc.data().totalKG || 0,
-        fot: doc.data().fot || "",
-        namaCustomer: doc.data().namaCustomer || "",
-        createdBy: doc.data().createdBy || "",
-        createdAt: doc.data().createdAt?.toDate(),
-      }));
+      const keluarData = keluarSnapshot.docs.map((doc) => {
+        const d = doc.data();
+        const isBackup = d.jenis === "barangKeluarBackup";
+        let jumlahZAK = 0;
+        let totalKG = 0;
+        let unit = "ZAK";
+        let kodeBarang = "";
+        let namaBarang = "";
+        let fot = "";
+        if (isBackup && Array.isArray(d.items)) {
+          jumlahZAK = d.items.reduce((sum: number, it: any) => sum + (it.pengambilanUnit || 0), 0);
+          totalKG = d.totalPengambilanKG || 0;
+          unit = d.items[0]?.unit || "ZAK";
+          kodeBarang = d.items.map((it: any) => it.kodeBarang).filter(Boolean).join(", ") || "-";
+          namaBarang = d.items.map((it: any) => it.namaBarang).filter(Boolean).join(", ") || "-";
+        } else {
+          jumlahZAK = d.jumlahZAK || 0;
+          totalKG = d.totalKG || 0;
+          unit = d.unit || "ZAK";
+          kodeBarang = d.kodeBarang || "";
+          namaBarang = d.namaBarang || "";
+          fot = d.fot || "";
+        }
+        return {
+          id: doc.id,
+          tanggal: d.tanggal || "",
+          kodeBarang,
+          namaBarang,
+          unit,
+          jumlahZAK,
+          totalKG,
+          fot,
+          namaCustomer: d.namaCustomer || (isBackup ? d.driverUnit : "") || "",
+          createdBy: d.createdBy || "",
+          createdAt: d.createdAt?.toDate(),
+        };
+      });
 
       const piTotal = (await getDocs(collection(db, "proformaInvoice"))).size;
       const stockTotal = stockSnapshot.size;
@@ -161,6 +186,7 @@ export default function DashboardPage() {
         totalStock: stockTotal,
         totalBarangMasuk: totalMasukUnit,
         totalBarangKeluar: totalKeluarUnit,
+        totalBarangKeluarKG: totalKeluarKG,
         totalStokAkhirUnit: totalStokUnit,
         totalStokAkhirKG: totalStokKG,
         recentPI: piData,
@@ -553,7 +579,7 @@ export default function DashboardPage() {
             <div>
               <p className="text-orange-100 text-sm font-medium">Total Barang Keluar</p>
               <p className="text-4xl font-bold mt-2">{stats.totalBarangKeluar.toLocaleString()}</p>
-              <p className="text-orange-200 text-xs mt-1">{stats.totalStokAkhirKG.toLocaleString()} KG total stok</p>
+              <p className="text-orange-200 text-xs mt-1">{stats.totalBarangKeluarKG.toLocaleString()} KG total keluar</p>
             </div>
             <div className="p-3 bg-white/20 rounded-xl">
               <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -824,9 +850,15 @@ export default function DashboardPage() {
                       <div key={item.id} className="p-3 bg-orange-50 rounded-lg border border-orange-100">
                         <div className="flex items-center justify-between">
                           <span className="font-semibold text-sm text-gray-800">{item.namaBarang}</span>
-                          <span className="text-xs font-mono text-orange-700">-{item.jumlahZAK} {item.unit}</span>
+                          <span className="text-xs font-mono text-orange-700">
+                            {item.unit === "DUS" && item.jumlahZAK
+                              ? `-${(item.jumlahZAK / 20).toLocaleString("id-ID", { maximumFractionDigits: 2 })} DUS`
+                              : item.unit === "BOTOL"
+                              ? `-${item.jumlahZAK.toLocaleString("id-ID")} BOTOL`
+                              : `-${item.jumlahZAK} ${item.unit}`}
+                          </span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-1">{item.tanggal} | {item.fot}</p>
+                        <p className="text-xs text-gray-500 mt-1">{item.tanggal} {item.fot ? `| ${item.fot}` : ""}</p>
                         <p className="text-xs text-gray-400">{item.namaCustomer}</p>
                       </div>
                     ))}
