@@ -42,18 +42,11 @@ interface BarangRusakItem {
   penggantianFotoUrls?: string[];
 }
 
-interface UnreplacedRusak {
-  transaksiId: string;
-  fot: string;
-  kodeBarang: string;
-  namaBarang: string;
-  unitMasuk: string;
-  rusakUnit: string;
-  rusakJumlah: number;
-  rusakKeterangan: string;
-  rusakIndex: number;
-  tanggalTransaksi: string;
-  fotoUrls?: string[];
+interface TTDData {
+  id: string;
+  nama: string;
+  jabatan: string;
+  ttdImage: string;
 }
 
 export default function TransaksiBarangMasukPage() {
@@ -95,18 +88,8 @@ export default function TransaksiBarangMasukPage() {
   const [barangRusakList, setBarangRusakList] = useState<BarangRusakItem[]>([]);
   const [adaBarangRusak, setAdaBarangRusak] = useState(false);
 
-  const [unreplacedRusakList, setUnreplacedRusakList] = useState<UnreplacedRusak[]>([]);
-  const [showPenggantianForm, setShowPenggantianForm] = useState(false);
-  const [penggantianForm, setPenggantianForm] = useState({
-    transaksiId: "",
-    rusakIndex: 0,
-    tanggal: new Date().toISOString().split("T")[0],
-    jumlahZAK: "",
-    fotoUrls: [] as string[],
-    maxJumlah: 0,
-  });
-  const [penggantianLoading, setPenggantianLoading] = useState(false);
-  const [penggantianSuccess, setPenggantianSuccess] = useState("");
+  const [ttdList, setTtdList] = useState<TTDData[]>([]);
+  const [selectedTtdId, setSelectedTtdId] = useState("");
 
   const unitOptions = [
     { value: "ZAK", label: "ZAK" },
@@ -125,7 +108,7 @@ export default function TransaksiBarangMasukPage() {
 
   useEffect(() => {
     fetchStockGudang();
-    fetchUnreplacedRusak();
+    fetchTTDList();
   }, []);
 
   useEffect(() => {
@@ -168,34 +151,17 @@ export default function TransaksiBarangMasukPage() {
     }
   };
 
-  const fetchUnreplacedRusak = async () => {
+  const fetchTTDList = async () => {
     try {
-      const q = query(collection(db, "transaksiBarangMasuk"), orderBy("createdAt", "desc"));
+      const q = query(collection(db, "ttd"), orderBy("nama", "asc"));
       const snapshot = await getDocs(q);
-      const list: UnreplacedRusak[] = [];
-      snapshot.docs.forEach((docSnap) => {
-        const d = docSnap.data();
-        if (d.adaBarangRusak && Array.isArray(d.barangRusak)) {
-          d.barangRusak.forEach((r: any, idx: number) => {
-            if (!r.status || r.status === "belum diganti") {
-              list.push({
-                transaksiId: docSnap.id,
-                fot: d.fot || "",
-                kodeBarang: d.kodeBarang || "",
-                namaBarang: d.namaBarang || "",
-                unitMasuk: d.unit || "ZAK",
-                rusakUnit: r.unit || "ZAK",
-                rusakJumlah: r.jumlah || 0,
-                rusakKeterangan: r.keterangan || "",
-                rusakIndex: idx,
-                tanggalTransaksi: d.tanggal || "",
-                fotoUrls: r.fotoUrls || [],
-              });
-            }
-          });
-        }
-      });
-      setUnreplacedRusakList(list);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        nama: doc.data().nama || "",
+        jabatan: doc.data().jabatan || "",
+        ttdImage: doc.data().ttdImage || "",
+      } as TTDData));
+      setTtdList(data);
     } catch (error) {
       console.error(error);
     }
@@ -601,6 +567,8 @@ export default function TransaksiBarangMasukPage() {
           nomorSIM: s.nomorSIM.trim() || null,
         }));
 
+      const selectedTtd = ttdList.find((t) => t.id === selectedTtdId);
+
       const transaksiData: any = {
         tanggal: formData.tanggal,
         kodeBarang: formData.kodeBarang.trim(),
@@ -623,6 +591,13 @@ export default function TransaksiBarangMasukPage() {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
+
+      if (selectedTtd) {
+        transaksiData.ttdId = selectedTtd.id;
+        transaksiData.ttdNama = selectedTtd.nama;
+        transaksiData.ttdJabatan = selectedTtd.jabatan;
+        transaksiData.ttdImage = selectedTtd.ttdImage;
+      }
 
       if (formData.unit === "BOTOL") {
         transaksiData.botolPerDus = botolPerDus;
@@ -677,9 +652,9 @@ export default function TransaksiBarangMasukPage() {
       setFotoFiles([]);
       setBarangRusakList([]);
       setAdaBarangRusak(false);
+      setSelectedTtdId("");
 
       fetchStockGudang();
-      fetchUnreplacedRusak();
       setTimeout(() => setSuccessMessage(""), 5000);
     } catch (error) {
       console.error(error);
@@ -696,149 +671,6 @@ export default function TransaksiBarangMasukPage() {
     }
   };
 
-  const handlePenggantianFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
-    try {
-      const newPhotos: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const compressed = await compressImage(files[i], 2);
-        newPhotos.push(compressed);
-      }
-      setPenggantianForm((prev) => ({ ...prev, fotoUrls: [...prev.fotoUrls, ...newPhotos] }));
-    } catch (error) {
-      console.error(error);
-    } finally {
-      e.target.value = "";
-    }
-  };
-
-  const removePenggantianFoto = (idx: number) => {
-    setPenggantianForm((prev) => ({ ...prev, fotoUrls: prev.fotoUrls.filter((_, i) => i !== idx) }));
-  };
-
-  const handleSubmitPenggantian = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!penggantianForm.transaksiId) {
-      setErrors((prev) => ({ ...prev, penggantian: "Pilih barang rusak yang akan diganti" }));
-      return;
-    }
-    if (!penggantianForm.jumlahZAK || parseFloat(penggantianForm.jumlahZAK) <= 0) {
-      setErrors((prev) => ({ ...prev, penggantianJumlah: "Jumlah penggantian tidak valid" }));
-      return;
-    }
-    const jumlahInput = parseFloat(penggantianForm.jumlahZAK) || 0;
-    if (penggantianForm.maxJumlah > 0 && jumlahInput > penggantianForm.maxJumlah) {
-      setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi ${penggantianForm.maxJumlah}` }));
-      return;
-    }
-
-    setPenggantianLoading(true);
-    setPenggantianSuccess("");
-
-    try {
-      const selectedRusak = unreplacedRusakList.find((r) => r.transaksiId === penggantianForm.transaksiId && r.rusakIndex === penggantianForm.rusakIndex);
-      if (!selectedRusak) {
-        setErrors((prev) => ({ ...prev, penggantian: "Data barang rusak tidak ditemukan" }));
-        setPenggantianLoading(false);
-        return;
-      }
-
-      const jumlahPenggantian = parseFloat(penggantianForm.jumlahZAK) || 0;
-      const stock = stockList.find((s) => s.kodeBarang === selectedRusak.kodeBarang && s.namaBarang === selectedRusak.namaBarang);
-      const bobotPerUnit = stock ? stock.bobotPerUnit : 50;
-      let totalKG = 0;
-      if (selectedRusak.unitMasuk === "KG") {
-        totalKG = jumlahPenggantian;
-      } else if (selectedRusak.unitMasuk === "BOTOL") {
-        const dusPerZak = 10;
-        const totalBotol = jumlahPenggantian * dusPerZak * (stock?.botolPerDus || 20);
-        totalKG = (totalBotol * 50) / 1000;
-      } else {
-        totalKG = jumlahPenggantian * bobotPerUnit;
-      }
-
-      const penggantianData: any = {
-        tanggal: penggantianForm.tanggal,
-        kodeBarang: selectedRusak.kodeBarang,
-        namaBarang: selectedRusak.namaBarang,
-        unit: selectedRusak.unitMasuk,
-        jumlahZAK: jumlahPenggantian,
-        totalKG: totalKG,
-        fot: selectedRusak.fot,
-        isPenggantianRusak: true,
-        referensiTransaksiId: selectedRusak.transaksiId,
-        referensiRusakIndex: selectedRusak.rusakIndex,
-        fotoUrls: penggantianForm.fotoUrls.length > 0 ? penggantianForm.fotoUrls : null,
-        createdBy: user?.nama || "",
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      await addDoc(collection(db, "transaksiBarangMasuk"), penggantianData);
-
-      const transaksiRef = doc(db, "transaksiBarangMasuk", selectedRusak.transaksiId);
-      const transaksiSnap = await getDoc(transaksiRef);
-      if (transaksiSnap.exists()) {
-        const tData = transaksiSnap.data();
-        const barangRusakArray = tData.barangRusak || [];
-        if (barangRusakArray[selectedRusak.rusakIndex]) {
-          barangRusakArray[selectedRusak.rusakIndex] = {
-            ...barangRusakArray[selectedRusak.rusakIndex],
-            status: "sudah diganti",
-            tanggalPenggantian: penggantianForm.tanggal,
-            jumlahPenggantian: jumlahPenggantian,
-            penggantianFotoUrls: penggantianForm.fotoUrls.length > 0 ? penggantianForm.fotoUrls : null,
-          };
-          await updateDoc(transaksiRef, {
-            barangRusak: barangRusakArray,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
-
-      if (stock) {
-        const stockRef = doc(db, "stockGudang", stock.id);
-        const stockSnap = await getDoc(stockRef);
-        if (stockSnap.exists()) {
-          const sData = stockSnap.data();
-          const currentMasukUnit = sData.barangMasukUnit || 0;
-          const currentMasukKG = sData.barangMasukKG || 0;
-          const currentStokUnit = sData.stokAkhirUnit || 0;
-          const currentStokKG = sData.stokAkhirKG || 0;
-          let addUnit = selectedRusak.unitMasuk === "KG" ? 0 : jumlahPenggantian;
-          let addKG = totalKG;
-          await updateDoc(stockRef, {
-            barangMasukUnit: currentMasukUnit + addUnit,
-            barangMasukKG: currentMasukKG + addKG,
-            stokAkhirUnit: currentStokUnit + addUnit,
-            stokAkhirKG: currentStokKG + addKG,
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
-
-      setPenggantianSuccess("Penggantian barang rusak berhasil disimpan dan stok gudang telah diperbarui!");
-      setPenggantianForm({
-        transaksiId: "",
-        rusakIndex: 0,
-        tanggal: new Date().toISOString().split("T")[0],
-        jumlahZAK: "",
-        fotoUrls: [],
-        maxJumlah: 0,
-      });
-      setShowPenggantianForm(false);
-      fetchStockGudang();
-      fetchUnreplacedRusak();
-      setTimeout(() => setPenggantianSuccess(""), 5000);
-    } catch (error) {
-      console.error(error);
-      setErrors((prev) => ({ ...prev, penggantianSubmit: "Gagal menyimpan penggantian. Silakan coba lagi." }));
-    } finally {
-      setPenggantianLoading(false);
-    }
-  };
-
   const isBotol = formData.unit === "BOTOL";
   const isUnitBased = formData.unit === "ZAK" || formData.unit === "DUS" || formData.unit === "BOTOL";
 
@@ -847,12 +679,9 @@ export default function TransaksiBarangMasukPage() {
     ...stockList.map((s) => ({ value: s.namaBarang, label: `${s.namaBarang} (${s.kodeBarang})` })),
   ];
 
-  const unreplacedOptions = [
-    { value: "", label: "Pilih barang rusak yang akan diganti..." },
-    ...unreplacedRusakList.map((r) => ({
-      value: `${r.transaksiId}_${r.rusakIndex}`,
-      label: `${r.namaBarang} | ${r.rusakJumlah} ${r.rusakUnit} | ${r.rusakKeterangan} | ${r.tanggalTransaksi}`,
-    })),
+  const ttdOptions = [
+    { value: "", label: "Pilih tanda tangan..." },
+    ...ttdList.map((t) => ({ value: t.id, label: `${t.nama} - ${t.jabatan}` })),
   ];
 
   return (
@@ -868,15 +697,6 @@ export default function TransaksiBarangMasukPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span className="font-medium">{successMessage}</span>
-        </div>
-      )}
-
-      {penggantianSuccess && (
-        <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-3 text-blue-700">
-          <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="font-medium">{penggantianSuccess}</span>
         </div>
       )}
 
@@ -1271,6 +1091,34 @@ export default function TransaksiBarangMasukPage() {
           </div>
         </Card>
 
+        <Card title="Tanda Tangan">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Select
+              label="Pilih Tanda Tangan"
+              value={selectedTtdId}
+              onChange={(e) => setSelectedTtdId(e.target.value)}
+              options={ttdOptions}
+            />
+            {selectedTtdId && (
+              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                {(() => {
+                  const ttd = ttdList.find((t) => t.id === selectedTtdId);
+                  if (!ttd) return null;
+                  return (
+                    <>
+                      <img src={ttd.ttdImage} alt={ttd.nama} className="h-12 w-auto object-contain bg-white rounded border border-gray-200" />
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800">{ttd.nama}</p>
+                        <p className="text-xs text-gray-500">{ttd.jabatan}</p>
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        </Card>
+
         <div className="flex items-center justify-end gap-4 pt-4">
           <Button
             type="button"
@@ -1293,6 +1141,7 @@ export default function TransaksiBarangMasukPage() {
               setFotoFiles([]);
               setBarangRusakList([]);
               setAdaBarangRusak(false);
+              setSelectedTtdId("");
               setErrors({});
             }}
           >
@@ -1303,127 +1152,6 @@ export default function TransaksiBarangMasukPage() {
           </Button>
         </div>
       </form>
-
-      <Card title="Penggantian Barang Rusak">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-600">
-              {unreplacedRusakList.length > 0
-                ? `Terdapat ${unreplacedRusakList.length} barang rusak yang belum diganti`
-                : "Tidak ada barang rusak yang menunggu penggantian"}
-            </p>
-            <Button
-              type="button"
-              variant={showPenggantianForm ? "outline" : "primary"}
-              size="sm"
-              onClick={() => setShowPenggantianForm(!showPenggantianForm)}
-            >
-              {showPenggantianForm ? "Tutup Form" : "Input Penggantian"}
-            </Button>
-          </div>
-
-          {showPenggantianForm && (
-            <form onSubmit={handleSubmitPenggantian} className="space-y-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Select
-                  label="Pilih Barang Rusak"
-                  value={penggantianForm.transaksiId ? `${penggantianForm.transaksiId}_${penggantianForm.rusakIndex}` : ""}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val) {
-                      const [tid, ridx] = val.split("_");
-                      const selected = unreplacedRusakList.find((r) => r.transaksiId === tid && r.rusakIndex === parseInt(ridx));
-                      setPenggantianForm((prev) => ({ ...prev, transaksiId: tid, rusakIndex: parseInt(ridx) || 0, jumlahZAK: "", maxJumlah: selected ? selected.rusakJumlah : 0 }));
-                      setErrors((prev) => { const n = { ...prev }; delete n.penggantianJumlah; delete n.penggantian; return n; });
-                    } else {
-                      setPenggantianForm((prev) => ({ ...prev, transaksiId: "", rusakIndex: 0, jumlahZAK: "", maxJumlah: 0 }));
-                    }
-                  }}
-                  options={unreplacedOptions}
-                  required
-                />
-                {penggantianForm.maxJumlah > 0 && (
-                  <p className="text-xs text-amber-700 font-semibold">
-                    Maksimal penggantian: {penggantianForm.maxJumlah} {(() => { const sel = unreplacedRusakList.find((r) => r.transaksiId === penggantianForm.transaksiId && r.rusakIndex === penggantianForm.rusakIndex); return sel ? sel.rusakUnit : ""; })()}
-                  </p>
-                )}
-                <Input
-                  label="Tanggal Penggantian"
-                  type="date"
-                  value={penggantianForm.tanggal}
-                  onChange={(e) => setPenggantianForm((prev) => ({ ...prev, tanggal: e.target.value }))}
-                  required
-                />
-                <Input
-                  label={`Jumlah Penggantian (max: ${penggantianForm.maxJumlah} ${(() => { const sel = unreplacedRusakList.find((r) => r.transaksiId === penggantianForm.transaksiId && r.rusakIndex === penggantianForm.rusakIndex); return sel ? sel.rusakUnit : "ZAK"; })()})`}
-                  type="number"
-                  value={penggantianForm.jumlahZAK}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const num = parseFloat(val) || 0;
-                    if (penggantianForm.maxJumlah > 0 && num > penggantianForm.maxJumlah) {
-                      setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi ${penggantianForm.maxJumlah}` }));
-                    } else {
-                      setErrors((prev) => { const n = { ...prev }; delete n.penggantianJumlah; return n; });
-                    }
-                    setPenggantianForm((prev) => ({ ...prev, jumlahZAK: val }));
-                  }}
-                  placeholder={`Maksimal ${penggantianForm.maxJumlah}`}
-                  error={errors.penggantianJumlah}
-                  required
-                />
-              </div>
-
-              <div className="space-y-2">
-                <label className="relative cursor-pointer inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-xs font-medium">
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  Tambah Foto Penggantian
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={handlePenggantianFotoUpload}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  />
-                </label>
-                {penggantianForm.fotoUrls.length > 0 && (
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                    {penggantianForm.fotoUrls.map((foto, idx) => (
-                      <div key={idx} className="relative group">
-                        <img src={foto} alt={`Penggantian ${idx + 1}`} className="w-full h-20 object-cover rounded border border-gray-200" />
-                        <button
-                          type="button"
-                          onClick={() => removePenggantianFoto(idx)}
-                          className="absolute top-1 right-1 p-1 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {errors.penggantian && <p className="text-sm text-red-600">{errors.penggantian}</p>}
-              {errors.penggantianSubmit && <p className="text-sm text-red-600">{errors.penggantianSubmit}</p>}
-
-              <div className="flex justify-end gap-3">
-                <Button type="button" variant="outline" size="sm" onClick={() => setShowPenggantianForm(false)}>
-                  Batal
-                </Button>
-                <Button type="submit" variant="primary" size="sm" isLoading={penggantianLoading}>
-                  Simpan Penggantian
-                </Button>
-              </div>
-            </form>
-          )}
-        </div>
-      </Card>
 
       {showNewStockModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">

@@ -72,6 +72,17 @@ interface BackupDoc {
   totalPengambilanKG: number;
   createdBy: string;
   createdAt?: Date;
+  ttdId?: string;
+  ttdNama?: string;
+  ttdJabatan?: string;
+  ttdImage?: string;
+}
+
+interface TTDData {
+  id: string;
+  nama: string;
+  jabatan: string;
+  ttdImage: string;
 }
 
 const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
@@ -140,9 +151,13 @@ export default function BarangKeluarBackupPage() {
   const [itemFotoPreviews, setItemFotoPreviews] = useState<Record<number, string[]>>({});
   const [itemExistingFotoUrls, setItemExistingFotoUrls] = useState<Record<number, string[]>>({});
 
+  const [ttdList, setTtdList] = useState<TTDData[]>([]);
+  const [selectedTtdId, setSelectedTtdId] = useState("");
+
   useEffect(() => {
     fetchStockList();
     fetchBackupList();
+    fetchTTDList();
   }, []);
 
   useEffect(() => {
@@ -203,6 +218,10 @@ export default function BarangKeluarBackupPage() {
             totalPengambilanKG: d.totalPengambilanKG || 0,
             createdBy: d.createdBy || "",
             createdAt: d.createdAt?.toDate(),
+            ttdId: d.ttdId || "",
+            ttdNama: d.ttdNama || "",
+            ttdJabatan: d.ttdJabatan || "",
+            ttdImage: d.ttdImage || "",
           } as BackupDoc;
         });
       setBackupList(data);
@@ -210,6 +229,22 @@ export default function BarangKeluarBackupPage() {
       console.error(error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchTTDList = async () => {
+    try {
+      const q = query(collection(db, "ttd"), orderBy("nama", "asc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        nama: doc.data().nama || "",
+        jabatan: doc.data().jabatan || "",
+        ttdImage: doc.data().ttdImage || "",
+      } as TTDData));
+      setTtdList(data);
+    } catch (error) {
+      console.error(error);
     }
   };
 
@@ -346,8 +381,6 @@ export default function BarangKeluarBackupPage() {
     });
   };
 
-  
-
   const updateStockFromItems = async (
     items: Array<{ stockId: string; unit: string; pengambilanUnit: number; totalKG: number; botolPerDus: number }>,
     isReverse: boolean
@@ -436,6 +469,7 @@ export default function BarangKeluarBackupPage() {
     setErrors({});
     setNomorSeriError("");
     setSuccessMessage("");
+    setSelectedTtdId("");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -459,6 +493,7 @@ export default function BarangKeluarBackupPage() {
       }));
 
       const totalPengambilanKG = itemsData.reduce((sum, it) => sum + it.totalKG, 0);
+      const selectedTtd = ttdList.find((t) => t.id === selectedTtdId);
 
       const docData: any = {
         jenis: "barangKeluarBackup",
@@ -474,9 +509,14 @@ export default function BarangKeluarBackupPage() {
         updatedAt: serverTimestamp(),
       };
 
+      if (selectedTtd) {
+        docData.ttdId = selectedTtd.id;
+        docData.ttdNama = selectedTtd.nama;
+        docData.ttdJabatan = selectedTtd.jabatan;
+        docData.ttdImage = selectedTtd.ttdImage;
+      }
+
       const docRef = await addDoc(collection(db, "transaksiBarangKeluar"), docData);
-
-
 
       await updateStockFromItems(itemsData, false);
 
@@ -519,6 +559,7 @@ export default function BarangKeluarBackupPage() {
     setItemExistingFotoUrls(existing);
     setItemFotoFiles({});
     setItemFotoPreviews({});
+    setSelectedTtdId(item.ttdId || "");
     setNomorSeriError("");
     setErrors({});
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -550,8 +591,8 @@ export default function BarangKeluarBackupPage() {
       }));
 
       const totalPengambilanKG = newItemsData.reduce((sum, it) => sum + it.totalKG, 0);
-
-      await updateDoc(oldDocRef, {
+      const selectedTtd = ttdList.find((t) => t.id === selectedTtdId);
+      const updateData: any = {
         nomorSeri: formData.nomorSeri.trim().toUpperCase(),
         tanggal: formData.tanggal,
         driverUnit: formData.driverUnit.trim(),
@@ -560,7 +601,21 @@ export default function BarangKeluarBackupPage() {
         items: newItemsData,
         totalPengambilanKG: totalPengambilanKG,
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      if (selectedTtd) {
+        updateData.ttdId = selectedTtd.id;
+        updateData.ttdNama = selectedTtd.nama;
+        updateData.ttdJabatan = selectedTtd.jabatan;
+        updateData.ttdImage = selectedTtd.ttdImage;
+      } else {
+        updateData.ttdId = null;
+        updateData.ttdNama = null;
+        updateData.ttdJabatan = null;
+        updateData.ttdImage = null;
+      }
+
+      await updateDoc(oldDocRef, updateData);
 
       await updateStockFromItems(oldItems, true);
       await updateStockFromItems(newItemsData, false);
@@ -625,6 +680,7 @@ export default function BarangKeluarBackupPage() {
       .product-info { border: 1px solid #000; padding: 8px; margin-bottom: 12px; background: #f9fafb; }
       .product-info p { font-size: 10px; margin-bottom: 2px; }
       .product-info .label { font-weight: 600; }
+      .ttd-img { max-height: 50px; width: auto; object-fit: contain; }
     </style>`;
 
     const summaryItemsHtml = item.items.map((it, idx) => {
@@ -651,6 +707,14 @@ export default function BarangKeluarBackupPage() {
 
     const piList = item.items.map((it) => it.nomorPI).filter((v, i, a) => v && a.indexOf(v) === i);
     const piListHtml = piList.join(", ") || "-";
+
+    const ttdHtml = item.ttdImage
+      ? `<div style="text-align:center;margin-top:8px;">
+          <img src="${item.ttdImage}" class="ttd-img" alt="TTD" />
+          <p style="font-size:9px;font-weight:700;margin-top:4px;">${item.ttdNama || ""}</p>
+          <p style="font-size:8px;color:#666;">${item.ttdJabatan || ""}</p>
+        </div>`
+      : `<div style="min-height:60px;margin-bottom:4px;"></div>`;
 
     const summaryPage = `<div class="page">
       <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
@@ -689,7 +753,7 @@ export default function BarangKeluarBackupPage() {
       <div class="signature-row">
         <div class="signature-box">
           <p class="signature-title">Dibuat oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-          <div style="min-height:60px;margin-bottom:4px;"></div>
+          ${ttdHtml}
           <p class="signature-name">${item.createdBy || ""}</p>
         </div>
         <div class="signature-box">
@@ -762,6 +826,11 @@ export default function BarangKeluarBackupPage() {
   const stockOptions = [
     { value: "", label: "Pilih produk..." },
     ...stockList.map((s) => ({ value: s.id, label: `${s.kodeBarang} - ${s.namaBarang} (${s.unit})` })),
+  ];
+
+  const ttdOptions = [
+    { value: "", label: "Pilih tanda tangan..." },
+    ...ttdList.map((t) => ({ value: t.id, label: `${t.nama} - ${t.jabatan}` })),
   ];
 
   const columns = [
@@ -941,7 +1010,32 @@ export default function BarangKeluarBackupPage() {
               onChange={(e) => setFormData((prev) => ({ ...prev, nomorSIM: e.target.value }))}
               placeholder="Nomor SIM driver"
             />
+
+            <Select
+              label="Pilih Tanda Tangan"
+              value={selectedTtdId}
+              onChange={(e) => setSelectedTtdId(e.target.value)}
+              options={ttdOptions}
+            />
           </div>
+
+          {selectedTtdId && (
+            <div className="mt-4 flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              {(() => {
+                const ttd = ttdList.find((t) => t.id === selectedTtdId);
+                if (!ttd) return null;
+                return (
+                  <>
+                    <img src={ttd.ttdImage} alt={ttd.nama} className="h-12 w-auto object-contain bg-white rounded border border-gray-200" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{ttd.nama}</p>
+                      <p className="text-xs text-gray-500">{ttd.jabatan}</p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
 
           <div className="mt-8 space-y-4">
             <div className="flex items-center justify-between">
@@ -1074,8 +1168,6 @@ export default function BarangKeluarBackupPage() {
               </div>
             ))}
           </div>
-
-
 
           <div className="mt-8 flex items-center justify-end gap-4">
             {isEditing && (
