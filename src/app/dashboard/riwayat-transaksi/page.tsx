@@ -324,6 +324,7 @@ export default function RiwayatTransaksiPage() {
   const [editBackupFotoFiles, setEditBackupFotoFiles] = useState<string[]>([]);
   const [editBackupFotoPreviews, setEditBackupFotoPreviews] = useState<string[]>([]);
   const [editBackupExistingFotoUrls, setEditBackupExistingFotoUrls] = useState<string[]>([]);
+  const [selectedEditTtdId, setSelectedEditTtdId] = useState("");
 
   interface EditSopirItem {
     namaSopir: string;
@@ -700,6 +701,7 @@ export default function RiwayatTransaksiPage() {
     setSelectedItem(item);
     setNomorSeriError("");
     if (item.jenis === "suratPengangkutanGudangInduk" || item.jenis === "suratPengangkutanDO") {
+      setSelectedEditTtdId(item.ttdId || "");
       setEditSuratForm({
         tanggal: item.tanggal,
         nomorSeri: item.nomorSeri || "",
@@ -726,6 +728,7 @@ export default function RiwayatTransaksiPage() {
         }),
       });
     } else if (item.jenis === "barangKeluarBackup") {
+      setSelectedEditTtdId(item.ttdId || "");
       setEditSuratForm({
         tanggal: item.tanggal,
         nomorSeri: item.nomorSeri || "",
@@ -771,6 +774,7 @@ export default function RiwayatTransaksiPage() {
       });
       setEditMasukExistingFotoUrls(item.fotoUrls || []);
       setEditMasukFotoFiles([]);
+      setSelectedEditTtdId(item.ttdId || "");
     }
     setIsEditModalOpen(true);
   };
@@ -849,6 +853,18 @@ export default function RiwayatTransaksiPage() {
     if (allFotoUrls.length > 0) {
       updateData.fotoUrls = allFotoUrls;
     }
+    const selectedTtd = ttdList.find((t) => t.id === selectedEditTtdId);
+    if (selectedTtd) {
+      updateData.ttdId = selectedTtd.id;
+      updateData.ttdNama = selectedTtd.nama;
+      updateData.ttdJabatan = selectedTtd.jabatan;
+      updateData.ttdImage = selectedTtd.ttdImage;
+    } else {
+      updateData.ttdId = null;
+      updateData.ttdNama = null;
+      updateData.ttdJabatan = null;
+      updateData.ttdImage = null;
+    }
     await updateDoc(doc(db, collectionName, selectedItem!.id), updateData);
 
     if (selectedItem!.jenis === "barangMasuk") {
@@ -917,6 +933,7 @@ export default function RiwayatTransaksiPage() {
     });
 
     const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
+    const selectedTtd = ttdList.find((t) => t.id === selectedEditTtdId);
     const updateData: any = {
       tanggal: editSuratForm.tanggal,
       nomorSeri: newNomorSeri,
@@ -927,7 +944,17 @@ export default function RiwayatTransaksiPage() {
       totalPengambilanKG: totalPengambilanKG,
       updatedAt: serverTimestamp(),
     };
-
+    if (selectedTtd) {
+      updateData.ttdId = selectedTtd.id;
+      updateData.ttdNama = selectedTtd.nama;
+      updateData.ttdJabatan = selectedTtd.jabatan;
+      updateData.ttdImage = selectedTtd.ttdImage;
+    } else {
+      updateData.ttdId = null;
+      updateData.ttdNama = null;
+      updateData.ttdJabatan = null;
+      updateData.ttdImage = null;
+    }
     await updateDoc(doc(db, "transaksiBarangKeluar", selectedItem!.id), updateData);
 
     const productMapOld: Record<string, number> = {};
@@ -1022,6 +1049,7 @@ export default function RiwayatTransaksiPage() {
       };
     });
     const totalPengambilanKG = newItems.reduce((sum, it) => sum + it.totalKG, 0);
+    const selectedTtd = ttdList.find((t) => t.id === selectedEditTtdId);
     const updateData: any = {
       tanggal: editSuratForm.tanggal,
       nomorSeri: newNomorSeri,
@@ -1032,6 +1060,17 @@ export default function RiwayatTransaksiPage() {
       totalPengambilanKG: totalPengambilanKG,
       updatedAt: serverTimestamp(),
     };
+    if (selectedTtd) {
+      updateData.ttdId = selectedTtd.id;
+      updateData.ttdNama = selectedTtd.nama;
+      updateData.ttdJabatan = selectedTtd.jabatan;
+      updateData.ttdImage = selectedTtd.ttdImage;
+    } else {
+      updateData.ttdId = null;
+      updateData.ttdNama = null;
+      updateData.ttdJabatan = null;
+      updateData.ttdImage = null;
+    }
     const suratQuery = query(collection(db, "suratPengangkutan"), where("nomorSeri", "==", selectedItem!.nomorSeri || ""));
     const suratSnapshot = await getDocs(suratQuery);
     if (!suratSnapshot.empty) {
@@ -2808,7 +2847,7 @@ export default function RiwayatTransaksiPage() {
         </div>
       )}
 
-      <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditMasukFotoFiles([]); setEditMasukExistingFotoUrls([]); setEditBackupFotoFiles([]); setEditBackupFotoPreviews([]); setEditBackupExistingFotoUrls([]); setEditForm((prev) => ({ ...prev, sopirNopolList: [{ namaSopir: "", nopol: "", nomorSIM: "" }] })); }} title={isSuratEdit ? "Edit Surat Pengangkutan" : isBackupEdit ? "Edit Barang Keluar Backup" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : selectedItem?.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" : "Transaksi Barang Keluar"}`} size="lg" footer={
+      <Modal isOpen={isEditModalOpen} onClose={() => { setIsEditModalOpen(false); setEditMasukFotoFiles([]); setEditMasukExistingFotoUrls([]); setEditBackupFotoFiles([]); setEditBackupFotoPreviews([]); setEditBackupExistingFotoUrls([]); setEditForm((prev) => ({ ...prev, sopirNopolList: [{ namaSopir: "", nopol: "", nomorSIM: "" }] })); setSelectedEditTtdId(""); }} title={isSuratEdit ? "Edit Surat Pengangkutan" : isBackupEdit ? "Edit Barang Keluar Backup" : `Edit ${selectedItem?.jenis === "barangMasuk" ? "Transaksi Barang Masuk" : selectedItem?.jenis === "penggantianRusak" ? "Penggantian Barang Rusak" : "Transaksi Barang Keluar"}`} size="lg" footer={
         <div className="flex justify-end gap-3">
           <Button variant="outline" onClick={() => setIsEditModalOpen(false)}>Batal</Button>
           <Button variant="primary" onClick={handleUpdate} isLoading={isSubmitting} disabled={isSuratEdit && !!nomorSeriError}>Simpan Perubahan</Button>
@@ -2831,6 +2870,34 @@ export default function RiwayatTransaksiPage() {
               <Input label="Nomor Polisi" type="text" value={editSuratForm.nomorPolisi} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, nomorPolisi: e.target.value }))} required />
               <Input label="Driver Unit" type="text" value={editSuratForm.driverUnit} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, driverUnit: e.target.value }))} required />
               <Input label="Nomor SIM" type="text" value={editSuratForm.nomorSIM} onChange={(e) => setEditSuratForm((prev) => ({ ...prev, nomorSIM: e.target.value }))} className="md:col-span-2" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <Select
+                label="Pilih Tanda Tangan"
+                value={selectedEditTtdId}
+                onChange={(e) => setSelectedEditTtdId(e.target.value)}
+                options={[
+                  { value: "", label: "Pilih tanda tangan..." },
+                  ...ttdList.map((t) => ({ value: t.id, label: `${t.nama} - ${t.jabatan}` })),
+                ]}
+              />
+              {selectedEditTtdId && (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  {(() => {
+                    const ttd = ttdList.find((t) => t.id === selectedEditTtdId);
+                    if (!ttd) return null;
+                    return (
+                      <>
+                        <img src={ttd.ttdImage} alt={ttd.nama} className="h-12 w-auto object-contain bg-white rounded border border-gray-200" />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">{ttd.nama}</p>
+                          <p className="text-xs text-gray-500">{ttd.jabatan}</p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
             </div>
             <div className="space-y-4">
               <h4 className="text-sm font-semibold text-gray-700">Item Pengangkutan</h4>
@@ -3003,6 +3070,34 @@ export default function RiwayatTransaksiPage() {
                 ))}
               </div>
             )}
+            <div className="md:col-span-2 space-y-4">
+              <Select
+                label="Pilih Tanda Tangan"
+                value={selectedEditTtdId}
+                onChange={(e) => setSelectedEditTtdId(e.target.value)}
+                options={[
+                  { value: "", label: "Pilih tanda tangan..." },
+                  ...ttdList.map((t) => ({ value: t.id, label: `${t.nama} - ${t.jabatan}` })),
+                ]}
+              />
+              {selectedEditTtdId && (
+                <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                  {(() => {
+                    const ttd = ttdList.find((t) => t.id === selectedEditTtdId);
+                    if (!ttd) return null;
+                    return (
+                      <>
+                        <img src={ttd.ttdImage} alt={ttd.nama} className="h-12 w-auto object-contain bg-white rounded border border-gray-200" />
+                        <div>
+                          <p className="text-sm font-semibold text-gray-800">{ttd.nama}</p>
+                          <p className="text-xs text-gray-500">{ttd.jabatan}</p>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+            </div>
             {selectedItem?.jenis === "barangKeluar" && (
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
