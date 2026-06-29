@@ -220,9 +220,10 @@ export default function TransaksiBarangMasukPage() {
         newPhotos.push(compressed);
       }
       setFotoFiles((prev) => [...prev, ...newPhotos]);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrors((prev) => ({ ...prev, foto: "Gagal memproses foto. Silakan coba lagi." }));
+      const errorMsg = error?.message || "Format foto tidak didukung atau ukuran terlalu besar";
+      setErrors((prev) => ({ ...prev, foto: `Gagal memproses foto: ${errorMsg}` }));
     } finally {
       setFotoLoading(false);
       e.target.value = "";
@@ -247,9 +248,10 @@ export default function TransaksiBarangMasukPage() {
         newList[index] = { ...newList[index], fotoUrls: [...(newList[index].fotoUrls || []), ...newPhotos] };
         return newList;
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrors((prev) => ({ ...prev, [`barangRusak_${index}_foto`]: "Gagal memproses foto." }));
+      const errorMsg = error?.message || "Format foto tidak didukung atau ukuran terlalu besar";
+      setErrors((prev) => ({ ...prev, [`barangRusak_${index}_foto`]: `Gagal memproses foto rusak: ${errorMsg}` }));
     } finally {
       e.target.value = "";
     }
@@ -346,24 +348,24 @@ export default function TransaksiBarangMasukPage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    if (!formData.tanggal) newErrors.tanggal = "Tanggal wajib diisi";
-    if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib dipilih";
-    if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = "Jumlah harus lebih dari 0";
-    if (!formData.fot.trim()) newErrors.fot = "FOT wajib diisi";
+    if (!formData.tanggal) newErrors.tanggal = "Tanggal barang masuk wajib diisi";
+    if (!formData.namaBarang.trim()) newErrors.namaBarang = "Nama barang wajib dipilih dari daftar";
+    if (!formData.jumlahZAK || parseFloat(formData.jumlahZAK) <= 0) newErrors.jumlahZAK = `Jumlah barang masuk (${formData.unit === "KG" ? "KG" : "ZAK"}) wajib diisi dan harus lebih dari 0`;
+    if (!formData.fot.trim()) newErrors.fot = "FOT (Tempat Gudang) wajib diisi";
     if (!formData.nomorKontainer.trim()) newErrors.nomorKontainer = "Nomor kontainer wajib diisi";
 
     if (formData.unit === "BOTOL") {
-      if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Botol per DUS tidak valid";
+      if (!formData.botolPerDus || parseFloat(formData.botolPerDus) <= 0) newErrors.botolPerDus = "Botol per DUS wajib diisi dan harus lebih dari 0";
     }
 
     if (adaBarangRusak && barangRusakList.length > 0) {
       let totalRusak = 0;
       barangRusakList.forEach((item, idx) => {
         if (!item.jumlah || parseFloat(item.jumlah) <= 0) {
-          newErrors[`barangRusak_${idx}_jumlah`] = "Jumlah barang rusak tidak valid";
+          newErrors[`barangRusak_${idx}_jumlah`] = `Barang rusak ${idx + 1}: Jumlah wajib diisi dan harus lebih dari 0`;
         }
         if (!item.keterangan.trim()) {
-          newErrors[`barangRusak_${idx}_keterangan`] = "Keterangan wajib diisi";
+          newErrors[`barangRusak_${idx}_keterangan`] = `Barang rusak ${idx + 1}: Keterangan wajib diisi`;
         }
         if (item.unit === formData.unit) {
           totalRusak += parseFloat(item.jumlah) || 0;
@@ -371,7 +373,7 @@ export default function TransaksiBarangMasukPage() {
       });
       const jumlahMasuk = parseFloat(formData.jumlahZAK) || 0;
       if (totalRusak >= jumlahMasuk) {
-        newErrors.barangRusak = "Total barang rusak tidak boleh melebihi atau sama dengan jumlah masuk";
+        newErrors.barangRusak = `Total barang rusak (${totalRusak} ${formData.unit}) tidak boleh melebihi atau sama dengan jumlah masuk (${jumlahMasuk} ${formData.unit})`;
       }
     }
 
@@ -477,9 +479,10 @@ export default function TransaksiBarangMasukPage() {
       });
 
       return true;
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating new stock:", error);
-      setErrors({ submit: "Gagal membuat data stock baru. Silakan coba lagi." });
+      const errorMsg = error?.message || "Terjadi kesalahan saat membuat data stock baru";
+      setErrors((prev) => ({ ...prev, submit: `Gagal membuat stock baru: ${errorMsg}` }));
       return false;
     }
   };
@@ -656,9 +659,10 @@ export default function TransaksiBarangMasukPage() {
 
       fetchStockGudang();
       setTimeout(() => setSuccessMessage(""), 5000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      setErrors({ submit: "Gagal menyimpan transaksi. Silakan coba lagi." });
+      const errorMsg = error?.message || "Terjadi kesalahan saat menyimpan transaksi";
+      setErrors((prev) => ({ ...prev, submit: `Gagal menyimpan: ${errorMsg}` }));
     } finally {
       setIsSubmitting(false);
     }
@@ -700,12 +704,21 @@ export default function TransaksiBarangMasukPage() {
         </div>
       )}
 
-      {errors.submit && (
-        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
-          <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-          <span className="font-medium">{errors.submit}</span>
+      {Object.keys(errors).length > 0 && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
+          <div className="flex items-start gap-3 mb-2">
+            <svg className="w-6 h-6 flex-shrink-0 text-red-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="flex-1">
+              <p className="font-bold text-red-800 text-sm mb-1">Gagal menyimpan data. Terdapat {Object.keys(errors).length} kesalahan:</p>
+              <ul className="list-disc list-inside text-sm text-red-700 space-y-0.5">
+                {Object.entries(errors).map(([key, msg]) => (
+                  <li key={key}>{msg}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
       )}
 
