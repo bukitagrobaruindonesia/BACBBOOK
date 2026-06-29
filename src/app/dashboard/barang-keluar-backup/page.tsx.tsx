@@ -961,7 +961,7 @@ export default function BarangKeluarBackupPage() {
               <input
                 type="text"
                 value={formData.nomorSeri}
-                onChange={(e) => setFormData((prev) => ({ ...prev, nomorSeri: e.target.value }))}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData((prev) => ({ ...prev, nomorSeri: e.target.value }))}
                 onBlur={handleNomorSeriBlur}
                 placeholder="Contoh: BAGB-SP/2026/VI/0001"
                 className={`w-full px-4 py-3 border rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all font-mono text-sm ${nomorSeriError ? "border-red-500 bg-red-50" : "border-gray-300"}`}
@@ -981,7 +981,7 @@ export default function BarangKeluarBackupPage() {
               label="Tanggal"
               type="date"
               value={formData.tanggal}
-              onChange={(e) => setFormData((prev) => ({ ...prev, tanggal: e.target.value }))}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData((prev) => ({ ...prev, tanggal: e.target.value }))}
               required
             />
 
@@ -989,7 +989,7 @@ export default function BarangKeluarBackupPage() {
               label="Driver Unit"
               type="text"
               value={formData.driverUnit}
-              onChange={(e) => setFormData((prev) => ({ ...prev, driverUnit: e.target.value }))}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData((prev) => ({ ...prev, driverUnit: e.target.value }))}
               placeholder="Nama driver"
               required
             />
@@ -998,7 +998,7 @@ export default function BarangKeluarBackupPage() {
               label="Nomor Polisi"
               type="text"
               value={formData.nomorPolisi}
-              onChange={(e) => setFormData((prev) => ({ ...prev, nomorPolisi: e.target.value }))}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData((prev) => ({ ...prev, nomorPolisi: e.target.value }))}
               placeholder="Contoh: KT 1234 XY"
               required
             />
@@ -1007,14 +1007,14 @@ export default function BarangKeluarBackupPage() {
               label="Nomor SIM (Opsional)"
               type="text"
               value={formData.nomorSIM}
-              onChange={(e) => setFormData((prev) => ({ ...prev, nomorSIM: e.target.value }))}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData((prev) => ({ ...prev, nomorSIM: e.target.value }))}
               placeholder="Nomor SIM driver"
             />
 
             <Select
               label="Pilih Tanda Tangan"
               value={selectedTtdId}
-              onChange={(e) => setSelectedTtdId(e.target.value)}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setSelectedTtdId(e.target.value)}
               options={ttdOptions}
             />
           </div>
@@ -1081,7 +1081,7 @@ export default function BarangKeluarBackupPage() {
                     label="Nomor PI"
                     type="text"
                     value={item.nomorPI}
-                    onChange={(e) => handleItemChange(idx, "nomorPI", e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleItemChange(idx, "nomorPI", e.target.value)}
                     placeholder="Ketik nomor PI"
                     required
                   />
@@ -1090,7 +1090,7 @@ export default function BarangKeluarBackupPage() {
                     label={item.unit === "DUS" ? "Jumlah (BOTOL)" : item.unit === "BOTOL" ? "Jumlah (BOTOL)" : `Jumlah (${item.unit || "unit"})`}
                     type="number"
                     value={item.pengambilanUnit}
-                    onChange={(e) => handleItemChange(idx, "pengambilanUnit", e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => handleItemChange(idx, "pengambilanUnit", e.target.value)}
                     placeholder={item.unit === "DUS" ? "Contoh: 5 (botol)" : item.unit === "BOTOL" ? "Contoh: 5 (botol)" : "0"}
                     required
                   />
@@ -1188,7 +1188,7 @@ export default function BarangKeluarBackupPage() {
           data={backupList}
           isLoading={isLoading}
           emptyMessage="Belum ada data barang keluar backup"
-          keyExtractor={(row) => row.id}
+          keyExtractor={(row: BackupDoc) => row.id}
         />
       </Card>
     </div>

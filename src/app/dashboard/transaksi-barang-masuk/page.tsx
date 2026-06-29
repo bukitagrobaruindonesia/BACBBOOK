@@ -167,7 +167,7 @@ export default function TransaksiBarangMasukPage() {
     }
   };
 
-  const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
+  const compressImage = (file: File, maxSizeMB: number = 0.5): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -175,7 +175,7 @@ export default function TransaksiBarangMasukPage() {
         img.onload = () => {
           let width = img.width;
           let height = img.height;
-          const maxDimension = 1920;
+          const maxDimension = 1280;
           if (width > maxDimension || height > maxDimension) {
             if (width > height) {
               height = Math.round((height * maxDimension) / width);
@@ -191,12 +191,16 @@ export default function TransaksiBarangMasukPage() {
           const ctx = canvas.getContext("2d");
           if (!ctx) { reject(new Error("Canvas context failed")); return; }
           ctx.drawImage(img, 0, 0, width, height);
-          let quality = 0.9;
+          let quality = 0.7;
           let result = canvas.toDataURL("image/jpeg", quality);
           const maxBytes = maxSizeMB * 1024 * 1024;
-          while (result.length > maxBytes && quality > 0.1) {
-            quality -= 0.1;
+          while (result.length > maxBytes && quality > 0.3) {
+            quality -= 0.05;
             result = canvas.toDataURL("image/jpeg", quality);
+          }
+          if (result.length > maxBytes) {
+            reject(new Error(`Foto terlalu besar setelah kompresi (${Math.round(result.length / 1024)}KB). Maksimal ${maxSizeMB * 1024}KB.`));
+            return;
           }
           resolve(result);
         };
@@ -208,18 +212,32 @@ export default function TransaksiBarangMasukPage() {
     });
   };
 
+  const MAX_FOTO_PER_FIELD = 2;
+
   const handleFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
+    if (fotoFiles.length + files.length > MAX_FOTO_PER_FIELD) {
+      setErrors((prev) => ({ ...prev, foto: `Maksimal ${MAX_FOTO_PER_FIELD} foto dokumentasi. Anda sudah memiliki ${fotoFiles.length} foto.` }));
+      e.target.value = "";
+      return;
+    }
     setFotoLoading(true);
     try {
       const newPhotos: string[] = [];
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        const compressed = await compressImage(file, 2);
+        const compressed = await compressImage(file, 0.5);
         newPhotos.push(compressed);
       }
       setFotoFiles((prev) => [...prev, ...newPhotos]);
+      if (errors.foto) {
+        setErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors.foto;
+          return newErrors;
+        });
+      }
     } catch (error: any) {
       console.error(error);
       const errorMsg = error?.message || "Format foto tidak didukung atau ukuran terlalu besar";
@@ -237,10 +255,16 @@ export default function TransaksiBarangMasukPage() {
   const handleBarangRusakFotoUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
+    const currentRusakFotos = barangRusakList[index]?.fotoUrls || [];
+    if (currentRusakFotos.length + files.length > MAX_FOTO_PER_FIELD) {
+      setErrors((prev) => ({ ...prev, [`barangRusak_${index}_foto`]: `Maksimal ${MAX_FOTO_PER_FIELD} foto per barang rusak. Sudah ada ${currentRusakFotos.length} foto.` }));
+      e.target.value = "";
+      return;
+    }
     try {
       const newPhotos: string[] = [];
       for (let i = 0; i < files.length; i++) {
-        const compressed = await compressImage(files[i], 2);
+        const compressed = await compressImage(files[i], 0.5);
         newPhotos.push(compressed);
       }
       setBarangRusakList((prev) => {
@@ -248,6 +272,13 @@ export default function TransaksiBarangMasukPage() {
         newList[index] = { ...newList[index], fotoUrls: [...(newList[index].fotoUrls || []), ...newPhotos] };
         return newList;
       });
+      if (errors[`barangRusak_${index}_foto`]) {
+        setErrors((prev) => {
+          const newErrors = { ...prev };
+          delete newErrors[`barangRusak_${index}_foto`];
+          return newErrors;
+        });
+      }
     } catch (error: any) {
       console.error(error);
       const errorMsg = error?.message || "Format foto tidak didukung atau ukuran terlalu besar";
@@ -921,7 +952,7 @@ export default function TransaksiBarangMasukPage() {
             )}
 
             <p className="text-xs text-gray-500">
-              Maksimal 2MB per foto. Foto akan otomatis dikompres jika melebihi batas.
+              Maksimal 2 foto. Maksimal 500KB per foto. Foto akan otomatis dikompres.
             </p>
           </div>
         </Card>
