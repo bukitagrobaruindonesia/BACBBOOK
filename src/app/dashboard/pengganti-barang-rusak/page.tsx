@@ -304,11 +304,12 @@ export default function PenggantiBarangRusakPage() {
 
   const fetchPenggantianHistory = async () => {
     try {
-      const q = query(collection(db, "transaksiBarangMasuk"), where("isPenggantianRusak", "==", true), orderBy("createdAt", "desc"));
+      const q = query(collection(db, "transaksiBarangMasuk"), orderBy("createdAt", "desc"));
       const snapshot = await getDocs(q);
       const list: PenggantianRecord[] = [];
       for (const docSnap of snapshot.docs) {
         const d = docSnap.data();
+        if (d.isPenggantianRusak !== true) continue;
         let fotoUrls: string[] = [];
         try {
           const fotoQ = query(collection(db, "penggantianFoto"), where("penggantianTransaksiId", "==", docSnap.id));
