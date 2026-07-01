@@ -35,6 +35,7 @@ interface UnreplacedRusak {
   fotoUrls?: string[];
   sudahDiganti: number;
   sisaRusak: number;
+  jumlahTidakDiganti: number;
   status: string;
 }
 
@@ -51,6 +52,7 @@ export default function PenggantiBarangRusakPage() {
     rusakIndex: 0,
     tanggal: new Date().toISOString().split("T")[0],
     jumlahZAK: "",
+    jumlahTidakDiganti: "",
     fotoUrls: [] as string[],
     maxJumlah: 0,
     unitRusak: "ZAK",
@@ -93,7 +95,8 @@ export default function PenggantiBarangRusakPage() {
         if (d.adaBarangRusak && Array.isArray(d.barangRusak)) {
           d.barangRusak.forEach((r: any, idx: number) => {
             const sudahDiganti = r.jumlahDiganti || 0;
-            const sisaRusak = (r.jumlah || 0) - sudahDiganti;
+            const jumlahTidakDiganti = r.jumlahTidakDiganti || 0;
+            const sisaRusak = (r.jumlah || 0) - sudahDiganti - jumlahTidakDiganti;
             if (sisaRusak > 0) {
               list.push({
                 transaksiId: docSnap.id,
@@ -109,6 +112,7 @@ export default function PenggantiBarangRusakPage() {
                 fotoUrls: r.fotoUrls || [],
                 sudahDiganti: sudahDiganti,
                 sisaRusak: sisaRusak,
+                jumlahTidakDiganti: jumlahTidakDiganti,
                 status: r.status || "belum diganti",
               });
             }
@@ -121,7 +125,7 @@ export default function PenggantiBarangRusakPage() {
     }
   };
 
-  const compressImage = (file: File, maxSizeMB: number = 0.5): Promise<string> => {
+  const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -165,23 +169,14 @@ export default function PenggantiBarangRusakPage() {
   const handlePenggantianFotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
-    const currentCount = penggantianForm.fotoUrls.length;
-    if (currentCount >= 3) {
-      setErrors((prev) => ({ ...prev, penggantianFoto: "Maksimal 3 foto" }));
-      e.target.value = "";
-      return;
-    }
-    const remaining = 3 - currentCount;
-    const filesToProcess = Array.from(files).slice(0, remaining);
     setFotoLoading(true);
     try {
       const newPhotos: string[] = [];
-      for (let i = 0; i < filesToProcess.length; i++) {
-        const compressed = await compressImage(filesToProcess[i], 0.5);
+      for (let i = 0; i < files.length; i++) {
+        const compressed = await compressImage(files[i], 2);
         newPhotos.push(compressed);
       }
       setPenggantianForm((prev) => ({ ...prev, fotoUrls: [...prev.fotoUrls, ...newPhotos] }));
-      setErrors((prev) => { const n = { ...prev }; delete n.penggantianFoto; return n; });
     } catch (error) {
       console.error(error);
     } finally {
@@ -205,8 +200,17 @@ export default function PenggantiBarangRusakPage() {
       return;
     }
     const jumlahInput = parseFloat(penggantianForm.jumlahZAK) || 0;
+    const jumlahTidakInput = parseFloat(penggantianForm.jumlahTidakDiganti) || 0;
     if (penggantianForm.maxJumlah > 0 && jumlahInput > penggantianForm.maxJumlah) {
       setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi sisa ${penggantianForm.maxJumlah}` }));
+      return;
+    }
+    if (penggantianForm.maxJumlah > 0 && jumlahTidakInput > penggantianForm.maxJumlah) {
+      setErrors((prev) => ({ ...prev, penggantianTidakDiganti: `Jumlah tidak diganti tidak boleh melebihi sisa ${penggantianForm.maxJumlah}` }));
+      return;
+    }
+    if (jumlahInput + jumlahTidakInput > penggantianForm.maxJumlah) {
+      setErrors((prev) => ({ ...prev, penggantianTotal: `Total diganti + tidak diganti tidak boleh melebihi sisa ${penggantianForm.maxJumlah}` }));
       return;
     }
 
@@ -222,6 +226,7 @@ export default function PenggantiBarangRusakPage() {
       }
 
       const jumlahPenggantian = parseFloat(penggantianForm.jumlahZAK) || 0;
+      const jumlahTidakDiganti = parseFloat(penggantianForm.jumlahTidakDiganti) || 0;
       const stock = stockList.find((s) => s.kodeBarang === selectedRusak.kodeBarang && s.namaBarang === selectedRusak.namaBarang);
       const bobotPerUnit = stock ? stock.bobotPerUnit : 50;
       let totalKG = 0;
@@ -270,15 +275,20 @@ export default function PenggantiBarangRusakPage() {
         const barangRusakArray = tData.barangRusak || [];
         if (barangRusakArray[selectedRusak.rusakIndex]) {
           const currentSudahDiganti = barangRusakArray[selectedRusak.rusakIndex].jumlahDiganti || 0;
+          const currentTidakDiganti = barangRusakArray[selectedRusak.rusakIndex].jumlahTidakDiganti || 0;
           const newSudahDiganti = currentSudahDiganti + jumlahPenggantian;
+          const newTidakDiganti = currentTidakDiganti + jumlahTidakDiganti;
           const totalRusak = barangRusakArray[selectedRusak.rusakIndex].jumlah || 0;
-          const newSisa = totalRusak - newSudahDiganti;
-          const newStatus = newSisa <= 0 ? "sudah diganti" : "sebagian diganti";
+          const newSisa = totalRusak - newSudahDiganti - newTidakDiganti;
+          let newStatus = "belum diganti";
+          if (newSisa <= 0) newStatus = "selesai";
+          else if (newSudahDiganti > 0) newStatus = "sebagian diganti";
 
           barangRusakArray[selectedRusak.rusakIndex] = {
             ...barangRusakArray[selectedRusak.rusakIndex],
             status: newStatus,
             jumlahDiganti: newSudahDiganti,
+            jumlahTidakDiganti: newTidakDiganti,
             sisaRusak: newSisa > 0 ? newSisa : 0,
             tanggalPenggantian: penggantianForm.tanggal,
             penggantianFotoUrls: penggantianForm.fotoUrls.length > 0 ? penggantianForm.fotoUrls : null,
@@ -310,12 +320,18 @@ export default function PenggantiBarangRusakPage() {
         }
       }
 
-      setSuccessMessage(`Penggantian berhasil! ${jumlahPenggantian} ${selectedRusak.rusakUnit} telah masuk ke stok. ${selectedRusak.sisaRusak - jumlahPenggantian > 0 ? `Sisa ${selectedRusak.sisaRusak - jumlahPenggantian} ${selectedRusak.rusakUnit} masih menunggu penggantian.` : "Semua barang rusak telah diganti."}`);
+      const remainingAfter = selectedRusak.sisaRusak - jumlahPenggantian - jumlahTidakDiganti;
+      let msg = `Penggantian berhasil! ${jumlahPenggantian} ${selectedRusak.rusakUnit} telah masuk ke stok.`;
+      if (jumlahTidakDiganti > 0) msg += ` ${jumlahTidakDiganti} ${selectedRusak.rusakUnit} ditandai tidak diganti.`;
+      if (remainingAfter > 0) msg += ` Sisa ${remainingAfter} ${selectedRusak.rusakUnit} masih menunggu penggantian.`;
+      else msg += " Semua barang rusak selesai.";
+      setSuccessMessage(msg);
       setPenggantianForm({
         transaksiId: "",
         rusakIndex: 0,
         tanggal: new Date().toISOString().split("T")[0],
         jumlahZAK: "",
+        jumlahTidakDiganti: "",
         fotoUrls: [],
         maxJumlah: 0,
         unitRusak: "ZAK",
@@ -377,6 +393,7 @@ export default function PenggantiBarangRusakPage() {
                   <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Kode</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Total Rusak</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Sudah Diganti</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Tidak Diganti</th>
                   <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Sisa</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Keterangan</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Tanggal</th>
@@ -390,6 +407,7 @@ export default function PenggantiBarangRusakPage() {
                     <td className="px-3 py-2 text-sm font-mono text-gray-600 border">{r.kodeBarang}</td>
                     <td className="px-3 py-2 text-sm text-gray-900 text-right font-mono border">{r.rusakJumlah.toLocaleString("id-ID")} {r.rusakUnit}</td>
                     <td className="px-3 py-2 text-sm text-green-700 text-right font-mono border font-semibold">{r.sudahDiganti.toLocaleString("id-ID")} {r.rusakUnit}</td>
+                    <td className="px-3 py-2 text-sm text-gray-600 text-right font-mono border">{r.jumlahTidakDiganti.toLocaleString("id-ID")} {r.rusakUnit}</td>
                     <td className="px-3 py-2 text-sm text-red-700 text-right font-mono border font-bold">{r.sisaRusak.toLocaleString("id-ID")} {r.rusakUnit}</td>
                     <td className="px-3 py-2 text-sm text-gray-700 border">{r.rusakKeterangan}</td>
                     <td className="px-3 py-2 text-sm text-gray-600 border">{r.tanggalTransaksi}</td>
@@ -417,6 +435,7 @@ export default function PenggantiBarangRusakPage() {
                     transaksiId: tid,
                     rusakIndex: parseInt(ridx) || 0,
                     jumlahZAK: selected ? String(selected.sisaRusak) : "",
+                    jumlahTidakDiganti: "",
                     maxJumlah: selected ? selected.sisaRusak : 0,
                     unitRusak: selected ? selected.rusakUnit : "ZAK",
                   }));
@@ -441,49 +460,64 @@ export default function PenggantiBarangRusakPage() {
               required
             />
             <Input
-              label={`Jumlah Penggantian (max: ${penggantianForm.maxJumlah} ${penggantianForm.unitRusak})`}
+              label={`Jumlah Diganti (max: ${penggantianForm.maxJumlah} ${penggantianForm.unitRusak})`}
               type="number"
               value={penggantianForm.jumlahZAK}
               onChange={(e) => {
                 const val = e.target.value;
                 const num = parseFloat(val) || 0;
+                const tidakNum = parseFloat(penggantianForm.jumlahTidakDiganti) || 0;
                 if (penggantianForm.maxJumlah > 0 && num > penggantianForm.maxJumlah) {
-                  setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi sisa ${penggantianForm.maxJumlah} ${penggantianForm.unitRusak}` }));
+                  setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah diganti tidak boleh melebihi sisa ${penggantianForm.maxJumlah} ${penggantianForm.unitRusak}` }));
+                } else if (penggantianForm.maxJumlah > 0 && num + tidakNum > penggantianForm.maxJumlah) {
+                  setErrors((prev) => ({ ...prev, penggantianTotal: `Total diganti + tidak diganti tidak boleh melebihi sisa ${penggantianForm.maxJumlah}` }));
                 } else {
-                  setErrors((prev) => { const n = { ...prev }; delete n.penggantianJumlah; return n; });
+                  setErrors((prev) => { const n = { ...prev }; delete n.penggantianJumlah; delete n.penggantianTotal; return n; });
                 }
                 setPenggantianForm((prev) => ({ ...prev, jumlahZAK: val }));
               }}
               placeholder={`Maksimal ${penggantianForm.maxJumlah} ${penggantianForm.unitRusak}`}
-              error={errors.penggantianJumlah}
+              error={errors.penggantianJumlah || errors.penggantianTotal}
               required
+            />
+            <Input
+              label={`Jumlah Tidak Diganti`}
+              type="number"
+              value={penggantianForm.jumlahTidakDiganti}
+              onChange={(e) => {
+                const val = e.target.value;
+                const num = parseFloat(val) || 0;
+                const digantiNum = parseFloat(penggantianForm.jumlahZAK) || 0;
+                if (penggantianForm.maxJumlah > 0 && num > penggantianForm.maxJumlah) {
+                  setErrors((prev) => ({ ...prev, penggantianTidakDiganti: `Jumlah tidak diganti tidak boleh melebihi sisa ${penggantianForm.maxJumlah}` }));
+                } else if (penggantianForm.maxJumlah > 0 && num + digantiNum > penggantianForm.maxJumlah) {
+                  setErrors((prev) => ({ ...prev, penggantianTotal: `Total diganti + tidak diganti tidak boleh melebihi sisa ${penggantianForm.maxJumlah}` }));
+                } else {
+                  setErrors((prev) => { const n = { ...prev }; delete n.penggantianTidakDiganti; delete n.penggantianTotal; return n; });
+                }
+                setPenggantianForm((prev) => ({ ...prev, jumlahTidakDiganti: val }));
+              }}
+              placeholder="0"
+              error={errors.penggantianTidakDiganti || errors.penggantianTotal}
             />
           </div>
 
           <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <label className={`relative cursor-pointer inline-flex items-center px-3 py-1.5 rounded-lg transition-colors text-xs font-medium ${penggantianForm.fotoUrls.length >= 3 ? "bg-gray-400 text-gray-200 cursor-not-allowed" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}>
-                <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Tambah Foto Penggantian
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handlePenggantianFotoUpload}
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                  disabled={fotoLoading || penggantianForm.fotoUrls.length >= 3}
-                />
-              </label>
-              <span className="text-xs text-gray-500 font-medium">
-                {penggantianForm.fotoUrls.length}/3 foto
-              </span>
-            </div>
-            {errors.penggantianFoto && (
-              <p className="text-sm text-red-600">{errors.penggantianFoto}</p>
-            )}
+            <label className="relative cursor-pointer inline-flex items-center px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-xs font-medium">
+              <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+              Tambah Foto Penggantian
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handlePenggantianFotoUpload}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                disabled={fotoLoading}
+              />
+            </label>
             {fotoLoading && (
               <span className="text-sm text-gray-500 flex items-center gap-2">
                 <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
@@ -522,6 +556,7 @@ export default function PenggantiBarangRusakPage() {
                 rusakIndex: 0,
                 tanggal: new Date().toISOString().split("T")[0],
                 jumlahZAK: "",
+                jumlahTidakDiganti: "",
                 fotoUrls: [],
                 maxJumlah: 0,
                 unitRusak: "ZAK",
