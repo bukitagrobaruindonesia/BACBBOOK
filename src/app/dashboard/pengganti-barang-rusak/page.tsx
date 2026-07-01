@@ -9,6 +9,7 @@ import Input from "@/app/components/ui/Input";
 import Select from "@/app/components/ui/Select";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
+import Modal from "@/app/components/ui/Modal";
 
 interface StockItem {
   id: string;
@@ -70,6 +71,10 @@ interface PenggantianRecord {
   fotoUrls?: string[];
   jumlahTidakDiganti: number;
   sisaSetelah: number;
+  ttdId?: string;
+  ttdNama?: string;
+  ttdJabatan?: string;
+  ttdImage?: string;
 }
 
 interface TidakDigantiRecord {
@@ -90,6 +95,17 @@ interface TidakDigantiRecord {
   rusakKeterangan: string;
   status: string;
   fotoUrls?: string[];
+  ttdId?: string;
+  ttdNama?: string;
+  ttdJabatan?: string;
+  ttdImage?: string;
+}
+
+interface TTDData {
+  id: string;
+  nama: string;
+  jabatan: string;
+  ttdImage: string;
 }
 
 const getUniqueBANumber = async (prefix: string): Promise<string> => {
@@ -134,7 +150,7 @@ const getUniqueBANumber = async (prefix: string): Promise<string> => {
 
 const releaseBANumber = async (nomorBA: string) => {
   try {
-    const match = nomorBA.match(/^BAGB-BA-([A-Z]+)-(\\d{3})$/);
+    const match = nomorBA.match(/^BAGB-BA-([A-Z]+)-(\d{3})$/);
     if (!match) return;
     const prefix = match[1].toLowerCase();
     const num = parseInt(match[2]);
@@ -188,7 +204,10 @@ export default function PenggantiBarangRusakPage() {
   const [selectedPenggantian, setSelectedPenggantian] = useState<PenggantianRecord | null>(null);
   const [selectedTidakDiganti, setSelectedTidakDiganti] = useState<TidakDigantiRecord | null>(null);
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [isPrintTidakDigantiOpen, setIsPrintTidakDigantiOpen] = useState(false);
+  const [ttdList, setTtdList] = useState<TTDData[]>([]);
+  const [selectedPrintTtdId, setSelectedPrintTtdId] = useState("");
+  const [printType, setPrintType] = useState<"pengganti" | "tidakDiganti" | "">("");
+  const [isTerbitkanLoading, setIsTerbitkanLoading] = useState(false);
 
   const [penggantianForm, setPenggantianForm] = useState({
     transaksiId: "",
@@ -244,6 +263,7 @@ export default function PenggantiBarangRusakPage() {
     fetchUnreplacedRusak();
     fetchPenggantianHistory();
     fetchTidakDigantiHistory();
+    fetchTTD();
   }, []);
 
   const fetchStockGudang = async () => {
@@ -273,6 +293,17 @@ export default function PenggantiBarangRusakPage() {
         sisaRusakKG: doc.data().sisaRusakKG || 0,
       } as StockItem));
       setStockList(data);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const fetchTTD = async () => {
+    try {
+      const q = query(collection(db, "ttd"), orderBy("nama", "asc"));
+      const snapshot = await getDocs(q);
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() } as TTDData));
+      setTtdList(data);
     } catch (error) {
       console.error(error);
     }
@@ -356,6 +387,10 @@ export default function PenggantiBarangRusakPage() {
           fotoUrls: fotoUrls.length > 0 ? fotoUrls : d.fotoUrls || [],
           jumlahTidakDiganti: d.jumlahTidakDiganti || 0,
           sisaSetelah: d.sisaSetelah ?? (d.jumlahZAK ? d.jumlahZAK - (d.jumlahTidakDiganti || 0) : 0),
+          ttdId: d.ttdId || "",
+          ttdNama: d.ttdNama || "",
+          ttdJabatan: d.ttdJabatan || "",
+          ttdImage: d.ttdImage || "",
         });
       }
       setPenggantianHistory(list);
@@ -393,6 +428,10 @@ export default function PenggantiBarangRusakPage() {
                 rusakKeterangan: r.keterangan || "",
                 status: r.status || "belum diganti",
                 fotoUrls: r.fotoUrls || [],
+                ttdId: r.ttdId || "",
+                ttdNama: r.ttdNama || "",
+                ttdJabatan: r.ttdJabatan || "",
+                ttdImage: r.ttdImage || "",
               });
             }
           });
@@ -527,7 +566,7 @@ export default function PenggantiBarangRusakPage() {
     if (penggantianForm.maxJumlah > 0 && jumlahTidakInput > penggantianForm.maxJumlah) {
       newErrors.penggantianTidakDiganti = `Jumlah tidak diganti tidak boleh melebihi sisa ${penggantianForm.maxJumlah}`;
     }
-    if (jumlahInput + jumlahTidakInput > penggantianForm.maxJumlah) {
+    if (penggantianForm.maxJumlah > 0 && jumlahInput + jumlahTidakInput > penggantianForm.maxJumlah) {
       newErrors.penggantianTotal = `Total diganti + tidak diganti tidak boleh melebihi sisa ${penggantianForm.maxJumlah}`;
     }
     if (Object.keys(newErrors).length > 0) {
@@ -982,276 +1021,350 @@ export default function PenggantiBarangRusakPage() {
   };
 
   const handlePrintBAPengganti = (record: PenggantianRecord) => {
+    if (record.ttdId && record.ttdNama && record.ttdImage) {
+      const ttd: TTDData = {
+        id: record.ttdId,
+        nama: record.ttdNama,
+        jabatan: record.ttdJabatan || "",
+        ttdImage: record.ttdImage,
+      };
+      generatePrintBAPengganti(record, ttd);
+      return;
+    }
     setSelectedPenggantian(record);
+    setPrintType("pengganti");
+    setSelectedPrintTtdId("");
     setIsPrintModalOpen(true);
-    setTimeout(() => {
-      const printContent = document.getElementById("print-ba-pengganti");
-      if (printContent) {
-        const printWindow = window.open("", "_blank");
-        if (printWindow) {
-          printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <title>Berita Acara Penggantian Barang Rusak ${record.nomorBA}</title>
-              <style>
-                @page { size: A4; margin: 12mm; }
-                @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-                * { box-sizing: border-box; margin: 0; padding: 0; }
-                body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #000; }
-                .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
-                .header-img { width: 100%; display: block; margin-bottom: 0; }
-                .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 14px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; font-size: 10px; }
-                .info-item { display: flex; gap: 4px; }
-                .info-label { font-weight: 600; white-space: nowrap; }
-                .info-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; }
-                .info-box-title { font-size: 10px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 4px; }
-                .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 5px 0; font-size: 11px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .data-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-                .data-table th { background: #f0fdf4; font-size: 10px; padding: 6px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .data-table td { border: 1px solid #000; padding: 6px; vertical-align: top; }
-                .notes-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; font-size: 10px; }
-                .notes-box p { margin-bottom: 4px; }
-                .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 24px; align-items: flex-end; }
-                .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-                .signature-title { font-size: 10px; margin-bottom: 4px; min-height: 32px; line-height: 1.4; }
-                .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
-                .signature-name { font-size: 11px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
-                .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
-                .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-                .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-                @media print { .print-bar { display: none !important; } }
-                .foto-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
-                .foto-grid img { width: 100%; height: 200px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px; }
-                .foto-label { font-size: 9px; font-weight: 600; color: #333; margin-bottom: 4px; }
-                .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; }
-                .badge-green { background: #dcfce7; color: #15803d; }
-                .badge-red { background: #fee2e2; color: #b91c1c; }
-                .badge-amber { background: #fef3c7; color: #92400e; }
-              </style>
-            </head>
-            <body>
-              <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
-              <div class="page">
-                <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\\'none\\'" />
-                <div class="title-bar">BERITA ACARA PENGGANTIAN BARANG RUSAK</div>
-                <div class="info-grid">
-                  <div class="info-item"><span class="info-label">Nomor BA:</span> <span class="font-mono font-bold">${record.nomorBA}</span></div>
-                  <div class="info-item"><span class="info-label">Tanggal:</span> <span>${new Date(record.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
-                  <div class="info-item"><span class="info-label">Referensi BA Rusak:</span> <span class="font-mono">${record.referensiNomorBA || "-"}</span></div>
-                  <div class="info-item"><span class="info-label">FOT:</span> <span>${record.fot || "-"}</span></div>
-                  <div class="info-item"><span class="info-label">Kode Barang:</span> <span class="font-mono">${record.kodeBarang || "-"}</span></div>
-                  <div class="info-item"><span class="info-label">Nama Barang:</span> <span>${record.namaBarang || "-"}</span></div>
-                </div>
-                <div class="info-box">
-                  <div class="info-box-title">Ringkasan Penggantian</div>
-                  <div class="info-grid">
-                    <div class="info-item"><span class="info-label">Jumlah Diganti:</span> <span class="font-bold">${record.jumlahZAK.toLocaleString("id-ID")} ${record.unit}</span></div>
-                    <div class="info-item"><span class="info-label">Total KG:</span> <span class="font-bold">${record.totalKG.toLocaleString("id-ID")} KG</span></div>
-                    <div class="info-item"><span class="info-label">Tidak Diganti:</span> <span class="font-bold">${record.jumlahTidakDiganti.toLocaleString("id-ID")} ${record.unit}</span></div>
-                    <div class="info-item"><span class="info-label">Sisa Setelah:</span> <span class="font-bold ${record.sisaSetelah > 0 ? 'text-red-600' : 'text-green-600'}">${record.sisaSetelah.toLocaleString("id-ID")} ${record.unit}</span></div>
-                  </div>
-                </div>
-                <div class="table-title">STATUS PENGGANTIAN</div>
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th style="width: 40px;">NO</th>
-                      <th style="width: 120px;">ITEM</th>
-                      <th style="width: 100px;">JUMLAH</th>
-                      <th>STATUS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style="text-align: center;">1</td>
-                      <td style="text-align: center;">Barang Diganti</td>
-                      <td style="text-align: center; font-weight: 700;">${record.jumlahZAK.toLocaleString("id-ID")} ${record.unit}</td>
-                      <td style="text-align: center;"><span class="badge badge-green">SUDAH DIGANTI</span></td>
-                    </tr>
-                    <tr>
-                      <td style="text-align: center;">2</td>
-                      <td style="text-align: center;">Tidak Diganti</td>
-                      <td style="text-align: center; font-weight: 700;">${record.jumlahTidakDiganti.toLocaleString("id-ID")} ${record.unit}</td>
-                      <td style="text-align: center;"><span class="badge badge-amber">TIDAK DIGANTI</span></td>
-                    </tr>
-                    ${record.sisaSetelah > 0 ? `
-                    <tr>
-                      <td style="text-align: center;">3</td>
-                      <td style="text-align: center;">Sisa Rusak</td>
-                      <td style="text-align: center; font-weight: 700;">${record.sisaSetelah.toLocaleString("id-ID")} ${record.unit}</td>
-                      <td style="text-align: center;"><span class="badge badge-red">BELUM SELESAI</span></td>
-                    </tr>
-                    ` : ""}
-                  </tbody>
-                </table>
-                ${record.fotoUrls && record.fotoUrls.length > 0 ? `
-                <div class="table-title">DOKUMENTASI FOTO</div>
-                <div class="foto-grid">
-                  ${record.fotoUrls.map((f, i) => `<div><div class="foto-label">Foto ${i + 1}</div><img src="${f}" alt="Foto ${i + 1}" /></div>`).join("")}
-                </div>
-                ` : ""}
-                <div class="notes-box">
-                  <p style="font-weight: 700; margin-bottom: 6px;">Keterangan:</p>
-                  <p>Berita acara ini merupakan dokumen penggantian barang rusak yang telah diproses sesuai prosedur perusahaan.</p>
-                  <p>Barang pengganti telah dimasukkan ke dalam stok gudang pada tanggal ${new Date(record.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}.</p>
-                  <p style="margin-top: 8px; font-weight: 700;">Dibuat oleh: ${record.createdBy || "-"}</p>
-                </div>
-                <div class="signature-row">
-                  <div class="signature-box">
-                    <p class="signature-title">Diverifikasi oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-                    <div style="min-height: 60px; margin-bottom: 4px;"></div>
-                    <p class="signature-name">_________________</p>
-                    <p style="font-size: 9px; color: #333; margin-top: 3px;">Manager Gudang</p>
-                  </div>
-                  <div class="signature-box">
-                    <p class="signature-title">Diserahkan oleh,<br>Petugas Gudang</p>
-                    <div style="min-height: 60px; margin-bottom: 4px;"></div>
-                    <p class="signature-name">${record.createdBy || "_________________"}</p>
-                  </div>
-                </div>
-                <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\\'none\\'" />
-              </div>
-            </body>
-            </html>
-          `);
-          printWindow.document.close();
-        }
-      }
-    }, 100);
   };
 
   const handlePrintBATidakDiganti = (record: TidakDigantiRecord) => {
+    if (record.ttdId && record.ttdNama && record.ttdImage) {
+      const ttd: TTDData = {
+        id: record.ttdId,
+        nama: record.ttdNama,
+        jabatan: record.ttdJabatan || "",
+        ttdImage: record.ttdImage,
+      };
+      generatePrintBATidakDiganti(record, ttd);
+      return;
+    }
     setSelectedTidakDiganti(record);
-    setIsPrintTidakDigantiOpen(true);
-    setTimeout(() => {
-      const printContent = document.getElementById("print-ba-tidak-diganti");
-      if (printContent) {
-        const printWindow = window.open("", "_blank");
-        if (printWindow) {
-          printWindow.document.write(`
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <title>Berita Acara Barang Rusak Tidak Dapat Diganti ${record.nomorBATidakDiganti}</title>
-              <style>
-                @page { size: A4; margin: 12mm; }
-                @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
-                * { box-sizing: border-box; margin: 0; padding: 0; }
-                body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #000; }
-                .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
-                .header-img { width: 100%; display: block; margin-bottom: 0; }
-                .title-bar { text-align: center; background: #b91c1c; color: white; padding: 8px 0; margin: 8px 0 14px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; font-size: 10px; }
-                .info-item { display: flex; gap: 4px; }
-                .info-label { font-weight: 600; white-space: nowrap; }
-                .info-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; }
-                .info-box-title { font-size: 10px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 4px; }
-                .table-title { text-align: center; background: #fee2e2; border: 1px solid #000; border-bottom: none; padding: 5px 0; font-size: 11px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .data-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
-                .data-table th { background: #fef2f2; font-size: 10px; padding: 6px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                .data-table td { border: 1px solid #000; padding: 6px; vertical-align: top; }
-                .notes-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; font-size: 10px; }
-                .notes-box p { margin-bottom: 4px; }
-                .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 24px; align-items: flex-end; }
-                .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
-                .signature-title { font-size: 10px; margin-bottom: 4px; min-height: 32px; line-height: 1.4; }
-                .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
-                .signature-name { font-size: 11px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
-                .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
-                .print-btn { background: #b91c1c; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
-                .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
-                @media print { .print-bar { display: none !important; } }
-                .foto-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
-                .foto-grid img { width: 100%; height: 200px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px; }
-                .foto-label { font-size: 9px; font-weight: 600; color: #333; margin-bottom: 4px; }
-                .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; }
-                .badge-red { background: #fee2e2; color: #b91c1c; }
-                .badge-amber { background: #fef3c7; color: #92400e; }
-              </style>
-            </head>
-            <body>
-              <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
-              <div class="page">
-                <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\\'none\\'" />
-                <div class="title-bar">BERITA ACARA BARANG RUSAK TIDAK DAPAT DIGANTI</div>
-                <div class="info-grid">
-                  <div class="info-item"><span class="info-label">Nomor BA:</span> <span class="font-mono font-bold">${record.nomorBATidakDiganti}</span></div>
-                  <div class="info-item"><span class="info-label">Tanggal:</span> <span>${new Date(record.tanggalTransaksi).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
-                  <div class="info-item"><span class="info-label">Referensi BA Rusak:</span> <span class="font-mono">${record.nomorBA || "-"}</span></div>
-                  <div class="info-item"><span class="info-label">FOT:</span> <span>${record.fot || "-"}</span></div>
-                  <div class="info-item"><span class="info-label">Kode Barang:</span> <span class="font-mono">${record.kodeBarang || "-"}</span></div>
-                  <div class="info-item"><span class="info-label">Nama Barang:</span> <span>${record.namaBarang || "-"}</span></div>
-                </div>
-                <div class="info-box">
-                  <div class="info-box-title">Ringkasan Barang Tidak Diganti</div>
-                  <div class="info-grid">
-                    <div class="info-item"><span class="info-label">Total Rusak:</span> <span class="font-bold">${record.rusakJumlah.toLocaleString("id-ID")} ${record.rusakUnit}</span></div>
-                    <div class="info-item"><span class="info-label">Sudah Diganti:</span> <span class="font-bold">${record.jumlahDiganti.toLocaleString("id-ID")} ${record.rusakUnit}</span></div>
-                    <div class="info-item"><span class="info-label">Tidak Diganti:</span> <span class="font-bold text-red-600">${record.jumlahTidakDiganti.toLocaleString("id-ID")} ${record.rusakUnit}</span></div>
-                    <div class="info-item"><span class="info-label">Sisa Rusak:</span> <span class="font-bold">${record.sisaRusak.toLocaleString("id-ID")} ${record.rusakUnit}</span></div>
-                  </div>
-                </div>
-                <div class="table-title">RINCIAN BARANG TIDAK DIGANTI</div>
-                <table class="data-table">
-                  <thead>
-                    <tr>
-                      <th style="width: 40px;">NO</th>
-                      <th style="width: 120px;">ITEM</th>
-                      <th style="width: 100px;">JUMLAH</th>
-                      <th>STATUS</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td style="text-align: center;">1</td>
-                      <td style="text-align: center;">Barang Rusak</td>
-                      <td style="text-align: center; font-weight: 700;">${record.rusakJumlah.toLocaleString("id-ID")} ${record.rusakUnit}</td>
-                      <td style="text-align: center;"><span class="badge badge-red">RUSAK</span></td>
-                    </tr>
-                    <tr>
-                      <td style="text-align: center;">2</td>
-                      <td style="text-align: center;">Tidak Dapat Diganti</td>
-                      <td style="text-align: center; font-weight: 700;">${record.jumlahTidakDiganti.toLocaleString("id-ID")} ${record.rusakUnit}</td>
-                      <td style="text-align: center;"><span class="badge badge-amber">TIDAK DIGANTI</span></td>
-                    </tr>
-                  </tbody>
-                </table>
-                ${record.fotoUrls && record.fotoUrls.length > 0 ? `
-                <div class="table-title">DOKUMENTASI FOTO</div>
-                <div class="foto-grid">
-                  ${record.fotoUrls.map((f, i) => `<div><div class="foto-label">Foto ${i + 1}</div><img src="${f}" alt="Foto ${i + 1}" /></div>`).join("")}
-                </div>
-                ` : ""}
-                <div class="notes-box">
-                  <p style="font-weight: 700; margin-bottom: 6px;">Keterangan:</p>
-                  <p>Berita acara ini merupakan dokumen barang rusak yang tidak dapat diganti sesuai prosedur perusahaan.</p>
-                  <p>Barang rusak yang tidak diganti telah dicatat dan tidak akan diproses penggantian.</p>
-                  <p style="margin-top: 8px; font-weight: 700;">Dibuat oleh: ${user?.nama || "-"}</p>
-                </div>
-                <div class="signature-row">
-                  <div class="signature-box">
-                    <p class="signature-title">Diverifikasi oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
-                    <div style="min-height: 60px; margin-bottom: 4px;"></div>
-                    <p class="signature-name">_________________</p>
-                    <p style="font-size: 9px; color: #333; margin-top: 3px;">Manager Gudang</p>
-                  </div>
-                  <div class="signature-box">
-                    <p class="signature-title">Diserahkan oleh,<br>Petugas Gudang</p>
-                    <div style="min-height: 60px; margin-bottom: 4px;"></div>
-                    <p class="signature-name">${user?.nama || "_________________"}</p>
-                  </div>
-                </div>
-                <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\\'none\\'" />
-              </div>
-            </body>
-            </html>
-          `);
-          printWindow.document.close();
+    setPrintType("tidakDiganti");
+    setSelectedPrintTtdId("");
+    setIsPrintModalOpen(true);
+  };
+
+  const handleTerbitkanTTD = async () => {
+    if (!selectedPrintTtdId) return;
+    const ttd = ttdList.find((t) => t.id === selectedPrintTtdId);
+    if (!ttd) return;
+
+    setIsTerbitkanLoading(true);
+    try {
+      if (printType === "pengganti" && selectedPenggantian) {
+        const ref = doc(db, "transaksiBarangMasuk", selectedPenggantian.id);
+        await updateDoc(ref, {
+          ttdId: ttd.id,
+          ttdNama: ttd.nama,
+          ttdJabatan: ttd.jabatan,
+          ttdImage: ttd.ttdImage,
+          updatedAt: serverTimestamp(),
+        });
+        generatePrintBAPengganti(selectedPenggantian, ttd);
+      } else if (printType === "tidakDiganti" && selectedTidakDiganti) {
+        const ref = doc(db, "transaksiBarangMasuk", selectedTidakDiganti.transaksiId);
+        const snap = await getDoc(ref);
+        if (snap.exists()) {
+          const d = snap.data();
+          const barangRusakArray = d.barangRusak || [];
+          if (barangRusakArray[selectedTidakDiganti.rusakIndex]) {
+            barangRusakArray[selectedTidakDiganti.rusakIndex] = {
+              ...barangRusakArray[selectedTidakDiganti.rusakIndex],
+              ttdId: ttd.id,
+              ttdNama: ttd.nama,
+              ttdJabatan: ttd.jabatan,
+              ttdImage: ttd.ttdImage,
+            };
+            await updateDoc(ref, {
+              barangRusak: barangRusakArray,
+              updatedAt: serverTimestamp(),
+            });
+          }
         }
+        generatePrintBATidakDiganti(selectedTidakDiganti, ttd);
       }
-    }, 100);
+      setIsPrintModalOpen(false);
+      setSelectedPrintTtdId("");
+      setPrintType("");
+      fetchPenggantianHistory();
+      fetchTidakDigantiHistory();
+    } catch (error) {
+      console.error(error);
+      setErrors((prev) => ({ ...prev, ttdTerbitkan: "Gagal menerbitkan TTD. Silakan coba lagi." }));
+    } finally {
+      setIsTerbitkanLoading(false);
+    }
+  };
+
+  const generatePrintBAPengganti = (record: PenggantianRecord, ttd: TTDData) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Berita Acara Penggantian Barang Rusak ${record.nomorBA}</title>
+        <style>
+          @page { size: A4; margin: 12mm; }
+          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #000; }
+          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
+          .header-img { width: 100%; display: block; margin-bottom: 0; }
+          .title-bar { text-align: center; background: #15803d; color: white; padding: 8px 0; margin: 8px 0 14px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; font-size: 10px; }
+          .info-item { display: flex; gap: 4px; }
+          .info-label { font-weight: 600; white-space: nowrap; }
+          .info-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; }
+          .info-box-title { font-size: 10px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 4px; }
+          .table-title { text-align: center; background: #dcfce7; border: 1px solid #000; border-bottom: none; padding: 5px 0; font-size: 11px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+          .data-table th { background: #f0fdf4; font-size: 10px; padding: 6px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .data-table td { border: 1px solid #000; padding: 6px; vertical-align: top; }
+          .notes-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; font-size: 10px; }
+          .notes-box p { margin-bottom: 4px; }
+          .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 24px; align-items: flex-end; }
+          .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+          .signature-title { font-size: 10px; margin-bottom: 4px; min-height: 32px; line-height: 1.4; }
+          .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
+          .signature-name { font-size: 11px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
+          .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
+          .print-btn { background: #16a34a; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+          @media print { .print-bar { display: none !important; } }
+          .foto-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
+          .foto-grid img { width: 100%; height: 200px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px; }
+          .foto-label { font-size: 9px; font-weight: 600; color: #333; margin-bottom: 4px; }
+          .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; }
+          .badge-green { background: #dcfce7; color: #15803d; }
+          .badge-red { background: #fee2e2; color: #b91c1c; }
+          .badge-amber { background: #fef3c7; color: #92400e; }
+        </style>
+      </head>
+      <body>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
+        <div class="page">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
+          <div class="title-bar">BERITA ACARA PENGGANTIAN BARANG RUSAK</div>
+          <div class="info-grid">
+            <div class="info-item"><span class="info-label">Nomor BA:</span> <span class="font-mono font-bold">${record.nomorBA}</span></div>
+            <div class="info-item"><span class="info-label">Tanggal:</span> <span>${new Date(record.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
+            <div class="info-item"><span class="info-label">Referensi BA Rusak:</span> <span class="font-mono">${record.referensiNomorBA || "-"}</span></div>
+            <div class="info-item"><span class="info-label">FOT:</span> <span>${record.fot || "-"}</span></div>
+            <div class="info-item"><span class="info-label">Kode Barang:</span> <span class="font-mono">${record.kodeBarang || "-"}</span></div>
+            <div class="info-item"><span class="info-label">Nama Barang:</span> <span>${record.namaBarang || "-"}</span></div>
+          </div>
+          <div class="info-box">
+            <div class="info-box-title">Ringkasan Penggantian</div>
+            <div class="info-grid">
+              <div class="info-item"><span class="info-label">Jumlah Diganti:</span> <span class="font-bold">${record.jumlahZAK.toLocaleString("id-ID")} ${record.unit}</span></div>
+              <div class="info-item"><span class="info-label">Total KG:</span> <span class="font-bold">${record.totalKG.toLocaleString("id-ID")} KG</span></div>
+              <div class="info-item"><span class="info-label">Tidak Diganti:</span> <span class="font-bold">${record.jumlahTidakDiganti.toLocaleString("id-ID")} ${record.unit}</span></div>
+              <div class="info-item"><span class="info-label">Sisa Setelah:</span> <span class="font-bold ${record.sisaSetelah > 0 ? 'text-red-600' : 'text-green-600'}">${record.sisaSetelah.toLocaleString("id-ID")} ${record.unit}</span></div>
+            </div>
+          </div>
+          <div class="table-title">STATUS PENGGANTIAN</div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 40px;">NO</th>
+                <th style="width: 120px;">ITEM</th>
+                <th style="width: 100px;">JUMLAH</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="text-align: center;">1</td>
+                <td style="text-align: center;">Barang Diganti</td>
+                <td style="text-align: center; font-weight: 700;">${record.jumlahZAK.toLocaleString("id-ID")} ${record.unit}</td>
+                <td style="text-align: center;"><span class="badge badge-green">SUDAH DIGANTI</span></td>
+              </tr>
+              <tr>
+                <td style="text-align: center;">2</td>
+                <td style="text-align: center;">Tidak Diganti</td>
+                <td style="text-align: center; font-weight: 700;">${record.jumlahTidakDiganti.toLocaleString("id-ID")} ${record.unit}</td>
+                <td style="text-align: center;"><span class="badge badge-amber">TIDAK DIGANTI</span></td>
+              </tr>
+              ${record.sisaSetelah > 0 ? `
+              <tr>
+                <td style="text-align: center;">3</td>
+                <td style="text-align: center;">Sisa Rusak</td>
+                <td style="text-align: center; font-weight: 700;">${record.sisaSetelah.toLocaleString("id-ID")} ${record.unit}</td>
+                <td style="text-align: center;"><span class="badge badge-red">BELUM SELESAI</span></td>
+              </tr>
+              ` : ""}
+            </tbody>
+          </table>
+          ${record.fotoUrls && record.fotoUrls.length > 0 ? `
+          <div class="table-title">DOKUMENTASI FOTO</div>
+          <div class="foto-grid">
+            ${record.fotoUrls.map((f, i) => `<div><div class="foto-label">Foto ${i + 1}</div><img src="${f}" alt="Foto ${i + 1}" /></div>`).join("")}
+          </div>
+          ` : ""}
+          <div class="notes-box">
+            <p style="font-weight: 700; margin-bottom: 6px;">Keterangan:</p>
+            <p>Berita acara ini merupakan dokumen penggantian barang rusak yang telah diproses sesuai prosedur perusahaan.</p>
+            <p>Barang pengganti telah dimasukkan ke dalam stok gudang pada tanggal ${new Date(record.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}.</p>
+            <p style="margin-top: 8px; font-weight: 700;">Dibuat oleh: ${record.createdBy || "-"}</p>
+          </div>
+          <div class="signature-row">
+            <div class="signature-box">
+              <p class="signature-title">Diverifikasi oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+              <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
+                <img src="${ttd.ttdImage}" alt="TTD" class="signature-img" onerror="this.style.display=\'none\'" />
+              </div>
+              <p class="signature-name">${ttd.nama}</p>
+              <p style="font-size: 9px; color: #333; margin-top: 3px;">${ttd.jabatan}</p>
+            </div>
+            <div class="signature-box">
+              <p class="signature-title">Diserahkan oleh,<br>Petugas Gudang</p>
+              <div style="min-height: 60px; margin-bottom: 4px;"></div>
+              <p class="signature-name">${record.createdBy || "_________________"}</p>
+            </div>
+          </div>
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  const generatePrintBATidakDiganti = (record: TidakDigantiRecord, ttd: TTDData) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Berita Acara Barang Rusak Tidak Dapat Diganti ${record.nomorBATidakDiganti}</title>
+        <style>
+          @page { size: A4; margin: 12mm; }
+          @media print { body { margin: 0; padding: 0; } .no-print { display: none !important; } }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
+          body { font-family: Arial, sans-serif; font-size: 11px; line-height: 1.5; color: #000; }
+          .page { width: 176mm; margin: 0 auto; position: relative; min-height: 257mm; display: flex; flex-direction: column; }
+          .header-img { width: 100%; display: block; margin-bottom: 0; }
+          .title-bar { text-align: center; background: #b91c1c; color: white; padding: 8px 0; margin: 8px 0 14px 0; font-weight: bold; font-size: 14px; letter-spacing: 2px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; font-size: 10px; }
+          .info-item { display: flex; gap: 4px; }
+          .info-label { font-weight: 600; white-space: nowrap; }
+          .info-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; }
+          .info-box-title { font-size: 10px; font-weight: 700; margin-bottom: 6px; text-transform: uppercase; border-bottom: 1px solid #000; padding-bottom: 4px; }
+          .table-title { text-align: center; background: #fee2e2; border: 1px solid #000; border-bottom: none; padding: 5px 0; font-size: 11px; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .data-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+          .data-table th { background: #fef2f2; font-size: 10px; padding: 6px; border: 1px solid #000; font-weight: 700; text-align: center; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .data-table td { border: 1px solid #000; padding: 6px; vertical-align: top; }
+          .notes-box { border: 1px solid #000; padding: 10px; margin-bottom: 14px; font-size: 10px; }
+          .notes-box p { margin-bottom: 4px; }
+          .signature-row { display: flex; justify-content: space-between; margin-top: auto; padding-top: 24px; align-items: flex-end; }
+          .signature-box { width: 45%; text-align: center; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+          .signature-title { font-size: 10px; margin-bottom: 4px; min-height: 32px; line-height: 1.4; }
+          .signature-img { max-height: 60px; width: auto; object-fit: contain; margin: 0 auto 4px auto; display: block; }
+          .signature-name { font-size: 11px; font-weight: 700; margin-top: 0; border-top: 1px solid #000; padding-top: 4px; display: block; width: 90%; margin-left: auto; margin-right: auto; }
+          .footer-img { width: 100%; display: block; margin-top: auto; padding-top: 10px; }
+          .print-btn { background: #b91c1c; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 600; margin: 10px; }
+          .print-bar { text-align: center; padding: 10px; background: #f3f4f6; position: sticky; top: 0; z-index: 100; }
+          @media print { .print-bar { display: none !important; } }
+          .foto-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 12px; }
+          .foto-grid img { width: 100%; height: 200px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px; }
+          .foto-label { font-size: 9px; font-weight: 600; color: #333; margin-bottom: 4px; }
+          .badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: 700; }
+          .badge-red { background: #fee2e2; color: #b91c1c; }
+          .badge-amber { background: #fef3c7; color: #92400e; }
+        </style>
+      </head>
+      <body>
+        <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
+        <div class="page">
+          <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
+          <div class="title-bar">BERITA ACARA BARANG RUSAK TIDAK DAPAT DIGANTI</div>
+          <div class="info-grid">
+            <div class="info-item"><span class="info-label">Nomor BA:</span> <span class="font-mono font-bold">${record.nomorBATidakDiganti}</span></div>
+            <div class="info-item"><span class="info-label">Tanggal:</span> <span>${new Date(record.tanggalTransaksi).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</span></div>
+            <div class="info-item"><span class="info-label">Referensi BA Rusak:</span> <span class="font-mono">${record.nomorBA || "-"}</span></div>
+            <div class="info-item"><span class="info-label">FOT:</span> <span>${record.fot || "-"}</span></div>
+            <div class="info-item"><span class="info-label">Kode Barang:</span> <span class="font-mono">${record.kodeBarang || "-"}</span></div>
+            <div class="info-item"><span class="info-label">Nama Barang:</span> <span>${record.namaBarang || "-"}</span></div>
+          </div>
+          <div class="info-box">
+            <div class="info-box-title">Ringkasan Barang Tidak Diganti</div>
+            <div class="info-grid">
+              <div class="info-item"><span class="info-label">Total Rusak:</span> <span class="font-bold">${record.rusakJumlah.toLocaleString("id-ID")} ${record.rusakUnit}</span></div>
+              <div class="info-item"><span class="info-label">Sudah Diganti:</span> <span class="font-bold">${record.jumlahDiganti.toLocaleString("id-ID")} ${record.rusakUnit}</span></div>
+              <div class="info-item"><span class="info-label">Tidak Diganti:</span> <span class="font-bold text-red-600">${record.jumlahTidakDiganti.toLocaleString("id-ID")} ${record.rusakUnit}</span></div>
+              <div class="info-item"><span class="info-label">Sisa Rusak:</span> <span class="font-bold">${record.sisaRusak.toLocaleString("id-ID")} ${record.rusakUnit}</span></div>
+            </div>
+          </div>
+          <div class="table-title">RINCIAN BARANG TIDAK DIGANTI</div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 40px;">NO</th>
+                <th style="width: 120px;">ITEM</th>
+                <th style="width: 100px;">JUMLAH</th>
+                <th>STATUS</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td style="text-align: center;">1</td>
+                <td style="text-align: center;">Barang Rusak</td>
+                <td style="text-align: center; font-weight: 700;">${record.rusakJumlah.toLocaleString("id-ID")} ${record.rusakUnit}</td>
+                <td style="text-align: center;"><span class="badge badge-red">RUSAK</span></td>
+              </tr>
+              <tr>
+                <td style="text-align: center;">2</td>
+                <td style="text-align: center;">Tidak Dapat Diganti</td>
+                <td style="text-align: center; font-weight: 700;">${record.jumlahTidakDiganti.toLocaleString("id-ID")} ${record.rusakUnit}</td>
+                <td style="text-align: center;"><span class="badge badge-amber">TIDAK DIGANTI</span></td>
+              </tr>
+            </tbody>
+          </table>
+          ${record.fotoUrls && record.fotoUrls.length > 0 ? `
+          <div class="table-title">DOKUMENTASI FOTO</div>
+          <div class="foto-grid">
+            ${record.fotoUrls.map((f, i) => `<div><div class="foto-label">Foto ${i + 1}</div><img src="${f}" alt="Foto ${i + 1}" /></div>`).join("")}
+          </div>
+          ` : ""}
+          <div class="notes-box">
+            <p style="font-weight: 700; margin-bottom: 6px;">Keterangan:</p>
+            <p>Berita acara ini merupakan dokumen barang rusak yang tidak dapat diganti sesuai prosedur perusahaan.</p>
+            <p>Barang rusak yang tidak diganti telah dicatat dan tidak akan diproses penggantian.</p>
+            <p style="margin-top: 8px; font-weight: 700;">Dibuat oleh: ${user?.nama || "-"}</p>
+          </div>
+          <div class="signature-row">
+            <div class="signature-box">
+              <p class="signature-title">Diverifikasi oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
+              <div style="min-height: 60px; margin-bottom: 4px; display: flex; align-items: flex-end; justify-content: center;">
+                <img src="${ttd.ttdImage}" alt="TTD" class="signature-img" onerror="this.style.display=\'none\'" />
+              </div>
+              <p class="signature-name">${ttd.nama}</p>
+              <p style="font-size: 9px; color: #333; margin-top: 3px;">${ttd.jabatan}</p>
+            </div>
+            <div class="signature-box">
+              <p class="signature-title">Diserahkan oleh,<br>Petugas Gudang</p>
+              <div style="min-height: 60px; margin-bottom: 4px;"></div>
+              <p class="signature-name">${user?.nama || "_________________"}</p>
+            </div>
+          </div>
+          <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const unreplacedOptions = [
@@ -1260,6 +1373,11 @@ export default function PenggantiBarangRusakPage() {
       value: `${r.transaksiId}_${r.rusakIndex}`,
       label: `${r.namaBarang} | BA: ${r.nomorBA || "-"} | Total: ${r.rusakJumlah} ${r.rusakUnit} | Sudah: ${r.sudahDiganti} ${r.rusakUnit} | Sisa: ${r.sisaRusak} ${r.rusakUnit} | ${r.rusakKeterangan} | ${r.tanggalTransaksi}`,
     })),
+  ];
+
+  const ttdOptions = [
+    { value: "", label: "Pilih tanda tangan..." },
+    ...ttdList.map((t) => ({ value: t.id, label: `${t.nama} - ${t.jabatan}` })),
   ];
 
   return (
@@ -1290,6 +1408,15 @@ export default function PenggantiBarangRusakPage() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
           <span className="font-medium">{errors.editTidakDiganti}</span>
+        </div>
+      )}
+
+      {errors.ttdTerbitkan && (
+        <div className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3 text-red-700">
+          <svg className="w-6 h-6 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span className="font-medium">{errors.ttdTerbitkan}</span>
         </div>
       )}
 
@@ -1762,8 +1889,39 @@ export default function PenggantiBarangRusakPage() {
         )}
       </Card>
 
-      <div id="print-ba-pengganti" style={{ display: "none" }} />
-      <div id="print-ba-tidak-diganti" style={{ display: "none" }} />
+      <Modal isOpen={isPrintModalOpen} onClose={() => { setIsPrintModalOpen(false); setSelectedPrintTtdId(""); setPrintType(""); }} title="Penerbitan Tanda Tangan" size="sm" footer={
+        <div className="flex justify-end gap-3">
+          <Button variant="outline" onClick={() => { setIsPrintModalOpen(false); setSelectedPrintTtdId(""); setPrintType(""); }}>Batal</Button>
+          <Button variant="primary" onClick={handleTerbitkanTTD} isLoading={isTerbitkanLoading} disabled={!selectedPrintTtdId}>Terbitkan & Print</Button>
+        </div>
+      }>
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">Silakan pilih tanda tangan yang berwenang untuk menerbitkan berita acara ini.</p>
+          <Select
+            label="Pilih Tanda Tangan"
+            value={selectedPrintTtdId}
+            onChange={(e) => setSelectedPrintTtdId(e.target.value)}
+            options={ttdOptions}
+          />
+          {selectedPrintTtdId && (
+            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
+              {(() => {
+                const ttd = ttdList.find((t) => t.id === selectedPrintTtdId);
+                if (!ttd) return null;
+                return (
+                  <>
+                    <img src={ttd.ttdImage} alt={ttd.nama} className="h-12 w-auto object-contain bg-white rounded border border-gray-200" />
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">{ttd.nama}</p>
+                      <p className="text-xs text-gray-500">{ttd.jabatan}</p>
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }
