@@ -220,7 +220,12 @@ export default function PenggantiBarangRusakPage() {
     try {
       const selectedRusak = unreplacedRusakList.find((r) => r.transaksiId === penggantianForm.transaksiId && r.rusakIndex === penggantianForm.rusakIndex);
       if (!selectedRusak) {
-        setErrors((prev) => ({ ...prev, penggantian: "Data barang rusak tidak ditemukan" }));
+        setErrors((prev) => ({ ...prev, penggantian: "Data barang rusak tidak ditemukan atau sudah selesai. Silakan refresh halaman." }));
+        setIsSubmitting(false);
+        return;
+      }
+      if (selectedRusak.sisaRusak <= 0) {
+        setErrors((prev) => ({ ...prev, penggantian: "Barang rusak ini sudah tidak memiliki sisa yang bisa diganti." }));
         setIsSubmitting(false);
         return;
       }
@@ -260,45 +265,55 @@ export default function PenggantiBarangRusakPage() {
         isPenggantianRusak: true,
         referensiTransaksiId: selectedRusak.transaksiId,
         referensiRusakIndex: selectedRusak.rusakIndex,
-        fotoUrls: penggantianForm.fotoUrls.length > 0 ? penggantianForm.fotoUrls : null,
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
-      await addDoc(collection(db, "transaksiBarangMasuk"), penggantianData);
+      const penggantianRef = await addDoc(collection(db, "transaksiBarangMasuk"), penggantianData);
+
+      if (penggantianForm.fotoUrls.length > 0) {
+        await addDoc(collection(db, "penggantianFoto"), {
+          transaksiId: selectedRusak.transaksiId,
+          rusakIndex: selectedRusak.rusakIndex,
+          penggantianTransaksiId: penggantianRef.id,
+          fotoUrls: penggantianForm.fotoUrls,
+          createdAt: serverTimestamp(),
+        });
+      }
 
       const transaksiRef = doc(db, "transaksiBarangMasuk", selectedRusak.transaksiId);
       const transaksiSnap = await getDoc(transaksiRef);
-      if (transaksiSnap.exists()) {
-        const tData = transaksiSnap.data();
-        const barangRusakArray = tData.barangRusak || [];
-        if (barangRusakArray[selectedRusak.rusakIndex]) {
-          const currentSudahDiganti = barangRusakArray[selectedRusak.rusakIndex].jumlahDiganti || 0;
-          const currentTidakDiganti = barangRusakArray[selectedRusak.rusakIndex].jumlahTidakDiganti || 0;
-          const newSudahDiganti = currentSudahDiganti + jumlahPenggantian;
-          const newTidakDiganti = currentTidakDiganti + jumlahTidakDiganti;
-          const totalRusak = barangRusakArray[selectedRusak.rusakIndex].jumlah || 0;
-          const newSisa = totalRusak - newSudahDiganti - newTidakDiganti;
-          let newStatus = "belum diganti";
-          if (newSisa <= 0) newStatus = "selesai";
-          else if (newSudahDiganti > 0) newStatus = "sebagian diganti";
-
-          barangRusakArray[selectedRusak.rusakIndex] = {
-            ...barangRusakArray[selectedRusak.rusakIndex],
-            status: newStatus,
-            jumlahDiganti: newSudahDiganti,
-            jumlahTidakDiganti: newTidakDiganti,
-            sisaRusak: newSisa > 0 ? newSisa : 0,
-            tanggalPenggantian: penggantianForm.tanggal,
-            penggantianFotoUrls: penggantianForm.fotoUrls.length > 0 ? penggantianForm.fotoUrls : null,
-          };
-          await updateDoc(transaksiRef, {
-            barangRusak: barangRusakArray,
-            updatedAt: serverTimestamp(),
-          });
-        }
+      if (!transaksiSnap.exists()) {
+        throw new Error("Transaksi asli tidak ditemukan di database.");
       }
+      const tData = transaksiSnap.data();
+      const barangRusakArray = tData.barangRusak || [];
+      if (!barangRusakArray[selectedRusak.rusakIndex]) {
+        throw new Error("Data barang rusak tidak ditemukan dalam transaksi.");
+      }
+      const currentSudahDiganti = barangRusakArray[selectedRusak.rusakIndex].jumlahDiganti || 0;
+      const currentTidakDiganti = barangRusakArray[selectedRusak.rusakIndex].jumlahTidakDiganti || 0;
+      const newSudahDiganti = currentSudahDiganti + jumlahPenggantian;
+      const newTidakDiganti = currentTidakDiganti + jumlahTidakDiganti;
+      const totalRusak = barangRusakArray[selectedRusak.rusakIndex].jumlah || 0;
+      const newSisa = totalRusak - newSudahDiganti - newTidakDiganti;
+      let newStatus = "belum diganti";
+      if (newSisa <= 0) newStatus = "selesai";
+      else if (newSudahDiganti > 0) newStatus = "sebagian diganti";
+
+      barangRusakArray[selectedRusak.rusakIndex] = {
+        ...barangRusakArray[selectedRusak.rusakIndex],
+        status: newStatus,
+        jumlahDiganti: newSudahDiganti,
+        jumlahTidakDiganti: newTidakDiganti,
+        sisaRusak: newSisa > 0 ? newSisa : 0,
+        tanggalPenggantian: penggantianForm.tanggal,
+      };
+      await updateDoc(transaksiRef, {
+        barangRusak: barangRusakArray,
+        updatedAt: serverTimestamp(),
+      });
 
       if (stock) {
         const stockRef = doc(db, "stockGudang", stock.id);
@@ -318,6 +333,8 @@ export default function PenggantiBarangRusakPage() {
             updatedAt: serverTimestamp(),
           });
         }
+      } else {
+        console.warn("Stock tidak ditemukan untuk kode barang:", selectedRusak.kodeBarang, selectedRusak.namaBarang);
       }
 
       const remainingAfter = selectedRusak.sisaRusak - jumlahPenggantian - jumlahTidakDiganti;
