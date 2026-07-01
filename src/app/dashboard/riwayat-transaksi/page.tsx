@@ -137,6 +137,7 @@ interface UnifiedTransaksi {
   isPenggantianRusak?: boolean;
   referensiTransaksiId?: string;
   referensiRusakIndex?: number;
+  jumlahTidakDiganti?: number;
 }
 
 interface StockItem {
@@ -437,6 +438,7 @@ export default function RiwayatTransaksiPage() {
           isPenggantianRusak: d.isPenggantianRusak || false,
           referensiTransaksiId: d.referensiTransaksiId || "",
           referensiRusakIndex: d.referensiRusakIndex,
+          jumlahTidakDiganti: d.jumlahTidakDiganti || 0,
           ttdId: d.ttdId || "",
           ttdNama: d.ttdNama || "",
           ttdJabatan: d.ttdJabatan || "",
@@ -1280,10 +1282,42 @@ export default function RiwayatTransaksiPage() {
           if (transaksiSnap.exists()) {
             const tData = transaksiSnap.data();
             const barangRusakArray = tData.barangRusak || [];
-            const hasReplaced = barangRusakArray.some((r: any) => r.status === "sudah diganti");
+            const hasReplaced = barangRusakArray.some((r: any) => r.status === "sudah diganti" || r.status === "sebagian diganti");
             if (hasReplaced) {
               alert("Tidak dapat menghapus transaksi ini karena terdapat barang rusak yang sudah diganti.");
               return;
+            }
+            if (stock) {
+              const stockRef2 = doc(db, "stockGudang", stock.id);
+              const stockSnap2 = await getDoc(stockRef2);
+              if (stockSnap2.exists()) {
+                const sData = stockSnap2.data();
+                let totalRusakUnit = 0;
+                let totalRusakKG = 0;
+                item.barangRusak.forEach((r) => {
+                  if (item.unit === "KG") {
+                    totalRusakKG += r.jumlah;
+                  } else if (item.unit === "BOTOL") {
+                    const totalBotol = r.jumlah * 10 * (stock.botolPerDus || 20);
+                    totalRusakKG += (totalBotol * 50) / 1000;
+                    totalRusakUnit += r.jumlah;
+                  } else if (item.unit === "DUS") {
+                    const totalBotol = r.jumlah * (stock.botolPerDus || 20);
+                    totalRusakKG += (totalBotol * 50) / 1000;
+                    totalRusakUnit += r.jumlah;
+                  } else {
+                    totalRusakKG += r.jumlah * (stock.bobotPerUnit || 50);
+                    totalRusakUnit += r.jumlah;
+                  }
+                });
+                await updateDoc(stockRef2, {
+                  barangRusakUnit: Math.max(0, (sData.barangRusakUnit || 0) - totalRusakUnit),
+                  barangRusakKG: Math.max(0, (sData.barangRusakKG || 0) - totalRusakKG),
+                  sisaRusakUnit: Math.max(0, (sData.sisaRusakUnit || 0) - totalRusakUnit),
+                  sisaRusakKG: Math.max(0, (sData.sisaRusakKG || 0) - totalRusakKG),
+                  updatedAt: serverTimestamp(),
+                });
+              }
             }
           }
         }
@@ -1300,13 +1334,41 @@ export default function RiwayatTransaksiPage() {
             const currentMasukKG = sData.barangMasukKG || 0;
             const currentStokUnit = sData.stokAkhirUnit || 0;
             const currentStokKG = sData.stokAkhirKG || 0;
+            const currentDigantiUnit = sData.barangDigantiUnit || 0;
+            const currentDigantiKG = sData.barangDigantiKG || 0;
+            const currentSisaRusakUnit = sData.sisaRusakUnit || 0;
+            const currentSisaRusakKG = sData.sisaRusakKG || 0;
+
             const minusUnit = item.unit === "KG" ? 0 : item.jumlahZAK;
             const minusKG = item.totalKG || (item.unit === "KG" ? item.jumlahZAK : item.jumlahZAK * (stock.bobotPerUnit || 50));
+
+            const jumlahTidak = item.jumlahTidakDiganti || 0;
+            let tidakUnit = 0;
+            let tidakKG = 0;
+            if (item.unit === "KG") {
+              tidakKG = jumlahTidak;
+            } else if (item.unit === "BOTOL") {
+              const totalBotol = jumlahTidak * 10 * (stock.botolPerDus || 20);
+              tidakKG = (totalBotol * 50) / 1000;
+              tidakUnit = jumlahTidak;
+            } else if (item.unit === "DUS") {
+              const totalBotol = jumlahTidak * (stock.botolPerDus || 20);
+              tidakKG = (totalBotol * 50) / 1000;
+              tidakUnit = jumlahTidak;
+            } else {
+              tidakKG = jumlahTidak * (stock.bobotPerUnit || 50);
+              tidakUnit = jumlahTidak;
+            }
+
             await updateDoc(stockRef, {
               barangMasukUnit: Math.max(0, currentMasukUnit - minusUnit),
               barangMasukKG: Math.max(0, currentMasukKG - minusKG),
               stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
               stokAkhirKG: Math.max(0, currentStokKG - minusKG),
+              barangDigantiUnit: Math.max(0, currentDigantiUnit - minusUnit),
+              barangDigantiKG: Math.max(0, currentDigantiKG - minusKG),
+              sisaRusakUnit: currentSisaRusakUnit + tidakUnit,
+              sisaRusakKG: currentSisaRusakKG + tidakKG,
               updatedAt: serverTimestamp(),
             });
           }
@@ -1319,17 +1381,24 @@ export default function RiwayatTransaksiPage() {
             const barangRusakArray = tData.barangRusak || [];
             if (barangRusakArray[item.referensiRusakIndex]) {
               const currentDiganti = barangRusakArray[item.referensiRusakIndex].jumlahDiganti || 0;
+              const currentTidakDiganti = barangRusakArray[item.referensiRusakIndex].jumlahTidakDiganti || 0;
               const newDiganti = Math.max(0, currentDiganti - item.jumlahZAK);
+              const newTidakDiganti = Math.max(0, currentTidakDiganti - (item.jumlahTidakDiganti || 0));
               const totalRusak = barangRusakArray[item.referensiRusakIndex].jumlah || 0;
-              const newSisa = totalRusak - newDiganti;
+              const newSisa = totalRusak - newDiganti - newTidakDiganti;
               let newStatus = "belum diganti";
-              if (newSisa <= 0) newStatus = "sudah diganti";
+              if (newSisa <= 0) newStatus = "selesai";
               else if (newDiganti > 0) newStatus = "sebagian diganti";
+              else if (newTidakDiganti > 0) newStatus = "tidak diganti";
+
               barangRusakArray[item.referensiRusakIndex] = {
                 ...barangRusakArray[item.referensiRusakIndex],
                 status: newStatus,
                 jumlahDiganti: newDiganti,
+                jumlahTidakDiganti: newTidakDiganti,
                 sisaRusak: newSisa > 0 ? newSisa : 0,
+                tanggalPenggantian: newDiganti > 0 ? barangRusakArray[item.referensiRusakIndex].tanggalPenggantian : "",
+                nomorBAPenggantian: newDiganti > 0 ? barangRusakArray[item.referensiRusakIndex].nomorBAPenggantian : "",
               };
               await updateDoc(transaksiRef, {
                 barangRusak: barangRusakArray,
