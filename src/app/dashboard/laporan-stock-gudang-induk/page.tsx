@@ -42,7 +42,8 @@ interface BarangRusakRow {
   fotoUrls: string[];
   status: string;
   tanggalPenggantian: string;
-  jumlahPenggantian: number;
+  jumlahDiganti: number;
+  sisaRusak: number;
   penggantianFotoUrls: string[];
 }
 
@@ -294,7 +295,8 @@ export default function LaporanInputStockGudangPage() {
               fotoUrls: r.fotoUrls || [],
               status: r.status || "belum diganti",
               tanggalPenggantian: r.tanggalPenggantian || "",
-              jumlahPenggantian: r.jumlahPenggantian || 0,
+              jumlahDiganti: r.jumlahDiganti || 0,
+              sisaRusak: r.sisaRusak || 0,
               penggantianFotoUrls: r.penggantianFotoUrls || [],
             });
           });
@@ -1005,7 +1007,7 @@ export default function LaporanInputStockGudangPage() {
           r.unit,
           r.keterangan,
           r.status === "sudah diganti" ? "SUDAH DIGANTI" : "BELUM DIGANTI",
-          r.status === "sudah diganti" ? r.jumlahPenggantian : "-",
+          r.status === "sudah diganti" ? r.jumlahDiganti : "-",
           r.status === "sudah diganti" ? r.tanggalPenggantian : "-",
         ]);
       });
@@ -1326,7 +1328,8 @@ export default function LaporanInputStockGudangPage() {
         }
         return (
           <div className="text-xs space-y-1">
-            <p className="text-green-700 font-semibold">{row.jumlahPenggantian.toLocaleString("id-ID")} {row.unitMasuk} diganti</p>
+            <p className="text-green-700 font-semibold">{row.jumlahDiganti.toLocaleString("id-ID")} {row.unitMasuk} diganti</p>
+            <p className="text-gray-500">Sisa rusak: {row.sisaRusak.toLocaleString("id-ID")} {row.unitMasuk}</p>
             <p className="text-gray-500">Tgl: {row.tanggalPenggantian}</p>
             {(() => {
               const pgf = row.penggantianFotoUrls;

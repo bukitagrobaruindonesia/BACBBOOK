@@ -33,6 +33,9 @@ interface UnreplacedRusak {
   rusakIndex: number;
   tanggalTransaksi: string;
   fotoUrls?: string[];
+  sudahDiganti: number;
+  sisaRusak: number;
+  status: string;
 }
 
 export default function PenggantiBarangRusakPage() {
@@ -50,6 +53,7 @@ export default function PenggantiBarangRusakPage() {
     jumlahZAK: "",
     fotoUrls: [] as string[],
     maxJumlah: 0,
+    unitRusak: "ZAK",
   });
 
   const [fotoLoading, setFotoLoading] = useState(false);
@@ -88,7 +92,9 @@ export default function PenggantiBarangRusakPage() {
         const d = docSnap.data();
         if (d.adaBarangRusak && Array.isArray(d.barangRusak)) {
           d.barangRusak.forEach((r: any, idx: number) => {
-            if (!r.status || r.status === "belum diganti") {
+            const sudahDiganti = r.jumlahDiganti || 0;
+            const sisaRusak = (r.jumlah || 0) - sudahDiganti;
+            if (sisaRusak > 0) {
               list.push({
                 transaksiId: docSnap.id,
                 fot: d.fot || "",
@@ -101,6 +107,9 @@ export default function PenggantiBarangRusakPage() {
                 rusakIndex: idx,
                 tanggalTransaksi: d.tanggal || "",
                 fotoUrls: r.fotoUrls || [],
+                sudahDiganti: sudahDiganti,
+                sisaRusak: sisaRusak,
+                status: r.status || "belum diganti",
               });
             }
           });
@@ -188,7 +197,7 @@ export default function PenggantiBarangRusakPage() {
     }
     const jumlahInput = parseFloat(penggantianForm.jumlahZAK) || 0;
     if (penggantianForm.maxJumlah > 0 && jumlahInput > penggantianForm.maxJumlah) {
-      setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi ${penggantianForm.maxJumlah}` }));
+      setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi sisa ${penggantianForm.maxJumlah}` }));
       return;
     }
 
@@ -207,14 +216,23 @@ export default function PenggantiBarangRusakPage() {
       const stock = stockList.find((s) => s.kodeBarang === selectedRusak.kodeBarang && s.namaBarang === selectedRusak.namaBarang);
       const bobotPerUnit = stock ? stock.bobotPerUnit : 50;
       let totalKG = 0;
+      let addUnit = 0;
+
       if (selectedRusak.unitMasuk === "KG") {
         totalKG = jumlahPenggantian;
+        addUnit = 0;
       } else if (selectedRusak.unitMasuk === "BOTOL") {
         const dusPerZak = 10;
         const totalBotol = jumlahPenggantian * dusPerZak * (stock?.botolPerDus || 20);
         totalKG = (totalBotol * 50) / 1000;
+        addUnit = jumlahPenggantian;
+      } else if (selectedRusak.unitMasuk === "DUS") {
+        const totalBotol = jumlahPenggantian * (stock?.botolPerDus || 20);
+        totalKG = (totalBotol * 50) / 1000;
+        addUnit = jumlahPenggantian;
       } else {
         totalKG = jumlahPenggantian * bobotPerUnit;
+        addUnit = jumlahPenggantian;
       }
 
       const penggantianData: any = {
@@ -242,11 +260,18 @@ export default function PenggantiBarangRusakPage() {
         const tData = transaksiSnap.data();
         const barangRusakArray = tData.barangRusak || [];
         if (barangRusakArray[selectedRusak.rusakIndex]) {
+          const currentSudahDiganti = barangRusakArray[selectedRusak.rusakIndex].jumlahDiganti || 0;
+          const newSudahDiganti = currentSudahDiganti + jumlahPenggantian;
+          const totalRusak = barangRusakArray[selectedRusak.rusakIndex].jumlah || 0;
+          const newSisa = totalRusak - newSudahDiganti;
+          const newStatus = newSisa <= 0 ? "sudah diganti" : "sebagian diganti";
+
           barangRusakArray[selectedRusak.rusakIndex] = {
             ...barangRusakArray[selectedRusak.rusakIndex],
-            status: "sudah diganti",
+            status: newStatus,
+            jumlahDiganti: newSudahDiganti,
+            sisaRusak: newSisa > 0 ? newSisa : 0,
             tanggalPenggantian: penggantianForm.tanggal,
-            jumlahPenggantian: jumlahPenggantian,
             penggantianFotoUrls: penggantianForm.fotoUrls.length > 0 ? penggantianForm.fotoUrls : null,
           };
           await updateDoc(transaksiRef, {
@@ -265,19 +290,18 @@ export default function PenggantiBarangRusakPage() {
           const currentMasukKG = sData.barangMasukKG || 0;
           const currentStokUnit = sData.stokAkhirUnit || 0;
           const currentStokKG = sData.stokAkhirKG || 0;
-          let addUnit = selectedRusak.unitMasuk === "KG" ? 0 : jumlahPenggantian;
-          let addKG = totalKG;
+
           await updateDoc(stockRef, {
             barangMasukUnit: currentMasukUnit + addUnit,
-            barangMasukKG: currentMasukKG + addKG,
+            barangMasukKG: currentMasukKG + totalKG,
             stokAkhirUnit: currentStokUnit + addUnit,
-            stokAkhirKG: currentStokKG + addKG,
+            stokAkhirKG: currentStokKG + totalKG,
             updatedAt: serverTimestamp(),
           });
         }
       }
 
-      setSuccessMessage("Penggantian barang rusak berhasil disimpan dan stok gudang telah diperbarui!");
+      setSuccessMessage(`Penggantian berhasil! ${jumlahPenggantian} ${selectedRusak.rusakUnit} telah masuk ke stok. ${selectedRusak.sisaRusak - jumlahPenggantian > 0 ? `Sisa ${selectedRusak.sisaRusak - jumlahPenggantian} ${selectedRusak.rusakUnit} masih menunggu penggantian.` : "Semua barang rusak telah diganti."}`);
       setPenggantianForm({
         transaksiId: "",
         rusakIndex: 0,
@@ -285,10 +309,11 @@ export default function PenggantiBarangRusakPage() {
         jumlahZAK: "",
         fotoUrls: [],
         maxJumlah: 0,
+        unitRusak: "ZAK",
       });
       fetchStockGudang();
       fetchUnreplacedRusak();
-      setTimeout(() => setSuccessMessage(""), 5000);
+      setTimeout(() => setSuccessMessage(""), 7000);
     } catch (error) {
       console.error(error);
       setErrors((prev) => ({ ...prev, penggantianSubmit: "Gagal menyimpan penggantian. Silakan coba lagi." }));
@@ -301,7 +326,7 @@ export default function PenggantiBarangRusakPage() {
     { value: "", label: "Pilih barang rusak yang akan diganti..." },
     ...unreplacedRusakList.map((r) => ({
       value: `${r.transaksiId}_${r.rusakIndex}`,
-      label: `${r.namaBarang} | ${r.rusakJumlah} ${r.rusakUnit} | ${r.rusakKeterangan} | ${r.tanggalTransaksi}`,
+      label: `${r.namaBarang} | Total: ${r.rusakJumlah} ${r.rusakUnit} | Sudah: ${r.sudahDiganti} ${r.rusakUnit} | Sisa: ${r.sisaRusak} ${r.rusakUnit} | ${r.rusakKeterangan} | ${r.tanggalTransaksi}`,
     })),
   ];
 
@@ -341,7 +366,9 @@ export default function PenggantiBarangRusakPage() {
                   <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">No</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Nama Barang</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Kode</th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Jumlah</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Total Rusak</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Sudah Diganti</th>
+                  <th className="px-3 py-2 text-right text-xs font-semibold text-red-800 uppercase border">Sisa</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Keterangan</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-red-800 uppercase border">Tanggal</th>
                 </tr>
@@ -353,6 +380,8 @@ export default function PenggantiBarangRusakPage() {
                     <td className="px-3 py-2 text-sm font-semibold text-gray-900 border">{r.namaBarang}</td>
                     <td className="px-3 py-2 text-sm font-mono text-gray-600 border">{r.kodeBarang}</td>
                     <td className="px-3 py-2 text-sm text-gray-900 text-right font-mono border">{r.rusakJumlah.toLocaleString("id-ID")} {r.rusakUnit}</td>
+                    <td className="px-3 py-2 text-sm text-green-700 text-right font-mono border font-semibold">{r.sudahDiganti.toLocaleString("id-ID")} {r.rusakUnit}</td>
+                    <td className="px-3 py-2 text-sm text-red-700 text-right font-mono border font-bold">{r.sisaRusak.toLocaleString("id-ID")} {r.rusakUnit}</td>
                     <td className="px-3 py-2 text-sm text-gray-700 border">{r.rusakKeterangan}</td>
                     <td className="px-3 py-2 text-sm text-gray-600 border">{r.tanggalTransaksi}</td>
                   </tr>
@@ -378,12 +407,13 @@ export default function PenggantiBarangRusakPage() {
                     ...prev,
                     transaksiId: tid,
                     rusakIndex: parseInt(ridx) || 0,
-                    jumlahZAK: selected ? String(selected.rusakJumlah) : "",
-                    maxJumlah: selected ? selected.rusakJumlah : 0,
+                    jumlahZAK: selected ? String(selected.sisaRusak) : "",
+                    maxJumlah: selected ? selected.sisaRusak : 0,
+                    unitRusak: selected ? selected.rusakUnit : "ZAK",
                   }));
                   setErrors((prev) => { const n = { ...prev }; delete n.penggantianJumlah; delete n.penggantian; return n; });
                 } else {
-                  setPenggantianForm((prev) => ({ ...prev, transaksiId: "", rusakIndex: 0, jumlahZAK: "", maxJumlah: 0 }));
+                  setPenggantianForm((prev) => ({ ...prev, transaksiId: "", rusakIndex: 0, jumlahZAK: "", maxJumlah: 0, unitRusak: "ZAK" }));
                 }
               }}
               options={unreplacedOptions}
@@ -391,10 +421,7 @@ export default function PenggantiBarangRusakPage() {
             />
             {penggantianForm.maxJumlah > 0 && (
               <p className="text-xs text-amber-700 font-semibold pt-6">
-                Maksimal penggantian: {penggantianForm.maxJumlah} {(() => {
-                  const sel = unreplacedRusakList.find((r) => r.transaksiId === penggantianForm.transaksiId && r.rusakIndex === penggantianForm.rusakIndex);
-                  return sel ? sel.rusakUnit : "";
-                })()}
+                Sisa yang bisa diganti: {penggantianForm.maxJumlah} {penggantianForm.unitRusak}
               </p>
             )}
             <Input
@@ -405,20 +432,20 @@ export default function PenggantiBarangRusakPage() {
               required
             />
             <Input
-              label={`Jumlah Penggantian (max: ${penggantianForm.maxJumlah})`}
+              label={`Jumlah Penggantian (max: ${penggantianForm.maxJumlah} ${penggantianForm.unitRusak})`}
               type="number"
               value={penggantianForm.jumlahZAK}
               onChange={(e) => {
                 const val = e.target.value;
                 const num = parseFloat(val) || 0;
                 if (penggantianForm.maxJumlah > 0 && num > penggantianForm.maxJumlah) {
-                  setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi ${penggantianForm.maxJumlah}` }));
+                  setErrors((prev) => ({ ...prev, penggantianJumlah: `Jumlah penggantian tidak boleh melebihi sisa ${penggantianForm.maxJumlah} ${penggantianForm.unitRusak}` }));
                 } else {
                   setErrors((prev) => { const n = { ...prev }; delete n.penggantianJumlah; return n; });
                 }
                 setPenggantianForm((prev) => ({ ...prev, jumlahZAK: val }));
               }}
-              placeholder={`Maksimal ${penggantianForm.maxJumlah}`}
+              placeholder={`Maksimal ${penggantianForm.maxJumlah} ${penggantianForm.unitRusak}`}
               error={errors.penggantianJumlah}
               required
             />
@@ -480,6 +507,7 @@ export default function PenggantiBarangRusakPage() {
                 jumlahZAK: "",
                 fotoUrls: [],
                 maxJumlah: 0,
+                unitRusak: "ZAK",
               });
               setErrors({});
             }}>

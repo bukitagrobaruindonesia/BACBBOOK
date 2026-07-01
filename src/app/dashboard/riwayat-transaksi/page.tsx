@@ -867,6 +867,69 @@ export default function RiwayatTransaksiPage() {
     }
     await updateDoc(doc(db, collectionName, selectedItem!.id), updateData);
 
+    if (selectedItem!.jenis === "penggantianRusak") {
+      const stock = getStockExactMatch(selectedItem!.kodeBarang, selectedItem!.namaBarang);
+      if (stock) {
+        const stockRef = doc(db, "stockGudang", stock.id);
+        const stockSnap = await getDoc(stockRef);
+        if (stockSnap.exists()) {
+          const sData = stockSnap.data();
+          const oldUnit = selectedItem!.unit === "KG" ? 0 : selectedItem!.jumlahZAK;
+          const oldKG = selectedItem!.totalKG || (selectedItem!.unit === "KG" ? selectedItem!.jumlahZAK : selectedItem!.jumlahZAK * (stock.bobotPerUnit || 50));
+          const newUnit = editForm.unit === "KG" ? 0 : jumlahZAK;
+          let newKG = 0;
+          if (editForm.unit === "KG") {
+            newKG = jumlahZAK;
+          } else if (editForm.unit === "BOTOL") {
+            const bpd = botolPerDus || 20;
+            const dusPerZak = 10;
+            const totalBotol = jumlahZAK * dusPerZak * bpd;
+            newKG = (totalBotol * (bobotPerBotol || 50)) / 1000;
+          } else {
+            newKG = jumlahZAK * (stock.bobotPerUnit || 50);
+          }
+          const deltaUnit = newUnit - oldUnit;
+          const deltaKG = newKG - oldKG;
+          await updateDoc(stockRef, {
+            barangMasukUnit: Math.max(0, (sData.barangMasukUnit || 0) + deltaUnit),
+            barangMasukKG: Math.max(0, (sData.barangMasukKG || 0) + deltaKG),
+            stokAkhirUnit: Math.max(0, (sData.stokAkhirUnit || 0) + deltaUnit),
+            stokAkhirKG: Math.max(0, (sData.stokAkhirKG || 0) + deltaKG),
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+      if (selectedItem!.referensiTransaksiId && selectedItem!.referensiRusakIndex !== undefined) {
+        const transaksiRef = doc(db, "transaksiBarangMasuk", selectedItem!.referensiTransaksiId);
+        const transaksiSnap = await getDoc(transaksiRef);
+        if (transaksiSnap.exists()) {
+          const tData = transaksiSnap.data();
+          const barangRusakArray = tData.barangRusak || [];
+          if (barangRusakArray[selectedItem!.referensiRusakIndex]) {
+            const totalRusak = barangRusakArray[selectedItem!.referensiRusakIndex].jumlah || 0;
+            const oldDiganti = barangRusakArray[selectedItem!.referensiRusakIndex].jumlahDiganti || 0;
+            const newDiganti = oldDiganti - selectedItem!.jumlahZAK + jumlahZAK;
+            const newSisa = totalRusak - newDiganti;
+            let newStatus = "belum diganti";
+            if (newSisa <= 0) newStatus = "sudah diganti";
+            else if (newDiganti > 0) newStatus = "sebagian diganti";
+            barangRusakArray[selectedItem!.referensiRusakIndex] = {
+              ...barangRusakArray[selectedItem!.referensiRusakIndex],
+              status: newStatus,
+              jumlahDiganti: newDiganti,
+              sisaRusak: newSisa > 0 ? newSisa : 0,
+              tanggalPenggantian: editForm.tanggal,
+            };
+            await updateDoc(transaksiRef, {
+              barangRusak: barangRusakArray,
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+      }
+      return;
+    }
+
     if (selectedItem!.jenis === "barangMasuk") {
       const stock = getStockExactMatch(selectedItem!.kodeBarang, selectedItem!.namaBarang);
       if (stock) {
@@ -1189,7 +1252,7 @@ export default function RiwayatTransaksiPage() {
       item.jenis === "suratPengangkutanDO" ? "Surat Pengangkutan DO" : "Barang Keluar";
     if (!confirm(`Apakah Anda yakin ingin menghapus data ${jenisLabel} ini?`)) return;
     try {
-      if (item.jenis === "barangMasuk" || item.jenis === "penggantianRusak") {
+      if (item.jenis === "barangMasuk") {
         const stock = getStockExactMatch(item.kodeBarang, item.namaBarang);
         if (stock) {
           const stockRef = doc(db, "stockGudang", stock.id);
@@ -1211,7 +1274,7 @@ export default function RiwayatTransaksiPage() {
             });
           }
         }
-        if (item.jenis === "barangMasuk" && item.adaBarangRusak && item.barangRusak) {
+        if (item.adaBarangRusak && item.barangRusak) {
           const transaksiRef = doc(db, "transaksiBarangMasuk", item.id);
           const transaksiSnap = await getDoc(transaksiRef);
           if (transaksiSnap.exists()) {
@@ -1221,6 +1284,57 @@ export default function RiwayatTransaksiPage() {
             if (hasReplaced) {
               alert("Tidak dapat menghapus transaksi ini karena terdapat barang rusak yang sudah diganti.");
               return;
+            }
+          }
+        }
+      }
+
+      if (item.jenis === "penggantianRusak") {
+        const stock = getStockExactMatch(item.kodeBarang, item.namaBarang);
+        if (stock) {
+          const stockRef = doc(db, "stockGudang", stock.id);
+          const stockSnap = await getDoc(stockRef);
+          if (stockSnap.exists()) {
+            const sData = stockSnap.data();
+            const currentMasukUnit = sData.barangMasukUnit || 0;
+            const currentMasukKG = sData.barangMasukKG || 0;
+            const currentStokUnit = sData.stokAkhirUnit || 0;
+            const currentStokKG = sData.stokAkhirKG || 0;
+            const minusUnit = item.unit === "KG" ? 0 : item.jumlahZAK;
+            const minusKG = item.totalKG || (item.unit === "KG" ? item.jumlahZAK : item.jumlahZAK * (stock.bobotPerUnit || 50));
+            await updateDoc(stockRef, {
+              barangMasukUnit: Math.max(0, currentMasukUnit - minusUnit),
+              barangMasukKG: Math.max(0, currentMasukKG - minusKG),
+              stokAkhirUnit: Math.max(0, currentStokUnit - minusUnit),
+              stokAkhirKG: Math.max(0, currentStokKG - minusKG),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        }
+        if (item.referensiTransaksiId && item.referensiRusakIndex !== undefined) {
+          const transaksiRef = doc(db, "transaksiBarangMasuk", item.referensiTransaksiId);
+          const transaksiSnap = await getDoc(transaksiRef);
+          if (transaksiSnap.exists()) {
+            const tData = transaksiSnap.data();
+            const barangRusakArray = tData.barangRusak || [];
+            if (barangRusakArray[item.referensiRusakIndex]) {
+              const currentDiganti = barangRusakArray[item.referensiRusakIndex].jumlahDiganti || 0;
+              const newDiganti = Math.max(0, currentDiganti - item.jumlahZAK);
+              const totalRusak = barangRusakArray[item.referensiRusakIndex].jumlah || 0;
+              const newSisa = totalRusak - newDiganti;
+              let newStatus = "belum diganti";
+              if (newSisa <= 0) newStatus = "sudah diganti";
+              else if (newDiganti > 0) newStatus = "sebagian diganti";
+              barangRusakArray[item.referensiRusakIndex] = {
+                ...barangRusakArray[item.referensiRusakIndex],
+                status: newStatus,
+                jumlahDiganti: newDiganti,
+                sisaRusak: newSisa > 0 ? newSisa : 0,
+              };
+              await updateDoc(transaksiRef, {
+                barangRusak: barangRusakArray,
+                updatedAt: serverTimestamp(),
+              });
             }
           }
         }
