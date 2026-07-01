@@ -22,6 +22,36 @@ export interface ProdukItem {
   totalHarga: number;
 }
 
+export interface StockGudang {
+  id: string;
+  fot: string;
+  kodeBarang: string;
+  namaBarang: string;
+  namaProdusen?: string;
+  unit: "ZAK" | "DUS" | "KG" | "BOTOL";
+  bobotPerUnit?: number;
+  botolPerDus?: number;
+  volumeMl?: number;
+  displayUnit?: string;
+  stokAwalUnit: number;
+  stokAwalKG: number;
+  barangMasukUnit: number;
+  barangMasukKG: number;
+  barangKeluarUnit: number;
+  barangKeluarKG: number;
+  barangRusakUnit?: number;
+  barangRusakKG?: number;
+  barangDigantiUnit?: number;
+  barangDigantiKG?: number;
+  sisaRusakUnit?: number;
+  sisaRusakKG?: number;
+  stokAkhirUnit: number;
+  stokAkhirKG: number;
+  createdBy?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 export interface ProformaInvoice {
   id: string;
   tanggal: string;

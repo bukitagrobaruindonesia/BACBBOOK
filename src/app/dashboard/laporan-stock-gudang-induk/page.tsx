@@ -43,8 +43,10 @@ interface BarangRusakRow {
   status: string;
   tanggalPenggantian: string;
   jumlahDiganti: number;
+  jumlahTidakDiganti: number;
   sisaRusak: number;
   penggantianFotoUrls: string[];
+  nomorBA: string;
 }
 
 export default function LaporanInputStockGudangPage() {
@@ -106,10 +108,12 @@ export default function LaporanInputStockGudangPage() {
     { value: "100", label: "100 per halaman" },
   ];
 
-  const statusOptions = [
+    const statusOptions = [
     { value: "", label: "Semua Status" },
     { value: "belum diganti", label: "Belum Diganti" },
-    { value: "sudah diganti", label: "Sudah Diganti" },
+    { value: "sebagian diganti", label: "Sebagian Diganti" },
+    { value: "tidak diganti", label: "Tidak Diganti" },
+    { value: "selesai", label: "Selesai" },
   ];
 
   useEffect(() => {
@@ -269,7 +273,7 @@ export default function LaporanInputStockGudangPage() {
     }
   };
 
-  const fetchBarangRusak = async () => {
+    const fetchBarangRusak = async () => {
     try {
       const q = query(collection(db, "transaksiBarangMasuk"), orderBy("createdAt", "desc"));
       const snapshot = await getDocs(q);
@@ -296,8 +300,10 @@ export default function LaporanInputStockGudangPage() {
               status: r.status || "belum diganti",
               tanggalPenggantian: r.tanggalPenggantian || "",
               jumlahDiganti: r.jumlahDiganti || 0,
+              jumlahTidakDiganti: r.jumlahTidakDiganti || 0,
               sisaRusak: r.sisaRusak || 0,
               penggantianFotoUrls: r.penggantianFotoUrls || [],
+              nomorBA: r.nomorBA || "",
             });
           });
         }
@@ -987,18 +993,19 @@ export default function LaporanInputStockGudangPage() {
 
     XLSX.utils.book_append_sheet(wb, ws, "Stock Gudang");
 
-    if (rusakFiltered.length > 0) {
+        if (rusakFiltered.length > 0) {
       const rusakData: any[][] = [];
       rusakData.push(["PT BUKIT AGROCHEMICAL BARU"]);
       rusakData.push(["LAPORAN BARANG RUSAK"]);
-      rusakData.push([`Filter: ${rusakFilterStatus ? (rusakFilterStatus === "sudah diganti" ? "Sudah Diganti" : "Belum Diganti") : "Semua Status"}${rusakFilterFot ? ` | FOT ${rusakFilterFot}` : ""}`]);
+      rusakData.push([`Filter: ${rusakFilterStatus ? rusakFilterStatus.toUpperCase() : "SEMUA STATUS"}${rusakFilterFot ? ` | FOT ${rusakFilterFot}` : ""}`]);
       rusakData.push([`Tanggal Export: ${new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`]);
       rusakData.push([]);
-      rusakData.push(["No", "FOT", "Tanggal", "Kode Barang", "Nama Barang", "Jumlah Rusak", "Unit", "Keterangan", "Status", "Jumlah Penggantian", "Tanggal Penggantian"]);
+      rusakData.push(["No", "Nomor BA", "FOT", "Tanggal", "Kode Barang", "Nama Barang", "Jumlah Rusak", "Unit", "Keterangan", "Status", "Diganti", "Tidak Diganti", "Sisa", "Tanggal Penggantian"]);
 
       rusakFiltered.forEach((r, idx) => {
         rusakData.push([
           idx + 1,
+          r.nomorBA || "-",
           r.fot,
           r.tanggal,
           r.kodeBarang,
@@ -1006,21 +1013,23 @@ export default function LaporanInputStockGudangPage() {
           r.jumlah,
           r.unit,
           r.keterangan,
-          r.status === "sudah diganti" ? "SUDAH DIGANTI" : "BELUM DIGANTI",
-          r.status === "sudah diganti" ? r.jumlahDiganti : "-",
-          r.status === "sudah diganti" ? r.tanggalPenggantian : "-",
+          r.status === "selesai" ? "SELESAI" : r.status === "sebagian diganti" ? "SEBAGIAN DIGANTI" : r.status === "tidak diganti" ? "TIDAK DIGANTI" : "BELUM DIGANTI",
+          r.jumlahDiganti,
+          r.jumlahTidakDiganti,
+          r.sisaRusak,
+          r.tanggalPenggantian || "-",
         ]);
       });
 
       const wsRusak = XLSX.utils.aoa_to_sheet(rusakData);
       wsRusak["!cols"] = [
-        { wch: 5 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 18 }, { wch: 18 },
+        { wch: 5 }, { wch: 18 }, { wch: 12 }, { wch: 14 }, { wch: 16 }, { wch: 28 }, { wch: 14 }, { wch: 10 }, { wch: 30 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 18 },
       ];
       wsRusak["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 10 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 10 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 10 } },
-        { s: { r: 3, c: 0 }, e: { r: 3, c: 10 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 13 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 13 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: 13 } },
+        { s: { r: 3, c: 0 }, e: { r: 3, c: 13 } },
       ];
 
       const rusakRange = XLSX.utils.decode_range(wsRusak["!ref"] || "A1");
@@ -1209,7 +1218,52 @@ export default function LaporanInputStockGudangPage() {
         </div>
       ),
     },
+    {  
+      key: "barangRusak",
+      header: "Barang Rusak",
+      width: "140px",
+      render: (row: StockGudang) => (
+        <div className="text-xs">
+          {(row.barangRusakUnit || 0) > 0 && (
+            <p className="font-mono text-red-600">
+              {(row.barangRusakUnit || 0).toLocaleString("id-ID")} {row.unit}
+            </p>
+          )}
+          {(row.barangRusakKG || 0) > 0 && row.unit !== "DUS" && row.unit !== "BOTOL" && (
+            <p className="font-mono text-red-500">
+              {(row.barangRusakKG || 0).toLocaleString("id-ID")} KG
+            </p>
+          )}
+          {(row.barangRusakUnit || 0) === 0 && (row.barangRusakKG || 0) === 0 && (
+            <span className="text-gray-400">-</span>
+          )}
+        </div>
+      ),
+    },
     {
+      key: "sisaRusak",
+      header: "Sisa Rusak",
+      width: "120px",
+      render: (row: StockGudang) => (
+        <div className="text-xs">
+          {(row.sisaRusakUnit || 0) > 0 && (
+            <p className="font-mono font-bold text-amber-700">
+              {(row.sisaRusakUnit || 0).toLocaleString("id-ID")} {row.unit}
+            </p>
+          )}
+          {(row.sisaRusakKG || 0) > 0 && row.unit !== "DUS" && row.unit !== "BOTOL" && (
+            <p className="font-mono font-bold text-amber-600">
+              {(row.sisaRusakKG || 0).toLocaleString("id-ID")} KG
+            </p>
+          )}
+          {(row.sisaRusakUnit || 0) === 0 && (row.sisaRusakKG || 0) === 0 && (
+            <span className="text-gray-400">-</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      
       key: "aksi",
       header: "Aksi",
       width: "120px",
@@ -1254,6 +1308,14 @@ export default function LaporanInputStockGudangPage() {
       render: (row: BarangRusakRow) => <span className="text-xs text-gray-700">{row.tanggal}</span>,
     },
     {
+      key: "nomorBA",
+      header: "Nomor BA",
+      width: "140px",
+      render: (row: BarangRusakRow) => (
+        <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded text-xs">{row.nomorBA || "-"}</span>
+      ),
+    },
+    {
       key: "kodeBarang",
       header: "Kode",
       width: "100px",
@@ -1286,19 +1348,16 @@ export default function LaporanInputStockGudangPage() {
       width: "80px",
       render: (row: BarangRusakRow) => (
         <div>
-          {(() => {
-            const rf = row.fotoUrls;
-            return rf.length > 0 ? (
+          {row.fotoUrls.length > 0 ? (
             <button
-              onClick={() => setSelectedRusakFoto({ urls: rf, index: 0 })}
+              onClick={() => setSelectedRusakFoto({ urls: row.fotoUrls, index: 0 })}
               className="px-2 py-1 bg-amber-100 text-amber-700 rounded text-xs font-bold hover:bg-amber-200 transition-colors"
             >
-              {rf.length} Foto
+              {row.fotoUrls.length} Foto
             </button>
           ) : (
             <span className="text-xs text-gray-400">-</span>
-          );
-          })()}
+          )}
         </div>
       ),
     },
@@ -1309,42 +1368,39 @@ export default function LaporanInputStockGudangPage() {
       render: (row: BarangRusakRow) => (
         <span
           className={`px-2 py-1 rounded-md text-xs font-bold ${
-            row.status === "sudah diganti"
+            row.status === "selesai"
               ? "bg-green-100 text-green-700"
+              : row.status === "sebagian diganti"
+              ? "bg-blue-100 text-blue-700"
+              : row.status === "tidak diganti"
+              ? "bg-amber-100 text-amber-700"
               : "bg-red-100 text-red-700"
           }`}
         >
-          {row.status === "sudah diganti" ? "SUDAH DIGANTI" : "BELUM DIGANTI"}
+          {row.status === "selesai" ? "SELESAI" : row.status === "sebagian diganti" ? "SEBAGIAN" : row.status === "tidak diganti" ? "TIDAK DIGANTI" : "BELUM"}
         </span>
       ),
     },
     {
-      key: "detailPenggantian",
-      header: "Detail Penggantian",
-      width: "180px",
-      render: (row: BarangRusakRow) => {
-        if (row.status !== "sudah diganti") {
-          return <span className="text-xs text-gray-400">-</span>;
-        }
-        return (
-          <div className="text-xs space-y-1">
-            <p className="text-green-700 font-semibold">{row.jumlahDiganti.toLocaleString("id-ID")} {row.unitMasuk} diganti</p>
-            <p className="text-gray-500">Sisa rusak: {row.sisaRusak.toLocaleString("id-ID")} {row.unitMasuk}</p>
-            <p className="text-gray-500">Tgl: {row.tanggalPenggantian}</p>
-            {(() => {
-              const pgf = row.penggantianFotoUrls;
-              return pgf.length > 0 && (
-              <button
-                onClick={() => setSelectedRusakFoto({ urls: pgf, index: 0 })}
-                className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold hover:bg-blue-200 transition-colors"
-              >
-                {pgf.length} Foto Ganti
-              </button>
-            );
-            })()}
-          </div>
-        );
-      },
+      key: "detail",
+      header: "Detail",
+      width: "200px",
+      render: (row: BarangRusakRow) => (
+        <div className="text-xs space-y-1">
+          <p className="text-green-700 font-semibold">Diganti: {row.jumlahDiganti.toLocaleString("id-ID")} {row.unitMasuk}</p>
+          <p className="text-amber-700 font-semibold">Tidak Diganti: {row.jumlahTidakDiganti.toLocaleString("id-ID")} {row.unitMasuk}</p>
+          <p className="text-red-600 font-semibold">Sisa: {row.sisaRusak.toLocaleString("id-ID")} {row.unitMasuk}</p>
+          {row.tanggalPenggantian && <p className="text-gray-500">Tgl: {row.tanggalPenggantian}</p>}
+          {row.penggantianFotoUrls.length > 0 && (
+            <button
+              onClick={() => setSelectedRusakFoto({ urls: row.penggantianFotoUrls, index: 0 })}
+              className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs font-bold hover:bg-blue-200 transition-colors"
+            >
+              {row.penggantianFotoUrls.length} Foto Ganti
+            </button>
+          )}
+        </div>
+      ),
     },
     {
       key: "createdBy",
