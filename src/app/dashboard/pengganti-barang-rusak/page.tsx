@@ -134,7 +134,7 @@ const getUniqueBANumber = async (prefix: string): Promise<string> => {
 
 const releaseBANumber = async (nomorBA: string) => {
   try {
-    const match = nomorBA.match(/^BAGB-BA-([A-Z]+)-(\d{3})$/);
+    const match = nomorBA.match(/^BAGB-BA-([A-Z]+)-(\\d{3})$/);
     if (!match) return;
     const prefix = match[1].toLowerCase();
     const num = parseInt(match[2]);
@@ -509,11 +509,18 @@ export default function PenggantiBarangRusakPage() {
     if (!penggantianForm.transaksiId) {
       newErrors.penggantian = "Pilih barang rusak yang akan diganti";
     }
-    if (!penggantianForm.jumlahZAK || parseFloat(penggantianForm.jumlahZAK) <= 0) {
-      newErrors.penggantianJumlah = "Jumlah penggantian tidak valid";
-    }
     const jumlahInput = parseFloat(penggantianForm.jumlahZAK) || 0;
     const jumlahTidakInput = parseFloat(penggantianForm.jumlahTidakDiganti) || 0;
+
+    if (jumlahInput < 0) {
+      newErrors.penggantianJumlah = "Jumlah penggantian tidak valid";
+    }
+    if (jumlahTidakInput < 0) {
+      newErrors.penggantianTidakDiganti = "Jumlah tidak diganti tidak valid";
+    }
+    if (jumlahInput === 0 && jumlahTidakInput === 0) {
+      newErrors.penggantianTotal = "Minimal input jumlah diganti atau tidak diganti";
+    }
     if (penggantianForm.maxJumlah > 0 && jumlahInput > penggantianForm.maxJumlah) {
       newErrors.penggantianJumlah = `Jumlah penggantian tidak boleh melebihi sisa ${penggantianForm.maxJumlah}`;
     }
@@ -1027,7 +1034,7 @@ export default function PenggantiBarangRusakPage() {
             <body>
               <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
               <div class="page">
-                <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
+                <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\\'none\\'" />
                 <div class="title-bar">BERITA ACARA PENGGANTIAN BARANG RUSAK</div>
                 <div class="info-grid">
                   <div class="info-item"><span class="info-label">Nomor BA:</span> <span class="font-mono font-bold">${record.nomorBA}</span></div>
@@ -1104,7 +1111,7 @@ export default function PenggantiBarangRusakPage() {
                     <p class="signature-name">${record.createdBy || "_________________"}</p>
                   </div>
                 </div>
-                <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
+                <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\\'none\\'" />
               </div>
             </body>
             </html>
@@ -1167,7 +1174,7 @@ export default function PenggantiBarangRusakPage() {
             <body>
               <div class="print-bar no-print"><button class="print-btn" onclick="window.print()">Print / Save as PDF</button></div>
               <div class="page">
-                <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\'none\'" />
+                <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display=\\'none\\'" />
                 <div class="title-bar">BERITA ACARA BARANG RUSAK TIDAK DAPAT DIGANTI</div>
                 <div class="info-grid">
                   <div class="info-item"><span class="info-label">Nomor BA:</span> <span class="font-mono font-bold">${record.nomorBATidakDiganti}</span></div>
@@ -1236,7 +1243,7 @@ export default function PenggantiBarangRusakPage() {
                     <p class="signature-name">${user?.nama || "_________________"}</p>
                   </div>
                 </div>
-                <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\'none\'" />
+                <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display=\\'none\\'" />
               </div>
             </body>
             </html>
