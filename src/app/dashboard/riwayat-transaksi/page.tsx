@@ -1410,53 +1410,54 @@ export default function RiwayatTransaksiPage() {
       }
 
       if (item.jenis === "barangKeluarBackup" && item.backupItems) {
-        const productMap: Record<string, number> = {};
-        item.backupItems.forEach((it) => {
-          const key = it.stockId || it.namaBarang;
-          if (it.unit === "DUS") {
-            const botolPerDus = it.botolPerDus || 20;
-            productMap[key] = (productMap[key] || 0) + (it.pengambilanUnit / botolPerDus);
-          } else if (it.unit === "ZAK") {
-            productMap[key] = (productMap[key] || 0) + (it.pengambilanUnit * (it.bobotPerUnit || 50));
-          } else {
-            productMap[key] = (productMap[key] || 0) + it.pengambilanUnit;
-          }
-        });
-        for (const prod of Object.keys(productMap)) {
-          const val = productMap[prod];
-          const stock = getStockForProduct(prod);
-          if (stock) {
-            const stockRef = doc(db, "stockGudang", stock.id);
-            const stockSnap = await getDoc(stockRef);
-            if (stockSnap.exists()) {
-              const sData = stockSnap.data();
-              const currentUnit = sData.stokAkhirUnit || 0;
-              const currentKG = sData.stokAkhirKG || 0;
-              const currentKeluarUnit = sData.barangKeluarUnit || 0;
-              const currentKeluarKG = sData.barangKeluarKG || 0;
-              const isDusBotol = stock.unit === "DUS" || stock.unit === "BOTOL";
-              if (isDusBotol) {
-                const botolPerDus = stock.botolPerDus || 20;
-                const unitVal = val / botolPerDus;
-                await updateDoc(stockRef, {
-                  stokAkhirUnit: currentUnit + unitVal,
-                  stokAkhirKG: 0,
-                  barangKeluarUnit: Math.max(0, currentKeluarUnit - unitVal),
-                  barangKeluarKG: 0,
-                  updatedAt: serverTimestamp(),
-                });
-              } else {
-                const bobot = stock.bobotPerUnit || 50;
-                const unitVal = val / bobot;
-                await updateDoc(stockRef, {
-                  stokAkhirUnit: currentUnit + unitVal,
-                  stokAkhirKG: currentKG + val,
-                  barangKeluarUnit: Math.max(0, currentKeluarUnit - unitVal),
-                  barangKeluarKG: Math.max(0, currentKeluarKG - val),
-                  updatedAt: serverTimestamp(),
-                });
-              }
-            }
+        for (const it of item.backupItems) {
+          if (!it.stockId) continue;
+          const stockRef = doc(db, "stockGudang", it.stockId);
+          const stockSnap = await getDoc(stockRef);
+          if (!stockSnap.exists()) continue;
+          const sData = stockSnap.data();
+          const currentUnit = sData.stokAkhirUnit || 0;
+          const currentKG = sData.stokAkhirKG || 0;
+          const currentKeluarUnit = sData.barangKeluarUnit || 0;
+          const currentKeluarKG = sData.barangKeluarKG || 0;
+
+          if (it.unit === "ZAK") {
+            const qty = it.pengambilanUnit || 0;
+            const kg = it.totalKG || 0;
+            await updateDoc(stockRef, {
+              stokAkhirUnit: currentUnit + qty,
+              stokAkhirKG: currentKG + kg,
+              barangKeluarUnit: Math.max(0, currentKeluarUnit - qty),
+              barangKeluarKG: Math.max(0, currentKeluarKG - kg),
+              updatedAt: serverTimestamp(),
+            });
+          } else if (it.unit === "KG") {
+            const kg = it.totalKG || 0;
+            await updateDoc(stockRef, {
+              stokAkhirKG: currentKG + kg,
+              barangKeluarKG: Math.max(0, currentKeluarKG - kg),
+              updatedAt: serverTimestamp(),
+            });
+          } else if (it.unit === "DUS") {
+            const botolPerDus = it.botolPerDus || sData.botolPerDus || 20;
+            const botolQty = it.pengambilanUnit || 0;
+            const dusQty = botolQty / botolPerDus;
+            await updateDoc(stockRef, {
+              stokAkhirUnit: currentUnit + dusQty,
+              stokAkhirKG: 0,
+              barangKeluarUnit: Math.max(0, currentKeluarUnit - dusQty),
+              barangKeluarKG: 0,
+              updatedAt: serverTimestamp(),
+            });
+          } else if (it.unit === "BOTOL") {
+            const qty = it.pengambilanUnit || 0;
+            await updateDoc(stockRef, {
+              stokAkhirUnit: currentUnit + qty,
+              stokAkhirKG: 0,
+              barangKeluarUnit: Math.max(0, currentKeluarUnit - qty),
+              barangKeluarKG: 0,
+              updatedAt: serverTimestamp(),
+            });
           }
         }
       }
