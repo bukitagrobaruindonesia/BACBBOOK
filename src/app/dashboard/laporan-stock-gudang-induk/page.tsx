@@ -183,11 +183,6 @@ export default function LaporanInputStockGudangPage() {
     const masukPeriod: Record<string, { unit: number; kg: number }> = {};
     const keluarPeriod: Record<string, { unit: number; kg: number }> = {};
     const rusakPeriod: Record<string, { unit: number; kg: number }> = {};
-    const masukBefore: Record<string, { unit: number; kg: number }> = {};
-    const keluarBefore: Record<string, { unit: number; kg: number }> = {};
-    const rusakBefore: Record<string, { unit: number; kg: number }> = {};
-
-    const periodStart = getPeriodStartDate();
 
     const addToMap = (
       map: Record<string, { unit: number; kg: number }>,
@@ -208,25 +203,23 @@ export default function LaporanInputStockGudangPage() {
       }
     };
 
+    const inPeriod = (tanggal: string) => {
+      if (!tanggal || typeof tanggal !== "string" || tanggal.length !== 10) return false;
+      const parts = tanggal.split("-");
+      if (parts.length !== 3) return false;
+      const [y, m, d] = parts;
+      if (filterTahun && y !== filterTahun) return false;
+      if (filterBulan && m !== filterBulan) return false;
+      if (filterTanggal && d !== filterTanggal) return false;
+      return true;
+    };
+
     try {
       const masukSnap = await getDocs(query(collection(db, "transaksiBarangMasuk"), orderBy("tanggal", "desc")));
       masukSnap.docs.forEach((docSnap) => {
         const d = docSnap.data();
         const tanggal = d.tanggal || "";
-        if (!tanggal || typeof tanggal !== "string" || tanggal.length !== 10) return;
-
-        const inPeriod = (() => {
-          const parts = tanggal.split("-");
-          if (parts.length !== 3) return false;
-          const [y, m, dVal] = parts;
-          if (filterTahun && y !== filterTahun) return false;
-          if (filterBulan && m !== filterBulan) return false;
-          if (filterTanggal && dVal !== filterTanggal) return false;
-          return true;
-        })();
-
-        const beforePeriod = !inPeriod && tanggal < periodStart;
-        if (!inPeriod && !beforePeriod) return;
+        if (!inPeriod(tanggal)) return;
 
         const kode = (d.kodeBarang || "").trim().toUpperCase();
         const fot = (d.fot || "").trim().toUpperCase();
@@ -235,21 +228,13 @@ export default function LaporanInputStockGudangPage() {
         const totalKG = d.totalKG || 0;
         const key = `${kode}|${fot}`;
 
-        if (inPeriod) {
-          addToMap(masukPeriod, key, jumlahZAK, totalKG, unit);
-        } else if (beforePeriod) {
-          addToMap(masukBefore, key, jumlahZAK, totalKG, unit);
-        }
+        addToMap(masukPeriod, key, jumlahZAK, totalKG, unit);
 
         if (d.adaBarangRusak && Array.isArray(d.barangRusak)) {
           d.barangRusak.forEach((r: any) => {
             const rusakUnit = r.unit || unit;
             const rusakJumlah = r.jumlah || 0;
-            if (inPeriod) {
-              addToMap(rusakPeriod, key, rusakJumlah, rusakUnit === "KG" ? rusakJumlah : 0, rusakUnit);
-            } else if (beforePeriod) {
-              addToMap(rusakBefore, key, rusakJumlah, rusakUnit === "KG" ? rusakJumlah : 0, rusakUnit);
-            }
+            addToMap(rusakPeriod, key, rusakJumlah, rusakUnit === "KG" ? rusakJumlah : 0, rusakUnit);
           });
         }
       });
@@ -258,57 +243,37 @@ export default function LaporanInputStockGudangPage() {
       keluarSnap.docs.forEach((docSnap) => {
         const d = docSnap.data();
         const tanggal = d.tanggal || "";
-        if (!tanggal || typeof tanggal !== "string" || tanggal.length !== 10) return;
-
-        const inPeriod = (() => {
-          const parts = tanggal.split("-");
-          if (parts.length !== 3) return false;
-          const [y, m, dVal] = parts;
-          if (filterTahun && y !== filterTahun) return false;
-          if (filterBulan && m !== filterBulan) return false;
-          if (filterTanggal && dVal !== filterTanggal) return false;
-          return true;
-        })();
-
-        const beforePeriod = !inPeriod && tanggal < periodStart;
-        if (!inPeriod && !beforePeriod) return;
+        if (!inPeriod(tanggal)) return;
 
         const jenis = d.jenis || "barangKeluar";
+        if (jenis !== "barangKeluarBackup") return;
 
-        if (jenis === "barangKeluarBackup") {
-          const items = d.items || [];
-          items.forEach((item: any) => {
-            const kode = (item.kodeBarang || "").trim().toUpperCase();
-            const fot = (item.fot || d.fot || "").trim().toUpperCase();
-            const unit = item.unit || "ZAK";
-            const pengambilan = item.pengambilanUnit || 0;
-            const totalKG = item.totalKG || 0;
-            const key = `${kode}|${fot}`;
-            if (inPeriod) {
-              addToMap(keluarPeriod, key, pengambilan, totalKG, unit);
-            } else if (beforePeriod) {
-              addToMap(keluarBefore, key, pengambilan, totalKG, unit);
-            }
-          });
-        }
+        const items = d.items || [];
+        items.forEach((item: any) => {
+          const kode = (item.kodeBarang || "").trim().toUpperCase();
+          const fot = (item.fot || d.fot || "").trim().toUpperCase();
+          const unit = item.unit || "ZAK";
+          const pengambilan = item.pengambilanUnit || 0;
+          const totalKG = item.totalKG || 0;
+          const key = `${kode}|${fot}`;
+          addToMap(keluarPeriod, key, pengambilan, totalKG, unit);
+        });
       });
 
       const periodCalc: Record<string, PeriodCalc> = {};
 
       stockList.forEach((stock) => {
         const key = `${stock.kodeBarang}|${stock.fot}`;
-        const mBefore = masukBefore[key] || { unit: 0, kg: 0 };
-        const kBefore = keluarBefore[key] || { unit: 0, kg: 0 };
-        const rBefore = rusakBefore[key] || { unit: 0, kg: 0 };
         const mPeriod = masukPeriod[key] || { unit: 0, kg: 0 };
         const kPeriod = keluarPeriod[key] || { unit: 0, kg: 0 };
         const rPeriod = rusakPeriod[key] || { unit: 0, kg: 0 };
 
         const isDusBotol = stock.unit === "DUS" || stock.unit === "BOTOL";
+        const realStokAkhirUnit = stock.stokAkhirUnit || 0;
+        const realStokAkhirKG = stock.stokAkhirKG || 0;
 
         if (isDusBotol) {
-          const stokAwalUnit = (stock.stokAwalUnit || 0) + mBefore.unit - kBefore.unit - rBefore.unit;
-          const stokAkhirUnit = stokAwalUnit + mPeriod.unit - kPeriod.unit - rPeriod.unit;
+          const stokAwalUnit = realStokAkhirUnit - mPeriod.unit + kPeriod.unit + rPeriod.unit;
           periodCalc[key] = {
             stokAwalUnit: Math.max(0, stokAwalUnit),
             stokAwalKG: 0,
@@ -318,12 +283,11 @@ export default function LaporanInputStockGudangPage() {
             keluarKG: 0,
             rusakUnit: rPeriod.unit,
             rusakKG: 0,
-            stokAkhirUnit: Math.max(0, stokAkhirUnit),
+            stokAkhirUnit: Math.max(0, realStokAkhirUnit),
             stokAkhirKG: 0,
           };
         } else if (stock.unit === "KG") {
-          const stokAwalKG = (stock.stokAwalKG || 0) + mBefore.kg - kBefore.kg - rBefore.kg;
-          const stokAkhirKG = stokAwalKG + mPeriod.kg - kPeriod.kg - rPeriod.kg;
+          const stokAwalKG = realStokAkhirKG - mPeriod.kg + kPeriod.kg + rPeriod.kg;
           periodCalc[key] = {
             stokAwalUnit: 0,
             stokAwalKG: Math.max(0, stokAwalKG),
@@ -334,13 +298,11 @@ export default function LaporanInputStockGudangPage() {
             rusakUnit: 0,
             rusakKG: rPeriod.kg,
             stokAkhirUnit: 0,
-            stokAkhirKG: Math.max(0, stokAkhirKG),
+            stokAkhirKG: Math.max(0, realStokAkhirKG),
           };
         } else {
-          const stokAwalUnit = (stock.stokAwalUnit || 0) + mBefore.unit - kBefore.unit - rBefore.unit;
-          const stokAwalKG = (stock.stokAwalKG || 0) + mBefore.kg - kBefore.kg - rBefore.kg;
-          const stokAkhirUnit = stokAwalUnit + mPeriod.unit - kPeriod.unit - rPeriod.unit;
-          const stokAkhirKG = stokAwalKG + mPeriod.kg - kPeriod.kg - rPeriod.kg;
+          const stokAwalUnit = realStokAkhirUnit - mPeriod.unit + kPeriod.unit + rPeriod.unit;
+          const stokAwalKG = realStokAkhirKG - mPeriod.kg + kPeriod.kg + rPeriod.kg;
           periodCalc[key] = {
             stokAwalUnit: Math.max(0, stokAwalUnit),
             stokAwalKG: Math.max(0, stokAwalKG),
@@ -350,8 +312,8 @@ export default function LaporanInputStockGudangPage() {
             keluarKG: kPeriod.kg,
             rusakUnit: rPeriod.unit,
             rusakKG: rPeriod.kg,
-            stokAkhirUnit: Math.max(0, stokAkhirUnit),
-            stokAkhirKG: Math.max(0, stokAkhirKG),
+            stokAkhirUnit: Math.max(0, realStokAkhirUnit),
+            stokAkhirKG: Math.max(0, realStokAkhirKG),
           };
         }
       });
@@ -365,7 +327,7 @@ export default function LaporanInputStockGudangPage() {
     }
   };
 
-  const getRowValues = (row: StockGudang) => {
+const getRowValues = (row: StockGudang) => {
     const hasFilter = !!(filterTanggal || filterBulan || filterTahun);
     const key = `${row.kodeBarang}|${row.fot}`;
     const periodData = hasFilter ? periodCalcMap[key] : null;
