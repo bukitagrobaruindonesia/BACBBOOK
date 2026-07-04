@@ -49,6 +49,19 @@ interface BarangRusakRow {
   nomorBA: string;
 }
 
+interface PeriodCalc {
+  stokAwalUnit: number;
+  stokAwalKG: number;
+  masukUnit: number;
+  masukKG: number;
+  keluarUnit: number;
+  keluarKG: number;
+  rusakUnit: number;
+  rusakKG: number;
+  stokAkhirUnit: number;
+  stokAkhirKG: number;
+}
+
 export default function LaporanInputStockGudangPage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockGudang[]>([]);
@@ -67,6 +80,8 @@ export default function LaporanInputStockGudangPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [transaksiMasukMap, setTransaksiMasukMap] = useState<Record<string, { unit: number; kg: number }>>({});
   const [transaksiKeluarMap, setTransaksiKeluarMap] = useState<Record<string, { unit: number; kg: number }>>({});
+  const [transaksiRusakMap, setTransaksiRusakMap] = useState<Record<string, { unit: number; kg: number }>>({});
+  const [periodCalcMap, setPeriodCalcMap] = useState<Record<string, PeriodCalc>>({});
 
   const [formData, setFormData] = useState({
     fot: "",
@@ -108,7 +123,7 @@ export default function LaporanInputStockGudangPage() {
     { value: "100", label: "100 per halaman" },
   ];
 
-    const statusOptions = [
+  const statusOptions = [
     { value: "", label: "Semua Status" },
     { value: "belum diganti", label: "Belum Diganti" },
     { value: "sebagian diganti", label: "Sebagian Diganti" },
@@ -149,50 +164,47 @@ export default function LaporanInputStockGudangPage() {
     };
   }, [formData]);
 
+  const getPeriodStartDate = () => {
+    const year = filterTahun || "0000";
+    const month = filterBulan || "01";
+    const day = filterTanggal || "01";
+    return `${year}-${month}-${day}`;
+  };
+
   const fetchTransaksiFiltered = async () => {
     if (!filterTanggal && !filterBulan && !filterTahun) {
       setTransaksiMasukMap({});
       setTransaksiKeluarMap({});
+      setTransaksiRusakMap({});
+      setPeriodCalcMap({});
       return;
     }
 
-    const masukMap: Record<string, { unit: number; kg: number }> = {};
-    const keluarMap: Record<string, { unit: number; kg: number }> = {};
+    const masukPeriod: Record<string, { unit: number; kg: number }> = {};
+    const keluarPeriod: Record<string, { unit: number; kg: number }> = {};
+    const rusakPeriod: Record<string, { unit: number; kg: number }> = {};
+    const masukBefore: Record<string, { unit: number; kg: number }> = {};
+    const keluarBefore: Record<string, { unit: number; kg: number }> = {};
+    const rusakBefore: Record<string, { unit: number; kg: number }> = {};
 
-    const matchesDate = (tanggal: string) => {
-      if (!tanggal || typeof tanggal !== "string") return false;
-      const parts = tanggal.split("-");
-      if (parts.length !== 3) return false;
-      const [y, m, d] = parts;
-      if (filterTahun && y !== filterTahun) return false;
-      if (filterBulan && m !== filterBulan) return false;
-      if (filterTanggal && d !== filterTanggal) return false;
-      return true;
-    };
+    const periodStart = getPeriodStartDate();
 
-    const addMasuk = (kodeBarang: string, fot: string, unit: string, unitVal: number, kgVal: number) => {
-      const key = `${(kodeBarang || "").trim().toUpperCase()}|${(fot || "").trim().toUpperCase()}`;
-      if (!masukMap[key]) masukMap[key] = { unit: 0, kg: 0 };
-      if (unit === "DUS" || unit === "BOTOL") {
-        masukMap[key].unit += unitVal;
-      } else if (unit === "KG") {
-        masukMap[key].kg += kgVal;
+    const addToMap = (
+      map: Record<string, { unit: number; kg: number }>,
+      key: string,
+      unit: number,
+      kg: number,
+      itemUnit: string
+    ) => {
+      if (!key.includes("|") || key.endsWith("|")) return;
+      if (!map[key]) map[key] = { unit: 0, kg: 0 };
+      if (itemUnit === "DUS" || itemUnit === "BOTOL") {
+        map[key].unit += unit;
+      } else if (itemUnit === "KG") {
+        map[key].kg += kg;
       } else {
-        masukMap[key].unit += unitVal;
-        masukMap[key].kg += kgVal;
-      }
-    };
-
-    const addKeluar = (kodeBarang: string, fot: string, unit: string, unitVal: number, kgVal: number) => {
-      const key = `${(kodeBarang || "").trim().toUpperCase()}|${(fot || "").trim().toUpperCase()}`;
-      if (!keluarMap[key]) keluarMap[key] = { unit: 0, kg: 0 };
-      if (unit === "DUS" || unit === "BOTOL") {
-        keluarMap[key].unit += unitVal;
-      } else if (unit === "KG") {
-        keluarMap[key].kg += kgVal;
-      } else {
-        keluarMap[key].unit += unitVal;
-        keluarMap[key].kg += kgVal;
+        map[key].unit += unit;
+        map[key].kg += kg;
       }
     };
 
@@ -200,20 +212,86 @@ export default function LaporanInputStockGudangPage() {
       const masukSnap = await getDocs(query(collection(db, "transaksiBarangMasuk"), orderBy("tanggal", "desc")));
       masukSnap.docs.forEach((docSnap) => {
         const d = docSnap.data();
-        if (!matchesDate(d.tanggal)) return;
-        addMasuk(d.kodeBarang || "", d.fot || "", d.unit || "ZAK", d.netJumlahZAK || 0, d.netTotalKG || 0);
+        const tanggal = d.tanggal || "";
+        if (!tanggal || typeof tanggal !== "string" || tanggal.length !== 10) return;
+
+        const inPeriod = (() => {
+          const parts = tanggal.split("-");
+          if (parts.length !== 3) return false;
+          const [y, m, dVal] = parts;
+          if (filterTahun && y !== filterTahun) return false;
+          if (filterBulan && m !== filterBulan) return false;
+          if (filterTanggal && dVal !== filterTanggal) return false;
+          return true;
+        })();
+
+        const beforePeriod = !inPeriod && tanggal < periodStart;
+        if (!inPeriod && !beforePeriod) return;
+
+        const kode = (d.kodeBarang || "").trim().toUpperCase();
+        const fot = (d.fot || "").trim().toUpperCase();
+        const unit = d.unit || "ZAK";
+        const jumlahZAK = d.jumlahZAK || 0;
+        const totalKG = d.totalKG || 0;
+        const key = `${kode}|${fot}`;
+
+        if (inPeriod) {
+          addToMap(masukPeriod, key, jumlahZAK, totalKG, unit);
+        } else if (beforePeriod) {
+          addToMap(masukBefore, key, jumlahZAK, totalKG, unit);
+        }
+
+        if (d.adaBarangRusak && Array.isArray(d.barangRusak)) {
+          d.barangRusak.forEach((r: any) => {
+            const rusakUnit = r.unit || unit;
+            const rusakJumlah = r.jumlah || 0;
+            if (inPeriod) {
+              addToMap(rusakPeriod, key, rusakJumlah, rusakUnit === "KG" ? rusakJumlah : 0, rusakUnit);
+            } else if (beforePeriod) {
+              addToMap(rusakBefore, key, rusakJumlah, rusakUnit === "KG" ? rusakJumlah : 0, rusakUnit);
+            }
+          });
+        }
       });
 
       const keluarSnap = await getDocs(query(collection(db, "transaksiBarangKeluar"), orderBy("tanggal", "desc")));
       keluarSnap.docs.forEach((docSnap) => {
         const d = docSnap.data();
-        if (!matchesDate(d.tanggal)) return;
-        const items = d.items || [];
-        if (d.jenis === "barangKeluarBackup") {
+        const tanggal = d.tanggal || "";
+        if (!tanggal || typeof tanggal !== "string" || tanggal.length !== 10) return;
+
+        const inPeriod = (() => {
+          const parts = tanggal.split("-");
+          if (parts.length !== 3) return false;
+          const [y, m, dVal] = parts;
+          if (filterTahun && y !== filterTahun) return false;
+          if (filterBulan && m !== filterBulan) return false;
+          if (filterTanggal && dVal !== filterTanggal) return false;
+          return true;
+        })();
+
+        const beforePeriod = !inPeriod && tanggal < periodStart;
+        if (!inPeriod && !beforePeriod) return;
+
+        const jenis = d.jenis || "barangKeluar";
+
+        if (jenis === "barangKeluarBackup") {
+          const items = d.items || [];
           items.forEach((item: any) => {
-            addKeluar(item.kodeBarang || "", item.fot || d.fot || "", item.unit || "ZAK", item.pengambilanUnit || 0, item.totalKG || 0);
+            const kode = (item.kodeBarang || "").trim().toUpperCase();
+            const fot = (item.fot || d.fot || "").trim().toUpperCase();
+            const unit = item.unit || "ZAK";
+            const pengambilan = item.pengambilanUnit || 0;
+            const totalKG = item.totalKG || 0;
+            const key = `${kode}|${fot}`;
+            if (inPeriod) {
+              addToMap(keluarPeriod, key, pengambilan, totalKG, unit);
+            } else if (beforePeriod) {
+              addToMap(keluarBefore, key, pengambilan, totalKG, unit);
+            }
           });
-        } else {
+        } else if (jenis === "suratPengangkutanGudangInduk" || jenis === "suratPengangkutanDO") {
+          const items = d.items || [];
           items.forEach((item: any) => {
             const itemFotNorm = (item.fot || "").trim().toUpperCase();
             const stock = stockList.find((s) => s.namaBarang === item.jenisPupuk && (item.fot ? s.fot === itemFotNorm : true));
@@ -221,20 +299,134 @@ export default function LaporanInputStockGudangPage() {
             const fot = (item.fot || d.fot || "").trim().toUpperCase();
             const unit = stock ? stock.unit : (item.unit || "ZAK");
             const isDusBotol = unit === "DUS" || unit === "BOTOL";
+            const key = `${kode}|${fot}`;
             if (isDusBotol) {
-              addKeluar(kode, fot, unit, item.pengambilanZAK || 0, 0);
+              if (inPeriod) addToMap(keluarPeriod, key, item.pengambilanZAK || 0, 0, unit);
+              else if (beforePeriod) addToMap(keluarBefore, key, item.pengambilanZAK || 0, 0, unit);
             } else {
-              addKeluar(kode, fot, unit, item.pengambilanZAK || 0, item.totalKG || 0);
+              if (inPeriod) addToMap(keluarPeriod, key, item.pengambilanZAK || 0, item.totalKG || 0, unit);
+              else if (beforePeriod) addToMap(keluarBefore, key, item.pengambilanZAK || 0, item.totalKG || 0, unit);
             }
           });
+        } else {
+          const kode = (d.kodeBarang || "").trim().toUpperCase();
+          const fot = (d.fot || "").trim().toUpperCase();
+          const unit = d.unit || "ZAK";
+          const jumlahZAK = d.jumlahZAK || 0;
+          const totalKG = d.totalKG || 0;
+          const key = `${kode}|${fot}`;
+          if (inPeriod) {
+            addToMap(keluarPeriod, key, jumlahZAK, totalKG, unit);
+          } else if (beforePeriod) {
+            addToMap(keluarBefore, key, jumlahZAK, totalKG, unit);
+          }
         }
       });
 
-      setTransaksiMasukMap(masukMap);
-      setTransaksiKeluarMap(keluarMap);
+      const periodCalc: Record<string, PeriodCalc> = {};
+
+      stockList.forEach((stock) => {
+        const key = `${stock.kodeBarang}|${stock.fot}`;
+        const mBefore = masukBefore[key] || { unit: 0, kg: 0 };
+        const kBefore = keluarBefore[key] || { unit: 0, kg: 0 };
+        const rBefore = rusakBefore[key] || { unit: 0, kg: 0 };
+        const mPeriod = masukPeriod[key] || { unit: 0, kg: 0 };
+        const kPeriod = keluarPeriod[key] || { unit: 0, kg: 0 };
+        const rPeriod = rusakPeriod[key] || { unit: 0, kg: 0 };
+
+        const isDusBotol = stock.unit === "DUS" || stock.unit === "BOTOL";
+
+        if (isDusBotol) {
+          const stokAwalUnit = (stock.stokAwalUnit || 0) + mBefore.unit - kBefore.unit - rBefore.unit;
+          const stokAkhirUnit = stokAwalUnit + mPeriod.unit - kPeriod.unit - rPeriod.unit;
+          periodCalc[key] = {
+            stokAwalUnit: Math.max(0, stokAwalUnit),
+            stokAwalKG: 0,
+            masukUnit: mPeriod.unit,
+            masukKG: 0,
+            keluarUnit: kPeriod.unit,
+            keluarKG: 0,
+            rusakUnit: rPeriod.unit,
+            rusakKG: 0,
+            stokAkhirUnit: Math.max(0, stokAkhirUnit),
+            stokAkhirKG: 0,
+          };
+        } else if (stock.unit === "KG") {
+          const stokAwalKG = (stock.stokAwalKG || 0) + mBefore.kg - kBefore.kg - rBefore.kg;
+          const stokAkhirKG = stokAwalKG + mPeriod.kg - kPeriod.kg - rPeriod.kg;
+          periodCalc[key] = {
+            stokAwalUnit: 0,
+            stokAwalKG: Math.max(0, stokAwalKG),
+            masukUnit: 0,
+            masukKG: mPeriod.kg,
+            keluarUnit: 0,
+            keluarKG: kPeriod.kg,
+            rusakUnit: 0,
+            rusakKG: rPeriod.kg,
+            stokAkhirUnit: 0,
+            stokAkhirKG: Math.max(0, stokAkhirKG),
+          };
+        } else {
+          const stokAwalUnit = (stock.stokAwalUnit || 0) + mBefore.unit - kBefore.unit - rBefore.unit;
+          const stokAwalKG = (stock.stokAwalKG || 0) + mBefore.kg - kBefore.kg - rBefore.kg;
+          const stokAkhirUnit = stokAwalUnit + mPeriod.unit - kPeriod.unit - rPeriod.unit;
+          const stokAkhirKG = stokAwalKG + mPeriod.kg - kPeriod.kg - rPeriod.kg;
+          periodCalc[key] = {
+            stokAwalUnit: Math.max(0, stokAwalUnit),
+            stokAwalKG: Math.max(0, stokAwalKG),
+            masukUnit: mPeriod.unit,
+            masukKG: mPeriod.kg,
+            keluarUnit: kPeriod.unit,
+            keluarKG: kPeriod.kg,
+            rusakUnit: rPeriod.unit,
+            rusakKG: rPeriod.kg,
+            stokAkhirUnit: Math.max(0, stokAkhirUnit),
+            stokAkhirKG: Math.max(0, stokAkhirKG),
+          };
+        }
+      });
+
+      setTransaksiMasukMap(masukPeriod);
+      setTransaksiKeluarMap(keluarPeriod);
+      setTransaksiRusakMap(rusakPeriod);
+      setPeriodCalcMap(periodCalc);
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const getRowValues = (row: StockGudang) => {
+    const hasFilter = !!(filterTanggal || filterBulan || filterTahun);
+    const key = `${row.kodeBarang}|${row.fot}`;
+    const periodData = hasFilter ? periodCalcMap[key] : null;
+
+    if (hasFilter && periodData) {
+      return {
+        stokAwalUnit: periodData.stokAwalUnit,
+        stokAwalKG: periodData.stokAwalKG,
+        masukUnit: periodData.masukUnit,
+        masukKG: periodData.masukKG,
+        keluarUnit: periodData.keluarUnit,
+        keluarKG: periodData.keluarKG,
+        rusakUnit: periodData.rusakUnit,
+        rusakKG: periodData.rusakKG,
+        stokAkhirUnit: periodData.stokAkhirUnit,
+        stokAkhirKG: periodData.stokAkhirKG,
+      };
+    }
+
+    return {
+      stokAwalUnit: row.stokAwalUnit || 0,
+      stokAwalKG: hitungStokAwalKG(row),
+      masukUnit: row.barangMasukUnit || 0,
+      masukKG: row.barangMasukKG || 0,
+      keluarUnit: row.barangKeluarUnit || 0,
+      keluarKG: row.barangKeluarKG || 0,
+      rusakUnit: row.barangRusakUnit || 0,
+      rusakKG: row.barangRusakKG || 0,
+      stokAkhirUnit: row.stokAkhirUnit || 0,
+      stokAkhirKG: hitungStokAkhirKG(row),
+    };
   };
 
   const fetchFotList = async () => {
@@ -276,7 +468,7 @@ export default function LaporanInputStockGudangPage() {
     }
   };
 
-    const fetchBarangRusak = async () => {
+  const fetchBarangRusak = async () => {
     try {
       const q = query(collection(db, "transaksiBarangMasuk"), orderBy("createdAt", "desc"));
       const snapshot = await getDocs(q);
@@ -714,7 +906,6 @@ export default function LaporanInputStockGudangPage() {
       CreatedDate: new Date(),
     };
 
-    const hasFilter = !!(filterTanggal || filterBulan || filterTahun);
     const dataToExport = filteredStockList;
 
     const wsData: any[][] = [];
@@ -742,6 +933,8 @@ export default function LaporanInputStockGudangPage() {
       "Barang Keluar (Unit)",
       "Barang Keluar (KG)",
       "Barang Keluar (Botol)",
+      "Barang Rusak (Unit)",
+      "Barang Rusak (KG)",
       "Stok Akhir (Unit)",
       "Stok Akhir (KG)",
       "Stok Akhir (Botol)",
@@ -754,9 +947,7 @@ export default function LaporanInputStockGudangPage() {
     let totalKG = 0;
 
     dataToExport.forEach((row, idx) => {
-      const key = `${(row.kodeBarang || "").trim().toUpperCase()}|${(row.fot || "").trim().toUpperCase()}`;
-      const masuk = hasFilter ? (transaksiMasukMap[key] || { unit: 0, kg: 0 }) : { unit: row.barangMasukUnit || 0, kg: row.barangMasukKG || 0 };
-      const keluar = hasFilter ? (transaksiKeluarMap[key] || { unit: 0, kg: 0 }) : { unit: row.barangKeluarUnit || 0, kg: row.barangKeluarKG || 0 };
+      const vals = getRowValues(row);
 
       let konversi = "";
       if (row.unit === "BOTOL" || row.unit === "DUS") {
@@ -767,20 +958,24 @@ export default function LaporanInputStockGudangPage() {
         konversi = "-";
       }
 
-      const stokAwalUnit = row.stokAwalUnit || 0;
-      const stokAwalKG = hitungStokAwalKG(row);
+      const stokAwalUnit = vals.stokAwalUnit;
+      const stokAwalKG = vals.stokAwalKG;
       const stokAwalBotol = getBotolCount(row, stokAwalUnit);
 
-      const masukUnit = masuk.unit;
-      const masukKG = masuk.kg;
+      const masukUnit = vals.masukUnit;
+      const masukKG = vals.masukKG;
       const masukBotol = row.unit === "DUS" || row.unit === "BOTOL" ? masukUnit * (row.botolPerDus || 20) : 0;
 
-      const keluarUnit = keluar.unit;
-      const keluarKG = keluar.kg;
+      const keluarUnit = vals.keluarUnit;
+      const keluarKG = vals.keluarKG;
       const keluarBotol = row.unit === "DUS" || row.unit === "BOTOL" ? keluarUnit * (row.botolPerDus || 20) : 0;
 
-      const akhirUnit = row.stokAkhirUnit || 0;
-      const akhirKG = hitungStokAkhirKG(row);
+      const rusakUnit = vals.rusakUnit;
+      const rusakKG = vals.rusakKG;
+      const rusakBotol = row.unit === "DUS" || row.unit === "BOTOL" ? rusakUnit * (row.botolPerDus || 20) : 0;
+
+      const akhirUnit = vals.stokAkhirUnit;
+      const akhirKG = vals.stokAkhirKG;
       const akhirBotol = getBotolCount(row, akhirUnit);
 
       if (row.unit === "ZAK") {
@@ -812,6 +1007,9 @@ export default function LaporanInputStockGudangPage() {
         keluarUnit,
         keluarKG,
         keluarBotol,
+        rusakUnit,
+        rusakKG,
+        rusakBotol,
         akhirUnit,
         akhirKG,
         akhirBotol,
@@ -819,12 +1017,12 @@ export default function LaporanInputStockGudangPage() {
     });
 
     wsData.push([]);
-    wsData.push(["RINGKASAN TOTAL", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
-    wsData.push(["Total ZAK", totalZAK, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
-    wsData.push(["Total DUS", totalDUS, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
-    wsData.push(["Total Botol", totalBotol, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
-    wsData.push(["Total KG", totalKG, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
-    wsData.push(["Total Item", dataToExport.length, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["RINGKASAN TOTAL", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total ZAK", totalZAK, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total DUS", totalDUS, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total Botol", totalBotol, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total KG", totalKG, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
+    wsData.push(["Total Item", dataToExport.length, "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", ""]);
 
     const ws = XLSX.utils.aoa_to_sheet(wsData);
 
@@ -848,14 +1046,17 @@ export default function LaporanInputStockGudangPage() {
       { wch: 16 },
       { wch: 14 },
       { wch: 16 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 16 },
     ];
     ws["!cols"] = colWidths;
 
     const mergeRanges = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 18 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 18 } },
-      { s: { r: 2, c: 0 }, e: { r: 2, c: 18 } },
-      { s: { r: 3, c: 0 }, e: { r: 3, c: 18 } },
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 21 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 21 } },
+      { s: { r: 2, c: 0 }, e: { r: 2, c: 21 } },
+      { s: { r: 3, c: 0 }, e: { r: 3, c: 21 } },
     ];
     ws["!merges"] = mergeRanges;
 
@@ -996,7 +1197,7 @@ export default function LaporanInputStockGudangPage() {
 
     XLSX.utils.book_append_sheet(wb, ws, "Stock Gudang");
 
-        if (rusakFiltered.length > 0) {
+    if (rusakFiltered.length > 0) {
       const rusakData: any[][] = [];
       rusakData.push(["PT BUKIT AGROCHEMICAL BARU"]);
       rusakData.push(["LAPORAN BARANG RUSAK"]);
@@ -1056,8 +1257,7 @@ export default function LaporanInputStockGudangPage() {
     const filename = `Laporan_Stock_Gudang_${new Date().toISOString().slice(0, 10)}_${new Date().toTimeString().slice(0, 5).replace(":", "-")}.xlsx`;
     saveAs(blob, filename);
   };
-
-  const columns = [
+const columns = [
     {
       key: "fot",
       header: "FOT",
@@ -1137,40 +1337,41 @@ export default function LaporanInputStockGudangPage() {
       key: "stokAwal",
       header: "Stok Awal",
       width: "120px",
-      render: (row: StockGudang) => (
-        <div className="text-xs">
-          {row.unit !== "KG" && (
-            <p className="font-mono text-gray-600">
-              {formatDusDisplay(row, row.stokAwalUnit)}
-            </p>
-          )}
-          {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-            <p className="font-mono text-gray-500">{hitungStokAwalKG(row).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-          )}
-        </div>
-      ),
+      render: (row: StockGudang) => {
+        const vals = getRowValues(row);
+        return (
+          <div className="text-xs">
+            {row.unit !== "KG" && (
+              <p className="font-mono text-gray-600">
+                {formatDusDisplay(row, vals.stokAwalUnit)}
+              </p>
+            )}
+            {row.unit !== "DUS" && row.unit !== "BOTOL" && (
+              <p className="font-mono text-gray-500">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "barangMasuk",
       header: "Masuk",
       width: "100px",
       render: (row: StockGudang) => {
-        const hasFilter = !!(filterTanggal || filterBulan || filterTahun);
-        const key = `${(row.kodeBarang || "").trim().toUpperCase()}|${(row.fot || "").trim().toUpperCase()}`;
-        const masuk = hasFilter ? (transaksiMasukMap[key] || { unit: 0, kg: 0 }) : { unit: row.barangMasukUnit || 0, kg: row.barangMasukKG || 0 };
-        const showUnit = masuk.unit > 0;
-        const showKG = masuk.kg > 0;
+        const vals = getRowValues(row);
+        const showUnit = vals.masukUnit > 0;
+        const showKG = vals.masukKG > 0;
         return (
           <div className="text-xs">
             {row.unit !== "KG" && showUnit && (
               <p className="font-mono text-green-600">
-                +{formatDusDisplay(row, masuk.unit)}
+                +{formatDusDisplay(row, vals.masukUnit)}
               </p>
             )}
             {row.unit !== "DUS" && row.unit !== "BOTOL" && showKG && (
-              <p className="font-mono text-green-500">+{masuk.kg.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+              <p className="font-mono text-green-500">+{vals.masukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
             )}
-            {hasFilter && !showUnit && !showKG && (
+            {!showUnit && !showKG && (
               <span className="text-gray-400">-</span>
             )}
           </div>
@@ -1182,22 +1383,20 @@ export default function LaporanInputStockGudangPage() {
       header: "Keluar",
       width: "100px",
       render: (row: StockGudang) => {
-        const hasFilter = !!(filterTanggal || filterBulan || filterTahun);
-        const key = `${(row.kodeBarang || "").trim().toUpperCase()}|${(row.fot || "").trim().toUpperCase()}`;
-        const keluar = hasFilter ? (transaksiKeluarMap[key] || { unit: 0, kg: 0 }) : { unit: row.barangKeluarUnit || 0, kg: row.barangKeluarKG || 0 };
-        const showUnit = keluar.unit > 0;
-        const showKG = keluar.kg > 0;
+        const vals = getRowValues(row);
+        const showUnit = vals.keluarUnit > 0;
+        const showKG = vals.keluarKG > 0;
         return (
           <div className="text-xs">
             {row.unit !== "KG" && showUnit && (
               <p className="font-mono text-red-600">
-                -{formatDusDisplay(row, keluar.unit)}
+                -{formatDusDisplay(row, vals.keluarUnit)}
               </p>
             )}
             {row.unit !== "DUS" && row.unit !== "BOTOL" && showKG && (
-              <p className="font-mono text-red-500">-{keluar.kg.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+              <p className="font-mono text-red-500">-{vals.keluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
             )}
-            {hasFilter && !showUnit && !showKG && (
+            {!showUnit && !showKG && (
               <span className="text-gray-400">-</span>
             )}
           </div>
@@ -1208,40 +1407,46 @@ export default function LaporanInputStockGudangPage() {
       key: "stokAkhir",
       header: "Stok Akhir",
       width: "140px",
-      render: (row: StockGudang) => (
-        <div className="text-sm">
-          {row.unit !== "KG" && (
-            <p className="font-mono font-bold text-green-700">
-              {formatDusDisplay(row, row.stokAkhirUnit)}
-            </p>
-          )}
-          {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-            <p className="font-mono font-bold text-green-600">{hitungStokAkhirKG(row).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-          )}
-        </div>
-      ),
+      render: (row: StockGudang) => {
+        const vals = getRowValues(row);
+        return (
+          <div className="text-sm">
+            {row.unit !== "KG" && (
+              <p className="font-mono font-bold text-green-700">
+                {formatDusDisplay(row, vals.stokAkhirUnit)}
+              </p>
+            )}
+            {row.unit !== "DUS" && row.unit !== "BOTOL" && (
+              <p className="font-mono font-bold text-green-600">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+            )}
+          </div>
+        );
+      },
     },
-    {  
+    {
       key: "barangRusak",
       header: "Barang Rusak",
       width: "140px",
-      render: (row: StockGudang) => (
-        <div className="text-xs">
-          {(row.barangRusakUnit || 0) > 0 && (
-            <p className="font-mono text-red-600">
-              {(row.barangRusakUnit || 0).toLocaleString("id-ID")} {row.unit}
-            </p>
-          )}
-          {(row.barangRusakKG || 0) > 0 && row.unit !== "DUS" && row.unit !== "BOTOL" && (
-            <p className="font-mono text-red-500">
-              {(row.barangRusakKG || 0).toLocaleString("id-ID")} KG
-            </p>
-          )}
-          {(row.barangRusakUnit || 0) === 0 && (row.barangRusakKG || 0) === 0 && (
-            <span className="text-gray-400">-</span>
-          )}
-        </div>
-      ),
+      render: (row: StockGudang) => {
+        const vals = getRowValues(row);
+        return (
+          <div className="text-xs">
+            {vals.rusakUnit > 0 && (
+              <p className="font-mono text-red-600">
+                {vals.rusakUnit.toLocaleString("id-ID")} {row.unit}
+              </p>
+            )}
+            {vals.rusakKG > 0 && row.unit !== "DUS" && row.unit !== "BOTOL" && (
+              <p className="font-mono text-red-500">
+                {vals.rusakKG.toLocaleString("id-ID")} KG
+              </p>
+            )}
+            {vals.rusakUnit === 0 && vals.rusakKG === 0 && (
+              <span className="text-gray-400">-</span>
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "sisaRusak",
@@ -1266,7 +1471,6 @@ export default function LaporanInputStockGudangPage() {
       ),
     },
     {
-      
       key: "aksi",
       header: "Aksi",
       width: "120px",
@@ -1709,7 +1913,7 @@ export default function LaporanInputStockGudangPage() {
 
             {(filterTanggal || filterBulan || filterTahun) && (
               <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
-                Filter tanggal aktif: Menampilkan jumlah barang masuk & keluar pada periode yang dipilih
+                Filter tanggal aktif: Menampilkan jumlah barang masuk, keluar & rusak pada periode yang dipilih. Stok awal dan stok akhir disesuaikan berdasarkan periode.
               </div>
             )}
 
