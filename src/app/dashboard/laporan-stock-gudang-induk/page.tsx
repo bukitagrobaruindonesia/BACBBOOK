@@ -290,36 +290,6 @@ export default function LaporanInputStockGudangPage() {
               addToMap(keluarBefore, key, pengambilan, totalKG, unit);
             }
           });
-        } else if (jenis === "suratPengangkutanGudangInduk" || jenis === "suratPengangkutanDO") {
-          const items = d.items || [];
-          items.forEach((item: any) => {
-            const itemFotNorm = (item.fot || "").trim().toUpperCase();
-            const stock = stockList.find((s) => s.namaBarang === item.jenisPupuk && (item.fot ? s.fot === itemFotNorm : true));
-            const kode = (stock ? stock.kodeBarang : (item.kodeBarang || "")).trim().toUpperCase();
-            const fot = (item.fot || d.fot || "").trim().toUpperCase();
-            const unit = stock ? stock.unit : (item.unit || "ZAK");
-            const isDusBotol = unit === "DUS" || unit === "BOTOL";
-            const key = `${kode}|${fot}`;
-            if (isDusBotol) {
-              if (inPeriod) addToMap(keluarPeriod, key, item.pengambilanZAK || 0, 0, unit);
-              else if (beforePeriod) addToMap(keluarBefore, key, item.pengambilanZAK || 0, 0, unit);
-            } else {
-              if (inPeriod) addToMap(keluarPeriod, key, item.pengambilanZAK || 0, item.totalKG || 0, unit);
-              else if (beforePeriod) addToMap(keluarBefore, key, item.pengambilanZAK || 0, item.totalKG || 0, unit);
-            }
-          });
-        } else {
-          const kode = (d.kodeBarang || "").trim().toUpperCase();
-          const fot = (d.fot || "").trim().toUpperCase();
-          const unit = d.unit || "ZAK";
-          const jumlahZAK = d.jumlahZAK || 0;
-          const totalKG = d.totalKG || 0;
-          const key = `${kode}|${fot}`;
-          if (inPeriod) {
-            addToMap(keluarPeriod, key, jumlahZAK, totalKG, unit);
-          } else if (beforePeriod) {
-            addToMap(keluarBefore, key, jumlahZAK, totalKG, unit);
-          }
         }
       });
 
