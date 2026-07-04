@@ -85,6 +85,7 @@ export default function LaporanInputStockGudangPage() {
   const [transaksiRusakMap, setTransaksiRusakMap] = useState<Record<string, { unit: number; kg: number }>>({});
   const [transaksiPenggantianMap, setTransaksiPenggantianMap] = useState<Record<string, { unit: number; kg: number }>>({});
   const [periodCalcMap, setPeriodCalcMap] = useState<Record<string, PeriodCalc>>({});
+  const [isFilterLoading, setIsFilterLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     fot: "",
@@ -150,7 +151,7 @@ export default function LaporanInputStockGudangPage() {
 
   useEffect(() => {
     fetchTransaksiFiltered();
-  }, [filterTanggal, filterBulan, filterTahun, stockList]);
+  }, [filterTanggal, filterBulan, filterTahun]);
 
   useEffect(() => {
     const numberInputs = document.querySelectorAll('input[type="number"]');
@@ -168,6 +169,7 @@ export default function LaporanInputStockGudangPage() {
   }, [formData]);
 
   const fetchTransaksiFiltered = async () => {
+    setIsFilterLoading(true);
     if (!filterTanggal && !filterBulan && !filterTahun) {
       setTransaksiMasukMap({});
       setTransaksiKeluarMap({});
@@ -348,6 +350,8 @@ export default function LaporanInputStockGudangPage() {
       setPeriodCalcMap(periodCalc);
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsFilterLoading(false);
     }
   };
 
@@ -403,6 +407,8 @@ export default function LaporanInputStockGudangPage() {
       setFotList(Array.from(fotSet));
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsFilterLoading(false);
     }
   };
 
@@ -425,6 +431,8 @@ export default function LaporanInputStockGudangPage() {
       setStockList(data);
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsFilterLoading(false);
     }
   };
 
@@ -466,6 +474,8 @@ export default function LaporanInputStockGudangPage() {
       setBarangRusakList(list);
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsFilterLoading(false);
     }
   };
 
@@ -1932,7 +1942,7 @@ export default function LaporanInputStockGudangPage() {
             <Table
               columns={columns}
               data={paginatedData}
-              isLoading={false}
+              isLoading={isFilterLoading}
               emptyMessage="Belum ada data stock gudang"
               keyExtractor={(row) => row.id}
             />
