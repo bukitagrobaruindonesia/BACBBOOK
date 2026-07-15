@@ -150,6 +150,16 @@ export default function LaporanInputStockGudangPage() {
   }, [rusakSearchQuery, rusakFilterFot, rusakFilterStatus, rusakItemsPerPage]);
 
   useEffect(() => {
+    const today = new Date();
+    const day = today.getDate().toString().padStart(2, "0");
+    const month = (today.getMonth() + 1).toString().padStart(2, "0");
+    const year = today.getFullYear().toString();
+    setFilterTanggal(day);
+    setFilterBulan(month);
+    setFilterTahun(year);
+  }, []);
+
+  useEffect(() => {
     fetchTransaksiFiltered();
   }, [filterTanggal, filterBulan, filterTahun]);
 
@@ -176,6 +186,7 @@ export default function LaporanInputStockGudangPage() {
       setTransaksiRusakMap({});
       setTransaksiPenggantianMap({});
       setPeriodCalcMap({});
+      setIsFilterLoading(false);
       return;
     }
 
@@ -277,9 +288,6 @@ export default function LaporanInputStockGudangPage() {
       keluarSnap.docs.forEach((docSnap) => {
         const d = docSnap.data();
         const tanggal = d.tanggal || "";
-        const jenis = d.jenis || "barangKeluar";
-        if (jenis !== "barangKeluarBackup") return;
-
         const items = d.items || [];
         items.forEach((item: any) => {
           const kode = (item.kodeBarang || "").trim().toUpperCase();
@@ -314,7 +322,7 @@ export default function LaporanInputStockGudangPage() {
         const realStokAkhirKG = stock.stokAkhirKG || 0;
 
         const stokAkhirUnit = Math.max(0, realStokAkhirUnit - mAfter.unit - pAfter.unit + kAfter.unit + rAfter.unit);
-        const stokAwalUnit = Math.max(0, stokAkhirUnit - mIn.unit - pIn.unit + kIn.unit + rIn.unit);
+        const stokAwalUnit = Math.max(0, stokAkhirUnit + mIn.unit + pIn.unit - kIn.unit - rIn.unit);
 
         let stokAkhirKG = 0;
         let stokAwalKG = 0;
@@ -324,7 +332,7 @@ export default function LaporanInputStockGudangPage() {
           stokAwalKG = stokAwalUnit * (stock.bobotPerUnit || 50);
         } else if (stock.unit === "KG") {
           stokAkhirKG = Math.max(0, realStokAkhirKG - mAfter.kg - pAfter.kg + kAfter.kg + rAfter.kg);
-          stokAwalKG = Math.max(0, stokAkhirKG - mIn.kg - pIn.kg + kIn.kg + rIn.kg);
+          stokAwalKG = Math.max(0, stokAkhirKG + mIn.kg + pIn.kg - kIn.kg - rIn.kg);
         }
 
         periodCalc[key] = {
@@ -1911,14 +1919,7 @@ export default function LaporanInputStockGudangPage() {
                   ]}
                 />
               </div>
-              {(filterTanggal || filterBulan || filterTahun) && (
-                <button
-                  onClick={() => { setFilterTanggal(""); setFilterBulan(""); setFilterTahun(""); }}
-                  className="px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors font-medium"
-                >
-                  Reset Tanggal
-                </button>
-              )}
+              
             </div>
 
             {(filterTanggal || filterBulan || filterTahun) && (
