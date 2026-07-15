@@ -2,12 +2,27 @@
 
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { collection, getDocs, query, orderBy } from "firebase/firestore";
+import { collection, getDocs, query, orderBy, where } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 import Select from "@/app/components/ui/Select";
 import { StockGudang } from "@/app/types";
+
+interface PeriodCalc {
+  stokAwalUnit: number;
+  stokAwalKG: number;
+  masukUnit: number;
+  masukKG: number;
+  penggantianUnit: number;
+  penggantianKG: number;
+  keluarUnit: number;
+  keluarKG: number;
+  rusakUnit: number;
+  rusakKG: number;
+  stokAkhirUnit: number;
+  stokAkhirKG: number;
+}
 
 const ParticleBackground = () => {
   const particles = useMemo(() => {
@@ -62,6 +77,8 @@ export default function PublicPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [activeGlowCard, setActiveGlowCard] = useState<number | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [periodCalcMap, setPeriodCalcMap] = useState<Record<string, PeriodCalc>>({});
+  const [isFilterLoading, setIsFilterLoading] = useState(false);
 
   useEffect(() => {
     fetchStockData();
@@ -70,6 +87,12 @@ export default function PublicPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedFot, selectedBulan, selectedTahun, selectedTanggal, searchTerm, itemsPerPage]);
+
+  useEffect(() => {
+    if (stockData.length > 0) {
+      fetchTransaksiFiltered();
+    }
+  }, [selectedTanggal, selectedBulan, selectedTahun, stockData]);
 
   const fetchStockData = async () => {
     try {
@@ -98,6 +121,280 @@ export default function PublicPage() {
       console.error(error);
     } finally {
       setIsLoadingStock(false);
+    }
+  };
+
+  const fetchTransaksiFiltered = async () => {
+    setIsFilterLoading(true);
+    if (!selectedTanggal && !selectedBulan && !selectedTahun) {
+      setPeriodCalcMap({});
+      setIsFilterLoading(false);
+      return;
+    }
+
+    const getPeriodEnd = () => {
+      const year = selectedTahun || new Date().getFullYear().toString();
+      if (selectedBulan) {
+        if (selectedTanggal) {
+          return `${year}-${selectedBulan}-${selectedTanggal}`;
+        }
+        const lastDay = new Date(parseInt(year), parseInt(selectedBulan), 0).getDate();
+        return `${year}-${selectedBulan}-${lastDay.toString().padStart(2, "0")}`;
+      }
+      if (selectedTahun) {
+        return `${year}-12-31`;
+      }
+      return "9999-12-31";
+    };
+
+    const periodEnd = getPeriodEnd();
+
+    const masukIn: Record<string, { unit: number; kg: number }> = {};
+    const masukAfter: Record<string, { unit: number; kg: number }> = {};
+    const penggantianIn: Record<string, { unit: number; kg: number }> = {};
+    const penggantianAfter: Record<string, { unit: number; kg: number }> = {};
+    const keluarIn: Record<string, { unit: number; kg: number }> = {};
+    const keluarAfter: Record<string, { unit: number; kg: number }> = {};
+    const rusakIn: Record<string, { unit: number; kg: number }> = {};
+    const rusakAfter: Record<string, { unit: number; kg: number }> = {};
+
+    const addToMap = (
+      map: Record<string, { unit: number; kg: number }>,
+      key: string,
+      unit: number,
+      kg: number,
+      itemUnit: string
+    ) => {
+      if (!key.includes("|") || key.endsWith("|")) return;
+      if (!map[key]) map[key] = { unit: 0, kg: 0 };
+      if (itemUnit === "DUS" || itemUnit === "BOTOL") {
+        map[key].unit += unit;
+      } else if (itemUnit === "KG") {
+        map[key].kg += kg;
+      } else {
+        map[key].unit += unit;
+        map[key].kg += kg;
+      }
+    };
+
+    const isInPeriod = (tanggal: string) => {
+      if (!tanggal || tanggal.length !== 10) return false;
+      if (selectedTanggal) {
+        return tanggal === periodEnd;
+      }
+      if (selectedBulan) {
+        return tanggal.substring(0, 7) === periodEnd.substring(0, 7);
+      }
+      if (selectedTahun) {
+        return tanggal.substring(0, 4) === periodEnd.substring(0, 4);
+      }
+      return false;
+    };
+
+    const isAfterPeriod = (tanggal: string) => {
+      if (!tanggal || tanggal.length !== 10) return false;
+      if (selectedTanggal) {
+        return tanggal > periodEnd;
+      }
+      if (selectedBulan) {
+        return tanggal.substring(0, 7) > periodEnd.substring(0, 7);
+      }
+      if (selectedTahun) {
+        return tanggal.substring(0, 4) > periodEnd.substring(0, 4);
+      }
+      return false;
+    };
+
+    try {
+      const masukSnap = await getDocs(query(collection(db, "transaksiBarangMasuk"), orderBy("tanggal", "desc")));
+      masukSnap.docs.forEach((docSnap) => {
+        const d = docSnap.data();
+        const tanggal = d.tanggal || "";
+        const kode = (d.kodeBarang || "").trim().toUpperCase();
+        const fot = (d.fot || "").trim().toUpperCase();
+        const unit = d.unit || "ZAK";
+        const jumlahZAK = d.jumlahZAK || 0;
+        const totalKG = d.totalKG || 0;
+        const key = `${kode}|${fot}`;
+
+        if (d.isPenggantianRusak) {
+          if (isInPeriod(tanggal)) {
+            addToMap(penggantianIn, key, jumlahZAK, totalKG, unit);
+          } else if (isAfterPeriod(tanggal)) {
+            addToMap(penggantianAfter, key, jumlahZAK, totalKG, unit);
+          }
+        } else {
+          if (isInPeriod(tanggal)) {
+            addToMap(masukIn, key, jumlahZAK, totalKG, unit);
+          } else if (isAfterPeriod(tanggal)) {
+            addToMap(masukAfter, key, jumlahZAK, totalKG, unit);
+          }
+        }
+
+        if (d.adaBarangRusak && Array.isArray(d.barangRusak)) {
+          d.barangRusak.forEach((r: any) => {
+            const rusakUnit = r.unit || unit;
+            const rusakJumlah = r.jumlah || 0;
+            if (isInPeriod(tanggal)) {
+              addToMap(rusakIn, key, rusakJumlah, rusakUnit === "KG" ? rusakJumlah : 0, rusakUnit);
+            } else if (isAfterPeriod(tanggal)) {
+              addToMap(rusakAfter, key, rusakJumlah, rusakUnit === "KG" ? rusakJumlah : 0, rusakUnit);
+            }
+          });
+        }
+      });
+
+      const keluarSnap = await getDocs(query(collection(db, "transaksiBarangKeluar"), orderBy("tanggal", "desc")));
+
+      const getKodeFromStockId = (stockId: string): { kode: string; fot: string } => {
+        const found = stockData.find((s) => s.id === stockId);
+        return found ? { kode: found.kodeBarang, fot: found.fot } : { kode: "", fot: "" };
+      };
+
+      const getFotFromKode = (kode: string): string => {
+        const found = stockData.find((s) => s.kodeBarang === kode);
+        return found ? found.fot : "";
+      };
+
+      const getKodeFromNama = (nama: string): string => {
+        const namaUpper = nama.trim().toUpperCase();
+        const found = stockData.find((s) => s.namaBarang.trim().toUpperCase() === namaUpper);
+        return found ? found.kodeBarang : "";
+      };
+
+      keluarSnap.docs.forEach((docSnap) => {
+        const d = docSnap.data();
+        const tanggal = d.tanggal || "";
+        const items = d.items || [];
+
+        if (items.length > 0) {
+          items.forEach((item: any) => {
+            let kode = "";
+            let fot = "";
+
+            if (item.stockId) {
+              const stockInfo = getKodeFromStockId(item.stockId);
+              kode = stockInfo.kode;
+              fot = stockInfo.fot;
+            }
+
+            if (!kode) {
+              kode = (item.kodeBarang || "").trim().toUpperCase();
+            }
+            const namaBarang = (item.namaBarang || "").trim().toUpperCase();
+            if (!kode && namaBarang) {
+              kode = getKodeFromNama(namaBarang);
+            }
+
+            if (!fot) {
+              fot = (item.fot || d.fot || "").trim().toUpperCase();
+            }
+            if (!fot && kode) {
+              fot = getFotFromKode(kode);
+            }
+
+            const unit = item.unit || "ZAK";
+            const pengambilan = item.pengambilanUnit || item.jumlahZAK || item.jumlah || 0;
+            const bobot = item.bobotPerUnit || d.bobotPerUnit || 50;
+            const totalKG = item.totalKG || (pengambilan * bobot);
+            const key = `${kode}|${fot}`;
+
+            if (isInPeriod(tanggal)) {
+              addToMap(keluarIn, key, pengambilan, totalKG, unit);
+            } else if (isAfterPeriod(tanggal)) {
+              addToMap(keluarAfter, key, pengambilan, totalKG, unit);
+            }
+          });
+        } else if (d.kodeBarang || d.namaBarang || d.stockId) {
+          let kode = "";
+          let fot = "";
+
+          if (d.stockId) {
+            const stockInfo = getKodeFromStockId(d.stockId);
+            kode = stockInfo.kode;
+            fot = stockInfo.fot;
+          }
+
+          if (!kode) {
+            kode = (d.kodeBarang || "").trim().toUpperCase();
+          }
+          const namaBarang = (d.namaBarang || "").trim().toUpperCase();
+          if (!kode && namaBarang) {
+            kode = getKodeFromNama(namaBarang);
+          }
+
+          if (!fot) {
+            fot = (d.fot || "").trim().toUpperCase();
+          }
+          if (!fot && kode) {
+            fot = getFotFromKode(kode);
+          }
+
+          const unit = d.unit || "ZAK";
+          const pengambilan = d.jumlahZAK || d.pengambilanUnit || d.jumlah || 0;
+          const bobot = d.bobotPerUnit || 50;
+          const totalKG = d.totalKG || (pengambilan * bobot);
+          const key = `${kode}|${fot}`;
+
+          if (isInPeriod(tanggal)) {
+            addToMap(keluarIn, key, pengambilan, totalKG, unit);
+          } else if (isAfterPeriod(tanggal)) {
+            addToMap(keluarAfter, key, pengambilan, totalKG, unit);
+          }
+        }
+      });
+
+      const periodCalc: Record<string, PeriodCalc> = {};
+
+      stockData.forEach((stock) => {
+        const key = `${stock.kodeBarang}|${stock.fot}`;
+        const mIn = masukIn[key] || { unit: 0, kg: 0 };
+        const mAfter = masukAfter[key] || { unit: 0, kg: 0 };
+        const pIn = penggantianIn[key] || { unit: 0, kg: 0 };
+        const pAfter = penggantianAfter[key] || { unit: 0, kg: 0 };
+        const kIn = keluarIn[key] || { unit: 0, kg: 0 };
+        const kAfter = keluarAfter[key] || { unit: 0, kg: 0 };
+        const rIn = rusakIn[key] || { unit: 0, kg: 0 };
+        const rAfter = rusakAfter[key] || { unit: 0, kg: 0 };
+
+        const realStokAkhirUnit = stock.stokAkhirUnit || 0;
+        const realStokAkhirKG = stock.stokAkhirKG || 0;
+
+        const stokAkhirUnit = Math.max(0, realStokAkhirUnit - mAfter.unit - pAfter.unit + kAfter.unit + rAfter.unit);
+        const stokAwalUnit = Math.max(0, stokAkhirUnit + mIn.unit + pIn.unit - kIn.unit - rIn.unit);
+
+        let stokAkhirKG = 0;
+        let stokAwalKG = 0;
+
+        if (stock.unit === "ZAK") {
+          stokAkhirKG = stokAkhirUnit * (stock.bobotPerUnit || 50);
+          stokAwalKG = stokAwalUnit * (stock.bobotPerUnit || 50);
+        } else if (stock.unit === "KG") {
+          stokAkhirKG = Math.max(0, realStokAkhirKG - mAfter.kg - pAfter.kg + kAfter.kg + rAfter.kg);
+          stokAwalKG = Math.max(0, stokAkhirKG + mIn.kg + pIn.kg - kIn.kg - rIn.kg);
+        }
+
+        periodCalc[key] = {
+          stokAwalUnit,
+          stokAwalKG,
+          masukUnit: mIn.unit,
+          masukKG: mIn.kg,
+          penggantianUnit: pIn.unit,
+          penggantianKG: pIn.kg,
+          keluarUnit: kIn.unit,
+          keluarKG: kIn.kg,
+          rusakUnit: rIn.unit,
+          rusakKG: rIn.kg,
+          stokAkhirUnit,
+          stokAkhirKG,
+        };
+      });
+
+      setPeriodCalcMap(periodCalc);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsFilterLoading(false);
     }
   };
 
@@ -216,6 +513,44 @@ export default function PublicPage() {
       return 0;
     }
     return row.stokAkhirKG || 0;
+  };
+
+  const getRowValues = (row: StockGudang) => {
+    const hasFilter = !!(selectedTanggal || selectedBulan || selectedTahun);
+    const key = `${row.kodeBarang}|${row.fot}`;
+    const periodData = hasFilter ? periodCalcMap[key] : null;
+
+    if (hasFilter && periodData) {
+      return {
+        stokAwalUnit: periodData.stokAwalUnit,
+        stokAwalKG: periodData.stokAwalKG,
+        masukUnit: periodData.masukUnit,
+        masukKG: periodData.masukKG,
+        penggantianUnit: periodData.penggantianUnit,
+        penggantianKG: periodData.penggantianKG,
+        keluarUnit: periodData.keluarUnit,
+        keluarKG: periodData.keluarKG,
+        rusakUnit: periodData.rusakUnit,
+        rusakKG: periodData.rusakKG,
+        stokAkhirUnit: periodData.stokAkhirUnit,
+        stokAkhirKG: periodData.stokAkhirKG,
+      };
+    }
+
+    return {
+      stokAwalUnit: row.stokAwalUnit || 0,
+      stokAwalKG: hitungStokAwalKG(row),
+      masukUnit: row.barangMasukUnit || 0,
+      masukKG: row.barangMasukKG || 0,
+      penggantianUnit: 0,
+      penggantianKG: 0,
+      keluarUnit: row.barangKeluarUnit || 0,
+      keluarKG: row.barangKeluarKG || 0,
+      rusakUnit: row.barangRusakUnit || 0,
+      rusakKG: row.barangRusakKG || 0,
+      stokAkhirUnit: row.stokAkhirUnit || 0,
+      stokAkhirKG: hitungStokAkhirKG(row),
+    };
   };
 
   const getStockStatus = (row: StockGudang) => {
@@ -686,47 +1021,58 @@ export default function PublicPage() {
                                 </div>
                               </div>
 
-                              <div className="grid grid-cols-2 gap-3 text-sm">
-                                <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
-                                  <p className="text-xs text-slate-500 mb-1">Stok Awal</p>
-                                  {row.unit !== "KG" && (
-                                    <p className="font-mono font-semibold text-slate-200">{formatDusDisplay(row, row.stokAwalUnit)}</p>
-                                  )}
-                                  {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-                                    <p className="text-slate-500 text-xs">{hitungStokAwalKG(row).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                  )}
-                                </div>
-                                <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
-                                  <p className="text-xs text-slate-500 mb-1">Stok Akhir</p>
-                                  {row.unit !== "KG" && (
-                                    <p className="font-mono font-bold text-emerald-400">{formatDusDisplay(row, row.stokAkhirUnit)}</p>
-                                  )}
-                                  {row.unit === "KG" && (
-                                    <p className="font-mono font-bold text-emerald-400">{row.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                  )}
-                                  {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-                                    <p className="text-slate-500 text-xs">{hitungStokAkhirKG(row).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                  )}
-                                </div>
-                                <div className="bg-emerald-500/5 rounded-xl p-3 border border-emerald-500/10">
-                                  <p className="text-xs text-emerald-400 mb-1">Masuk</p>
-                                  {row.unit !== "KG" && (
-                                    <p className="font-mono text-emerald-300 font-semibold">+{formatDusDisplay(row, row.barangMasukUnit)}</p>
-                                  )}
-                                  {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-                                    <p className="text-emerald-500 text-xs">+{row.barangMasukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                  )}
-                                </div>
-                                <div className="bg-red-500/5 rounded-xl p-3 border border-red-500/10">
-                                  <p className="text-xs text-red-400 mb-1">Keluar</p>
-                                  {row.unit !== "KG" && (
-                                    <p className="font-mono text-red-300 font-semibold">-{formatDusDisplay(row, row.barangKeluarUnit)}</p>
-                                  )}
-                                  {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-                                    <p className="text-red-500 text-xs">-{row.barangKeluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                  )}
-                                </div>
-                              </div>
+                              {(() => {
+                                const vals = getRowValues(row);
+                                return (
+                                  <div className="grid grid-cols-2 gap-3 text-sm">
+                                    <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
+                                      <p className="text-xs text-slate-500 mb-1">Stok Awal</p>
+                                      {row.unit !== "KG" && (
+                                        <p className="font-mono font-semibold text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>
+                                      )}
+                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && (
+                                        <p className="text-slate-500 text-xs">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                    </div>
+                                    <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
+                                      <p className="text-xs text-slate-500 mb-1">Stok Akhir</p>
+                                      {row.unit !== "KG" && (
+                                        <p className="font-mono font-bold text-emerald-400">{formatDusDisplay(row, vals.stokAkhirUnit)}</p>
+                                      )}
+                                      {row.unit === "KG" && (
+                                        <p className="font-mono font-bold text-emerald-400">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && (
+                                        <p className="text-slate-500 text-xs">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                    </div>
+                                    <div className="bg-emerald-500/5 rounded-xl p-3 border border-emerald-500/10">
+                                      <p className="text-xs text-emerald-400 mb-1">Masuk</p>
+                                      {row.unit !== "KG" && vals.masukUnit > 0 && (
+                                        <p className="font-mono text-emerald-300 font-semibold">+{formatDusDisplay(row, vals.masukUnit)}</p>
+                                      )}
+                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.masukKG > 0 && (
+                                        <p className="text-emerald-500 text-xs">+{vals.masukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                      {vals.masukUnit === 0 && vals.masukKG === 0 && (
+                                        <p className="text-slate-600 text-xs">-</p>
+                                      )}
+                                    </div>
+                                    <div className="bg-red-500/5 rounded-xl p-3 border border-red-500/10">
+                                      <p className="text-xs text-red-400 mb-1">Keluar</p>
+                                      {row.unit !== "KG" && vals.keluarUnit > 0 && (
+                                        <p className="font-mono text-red-300 font-semibold">-{formatDusDisplay(row, vals.keluarUnit)}</p>
+                                      )}
+                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.keluarKG > 0 && (
+                                        <p className="text-red-500 text-xs">-{vals.keluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                      {vals.keluarUnit === 0 && vals.keluarKG === 0 && (
+                                        <p className="text-slate-600 text-xs">-</p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
 
                               {row.unit !== "KG" && (
                                 <div className="text-xs text-slate-500">
@@ -765,41 +1111,54 @@ export default function PublicPage() {
                                   ) : `${row.bobotPerUnit?.toLocaleString()} KG`}
                                 </span>
                               </div>
-                              <div className="col-span-2 text-right">
-                                {row.unit !== "KG" && (
-                                  <p className="font-mono text-sm font-medium text-slate-200">{formatDusDisplay(row, row.stokAwalUnit)}</p>
-                                )}
-                                {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-                                  <p className="text-slate-500 text-xs">{hitungStokAwalKG(row).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                )}
-                              </div>
-                              <div className="col-span-1 text-right">
-                                {row.unit !== "KG" && (
-                                  <p className="text-emerald-400 font-mono text-sm font-medium">+{formatDusDisplay(row, row.barangMasukUnit)}</p>
-                                )}
-                                {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-                                  <p className="text-emerald-500 text-xs">+{row.barangMasukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                )}
-                              </div>
-                              <div className="col-span-1 text-right">
-                                {row.unit !== "KG" && (
-                                  <p className="text-red-400 font-mono text-sm font-medium">-{formatDusDisplay(row, row.barangKeluarUnit)}</p>
-                                )}
-                                {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-                                  <p className="text-red-500 text-xs">-{row.barangKeluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                )}
-                              </div>
-                              <div className="col-span-2 text-right">
-                                {row.unit !== "KG" && (
-                                  <p className="font-mono font-bold text-emerald-400 text-sm">{formatDusDisplay(row, row.stokAkhirUnit)}</p>
-                                )}
-                                {row.unit === "KG" && (
-                                  <p className="font-mono font-bold text-emerald-400 text-sm">{row.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                )}
-                                {row.unit !== "DUS" && row.unit !== "BOTOL" && (
-                                  <p className="text-slate-500 text-xs">{hitungStokAkhirKG(row).toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
-                                )}
-                              </div>
+                              {(() => {
+                                const vals = getRowValues(row);
+                                return (
+                                  <>
+                                    <div className="col-span-2 text-right">
+                                      {row.unit !== "KG" && (
+                                        <p className="font-mono text-sm font-medium text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>
+                                      )}
+                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && (
+                                        <p className="text-slate-500 text-xs">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                    </div>
+                                    <div className="col-span-1 text-right">
+                                      {row.unit !== "KG" && vals.masukUnit > 0 && (
+                                        <p className="text-emerald-400 font-mono text-sm font-medium">+{formatDusDisplay(row, vals.masukUnit)}</p>
+                                      )}
+                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.masukKG > 0 && (
+                                        <p className="text-emerald-500 text-xs">+{vals.masukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                      {vals.masukUnit === 0 && vals.masukKG === 0 && (
+                                        <p className="text-slate-600 text-xs">-</p>
+                                      )}
+                                    </div>
+                                    <div className="col-span-1 text-right">
+                                      {row.unit !== "KG" && vals.keluarUnit > 0 && (
+                                        <p className="text-red-400 font-mono text-sm font-medium">-{formatDusDisplay(row, vals.keluarUnit)}</p>
+                                      )}
+                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.keluarKG > 0 && (
+                                        <p className="text-red-500 text-xs">-{vals.keluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                      {vals.keluarUnit === 0 && vals.keluarKG === 0 && (
+                                        <p className="text-slate-600 text-xs">-</p>
+                                      )}
+                                    </div>
+                                    <div className="col-span-2 text-right">
+                                      {row.unit !== "KG" && (
+                                        <p className="font-mono font-bold text-emerald-400 text-sm">{formatDusDisplay(row, vals.stokAkhirUnit)}</p>
+                                      )}
+                                      {row.unit === "KG" && (
+                                        <p className="font-mono font-bold text-emerald-400 text-sm">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && (
+                                        <p className="text-slate-500 text-xs">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>
+                                      )}
+                                    </div>
+                                  </>
+                                );
+                              })()}
                               <div className="col-span-1 text-center">
                                 <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}>
                                   <span className={`w-2 h-2 rounded-full ${status.dot}`}></span>
