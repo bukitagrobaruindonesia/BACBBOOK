@@ -312,20 +312,52 @@ export default function LaporanInputStockGudangPage() {
         return found ? found.kodeBarang : "";
       };
 
+      const getKodeFromStockId = (stockId: string): { kode: string; fot: string } => {
+        const found = stockList.find((s) => s.id === stockId);
+        return found ? { kode: found.kodeBarang, fot: found.fot } : { kode: "", fot: "" };
+      };
+
+      const getFotFromKode = (kode: string): string => {
+        const found = stockList.find((s) => s.kodeBarang === kode);
+        return found ? found.fot : "";
+      };
+
       keluarSnap.docs.forEach((docSnap) => {
         const d = docSnap.data();
         const tanggal = d.tanggal || "";
         const jenis = d.jenis || "barangKeluar";
         const items = d.items || [];
 
+        if (items.length > 0 && isInPeriod(tanggal)) {
+          console.log("[DEBUG] Keluar doc:", tanggal, jenis, "items:", items.length);
+        }
+
         if (items.length > 0) {
           items.forEach((item: any) => {
-            let kode = (item.kodeBarang || "").trim().toUpperCase();
+            let kode = "";
+            let fot = "";
+
+            if (item.stockId) {
+              const stockInfo = getKodeFromStockId(item.stockId);
+              kode = stockInfo.kode;
+              fot = stockInfo.fot;
+            }
+
+            if (!kode) {
+              kode = (item.kodeBarang || "").trim().toUpperCase();
+            }
             const namaBarang = (item.namaBarang || "").trim().toUpperCase();
             if (!kode && namaBarang) {
               kode = getKodeFromNama(namaBarang);
             }
-            const fot = (item.fot || d.fot || "").trim().toUpperCase();
+
+            if (!fot) {
+              fot = (item.fot || d.fot || "").trim().toUpperCase();
+            }
+            if (!fot && kode) {
+              fot = getFotFromKode(kode);
+            }
+
             const unit = item.unit || "ZAK";
             const pengambilan = item.pengambilanUnit || item.jumlahZAK || item.jumlah || 0;
             const bobot = item.bobotPerUnit || d.bobotPerUnit || 50;
@@ -333,18 +365,37 @@ export default function LaporanInputStockGudangPage() {
             const key = `${kode}|${fot}`;
 
             if (isInPeriod(tanggal)) {
+              console.log("[DEBUG] Adding keluar:", key, "pengambilan:", pengambilan, "unit:", unit);
               addToMap(keluarIn, key, pengambilan, totalKG, unit);
             } else if (isAfterPeriod(tanggal)) {
               addToMap(keluarAfter, key, pengambilan, totalKG, unit);
             }
           });
-        } else if (d.kodeBarang || d.namaBarang) {
-          let kode = (d.kodeBarang || "").trim().toUpperCase();
+        } else if (d.kodeBarang || d.namaBarang || d.stockId) {
+          let kode = "";
+          let fot = "";
+
+          if (d.stockId) {
+            const stockInfo = getKodeFromStockId(d.stockId);
+            kode = stockInfo.kode;
+            fot = stockInfo.fot;
+          }
+
+          if (!kode) {
+            kode = (d.kodeBarang || "").trim().toUpperCase();
+          }
           const namaBarang = (d.namaBarang || "").trim().toUpperCase();
           if (!kode && namaBarang) {
             kode = getKodeFromNama(namaBarang);
           }
-          const fot = (d.fot || "").trim().toUpperCase();
+
+          if (!fot) {
+            fot = (d.fot || "").trim().toUpperCase();
+          }
+          if (!fot && kode) {
+            fot = getFotFromKode(kode);
+          }
+
           const unit = d.unit || "ZAK";
           const pengambilan = d.jumlahZAK || d.pengambilanUnit || d.jumlah || 0;
           const bobot = d.bobotPerUnit || 50;
