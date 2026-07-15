@@ -303,16 +303,49 @@ export default function LaporanInputStockGudangPage() {
       });
 
       const keluarSnap = await getDocs(query(collection(db, "transaksiBarangKeluar"), orderBy("tanggal", "desc")));
+
+      const namaToKode: Record<string, string> = {};
+      stockList.forEach((s) => {
+        if (s.namaBarang) namaToKode[s.namaBarang.trim().toUpperCase()] = s.kodeBarang;
+      });
+
       keluarSnap.docs.forEach((docSnap) => {
         const d = docSnap.data();
         const tanggal = d.tanggal || "";
+        const jenis = d.jenis || "barangKeluar";
         const items = d.items || [];
-        items.forEach((item: any) => {
-          const kode = (item.kodeBarang || "").trim().toUpperCase();
-          const fot = (item.fot || d.fot || "").trim().toUpperCase();
-          const unit = item.unit || "ZAK";
-          const pengambilan = item.pengambilanUnit || 0;
-          const totalKG = item.totalKG || 0;
+
+        if (items.length > 0) {
+          items.forEach((item: any) => {
+            let kode = (item.kodeBarang || "").trim().toUpperCase();
+            const namaBarang = (item.namaBarang || "").trim().toUpperCase();
+            if (!kode && namaBarang && namaToKode[namaBarang]) {
+              kode = namaToKode[namaBarang];
+            }
+            const fot = (item.fot || d.fot || "").trim().toUpperCase();
+            const unit = item.unit || "ZAK";
+            const pengambilan = item.pengambilanUnit || item.jumlahZAK || item.jumlah || 0;
+            const bobot = item.bobotPerUnit || d.bobotPerUnit || 50;
+            const totalKG = item.totalKG || (pengambilan * bobot);
+            const key = `${kode}|${fot}`;
+
+            if (isInPeriod(tanggal)) {
+              addToMap(keluarIn, key, pengambilan, totalKG, unit);
+            } else if (isAfterPeriod(tanggal)) {
+              addToMap(keluarAfter, key, pengambilan, totalKG, unit);
+            }
+          });
+        } else if (d.kodeBarang || d.namaBarang) {
+          let kode = (d.kodeBarang || "").trim().toUpperCase();
+          const namaBarang = (d.namaBarang || "").trim().toUpperCase();
+          if (!kode && namaBarang && namaToKode[namaBarang]) {
+            kode = namaToKode[namaBarang];
+          }
+          const fot = (d.fot || "").trim().toUpperCase();
+          const unit = d.unit || "ZAK";
+          const pengambilan = d.jumlahZAK || d.pengambilanUnit || d.jumlah || 0;
+          const bobot = d.bobotPerUnit || 50;
+          const totalKG = d.totalKG || (pengambilan * bobot);
           const key = `${kode}|${fot}`;
 
           if (isInPeriod(tanggal)) {
@@ -320,7 +353,7 @@ export default function LaporanInputStockGudangPage() {
           } else if (isAfterPeriod(tanggal)) {
             addToMap(keluarAfter, key, pengambilan, totalKG, unit);
           }
-        });
+        }
       });
 
       const periodCalc: Record<string, PeriodCalc> = {};
