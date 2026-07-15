@@ -832,10 +832,13 @@ export default function PublicPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <div className="space-y-1.5">
                   <label className="text-sm font-semibold text-slate-300">Filter FOT</label>
                   <select
+                    id="filter-fot"
+                    name="filterFot"
+                    aria-label="Filter FOT"
                     value={selectedFot}
                     onChange={(e) => setSelectedFot(e.target.value)}
                     className="w-full px-4 py-3 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm"
@@ -846,17 +849,28 @@ export default function PublicPage() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-slate-300">Filter Tanggal</label>
-                  <input
-                    type="date"
+                  <label className="text-sm font-semibold text-slate-300">Tanggal</label>
+                  <select
+                    id="filter-tanggal"
+                    name="filterTanggal"
+                    aria-label="Filter Tanggal"
                     value={selectedTanggal}
                     onChange={(e) => setSelectedTanggal(e.target.value)}
                     className="w-full px-4 py-3 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm"
-                  />
+                  >
+                    <option value="" className="bg-slate-800">Tanggal</option>
+                    {Array.from({ length: 31 }, (_, i) => {
+                      const d = (i + 1).toString().padStart(2, "0");
+                      return <option key={d} value={d} className="bg-slate-800">{d}</option>;
+                    })}
+                  </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-slate-300">Filter Bulan</label>
+                  <label className="text-sm font-semibold text-slate-300">Bulan</label>
                   <select
+                    id="filter-bulan"
+                    name="filterBulan"
+                    aria-label="Filter Bulan"
                     value={selectedBulan}
                     onChange={(e) => setSelectedBulan(e.target.value)}
                     className="w-full px-4 py-3 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm"
@@ -867,8 +881,11 @@ export default function PublicPage() {
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-semibold text-slate-300">Filter Tahun</label>
+                  <label className="text-sm font-semibold text-slate-300">Tahun</label>
                   <select
+                    id="filter-tahun"
+                    name="filterTahun"
+                    aria-label="Filter Tahun"
                     value={selectedTahun}
                     onChange={(e) => setSelectedTahun(e.target.value)}
                     className="w-full px-4 py-3 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm"
@@ -877,6 +894,14 @@ export default function PublicPage() {
                       <option key={opt.value} value={opt.value} className="bg-slate-800">{opt.label}</option>
                     ))}
                   </select>
+                </div>
+                <div className="space-y-1.5 flex items-end">
+                  <button
+                    onClick={() => { setSelectedTanggal(""); setSelectedBulan(""); setSelectedTahun(""); }}
+                    className="w-full px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium border border-red-500/20"
+                  >
+                    Reset Tanggal
+                  </button>
                 </div>
               </div>
 
@@ -928,7 +953,9 @@ export default function PublicPage() {
                   {selectedFot && <span className="px-2 py-0.5 bg-slate-700/50 rounded-md text-xs text-slate-300">FOT: {selectedFot}</span>}
                   {(selectedTanggal || selectedBulan || selectedTahun) && (
                     <span className="px-2 py-0.5 bg-emerald-500/10 rounded-md text-xs text-emerald-400 border border-emerald-500/20">
-                      Filter periode aktif
+                      {selectedTanggal && `${selectedTanggal} `}
+                      {selectedBulan && `${bulanOptions.find((b) => b.value === selectedBulan)?.label} `}
+                      {selectedTahun && selectedTahun}
                     </span>
                   )}
                 </div>
