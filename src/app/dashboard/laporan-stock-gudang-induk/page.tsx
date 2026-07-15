@@ -160,8 +160,10 @@ export default function LaporanInputStockGudangPage() {
   }, []);
 
   useEffect(() => {
-    fetchTransaksiFiltered();
-  }, [filterTanggal, filterBulan, filterTahun]);
+    if (stockList.length > 0) {
+      fetchTransaksiFiltered();
+    }
+  }, [filterTanggal, filterBulan, filterTahun, stockList]);
 
   useEffect(() => {
     const numberInputs = document.querySelectorAll('input[type="number"]');
@@ -304,10 +306,11 @@ export default function LaporanInputStockGudangPage() {
 
       const keluarSnap = await getDocs(query(collection(db, "transaksiBarangKeluar"), orderBy("tanggal", "desc")));
 
-      const namaToKode: Record<string, string> = {};
-      stockList.forEach((s) => {
-        if (s.namaBarang) namaToKode[s.namaBarang.trim().toUpperCase()] = s.kodeBarang;
-      });
+      const getKodeFromNama = (nama: string): string => {
+        const namaUpper = nama.trim().toUpperCase();
+        const found = stockList.find((s) => s.namaBarang.trim().toUpperCase() === namaUpper);
+        return found ? found.kodeBarang : "";
+      };
 
       keluarSnap.docs.forEach((docSnap) => {
         const d = docSnap.data();
@@ -319,8 +322,8 @@ export default function LaporanInputStockGudangPage() {
           items.forEach((item: any) => {
             let kode = (item.kodeBarang || "").trim().toUpperCase();
             const namaBarang = (item.namaBarang || "").trim().toUpperCase();
-            if (!kode && namaBarang && namaToKode[namaBarang]) {
-              kode = namaToKode[namaBarang];
+            if (!kode && namaBarang) {
+              kode = getKodeFromNama(namaBarang);
             }
             const fot = (item.fot || d.fot || "").trim().toUpperCase();
             const unit = item.unit || "ZAK";
@@ -338,8 +341,8 @@ export default function LaporanInputStockGudangPage() {
         } else if (d.kodeBarang || d.namaBarang) {
           let kode = (d.kodeBarang || "").trim().toUpperCase();
           const namaBarang = (d.namaBarang || "").trim().toUpperCase();
-          if (!kode && namaBarang && namaToKode[namaBarang]) {
-            kode = namaToKode[namaBarang];
+          if (!kode && namaBarang) {
+            kode = getKodeFromNama(namaBarang);
           }
           const fot = (d.fot || "").trim().toUpperCase();
           const unit = d.unit || "ZAK";
