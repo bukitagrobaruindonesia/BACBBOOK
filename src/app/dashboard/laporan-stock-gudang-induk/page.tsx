@@ -237,12 +237,30 @@ export default function LaporanInputStockGudangPage() {
 
     const isInPeriod = (tanggal: string) => {
       if (!tanggal || tanggal.length !== 10) return false;
-      return tanggal <= periodEnd;
+      if (filterTanggal) {
+        return tanggal === periodEnd;
+      }
+      if (filterBulan) {
+        return tanggal.substring(0, 7) === periodEnd.substring(0, 7);
+      }
+      if (filterTahun) {
+        return tanggal.substring(0, 4) === periodEnd.substring(0, 4);
+      }
+      return false;
     };
 
     const isAfterPeriod = (tanggal: string) => {
       if (!tanggal || tanggal.length !== 10) return false;
-      return tanggal > periodEnd;
+      if (filterTanggal) {
+        return tanggal > periodEnd;
+      }
+      if (filterBulan) {
+        return tanggal.substring(0, 7) > periodEnd.substring(0, 7);
+      }
+      if (filterTahun) {
+        return tanggal.substring(0, 4) > periodEnd.substring(0, 4);
+      }
+      return false;
     };
 
     try {
