@@ -405,19 +405,7 @@ export default function PublicPage() {
       item.unit.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.namaProdusen || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchFot = selectedFot ? item.fot === selectedFot : true;
-    const matchBulanTahun = (() => {
-      if (!selectedBulan && !selectedTahun && !selectedTanggal) return true;
-      const date = item.createdAt instanceof Date ? item.createdAt : new Date();
-      const matchBulan = selectedBulan ? (date.getMonth() + 1).toString().padStart(2, "0") === selectedBulan : true;
-      const matchTahun = selectedTahun ? date.getFullYear().toString() === selectedTahun : true;
-      const matchTanggal = selectedTanggal
-        ? date.getDate().toString().padStart(2, "0") === selectedTanggal.split("-")[2] &&
-          (date.getMonth() + 1).toString().padStart(2, "0") === selectedTanggal.split("-")[1] &&
-          date.getFullYear().toString() === selectedTanggal.split("-")[0]
-        : true;
-      return matchBulan && matchTahun && matchTanggal;
-    })();
-    return matchSearch && matchFot && matchBulanTahun;
+    return matchSearch && matchFot;
   });
 
   const totalPages = Math.ceil(filteredStockData.length / itemsPerPage);
@@ -938,9 +926,11 @@ export default function PublicPage() {
                 <div className="text-sm text-slate-400 font-medium flex flex-wrap items-center gap-2">
                   <span>Menampilkan {filteredStockData.length} dari {stockData.length} data</span>
                   {selectedFot && <span className="px-2 py-0.5 bg-slate-700/50 rounded-md text-xs text-slate-300">FOT: {selectedFot}</span>}
-                  {selectedTanggal && <span className="px-2 py-0.5 bg-slate-700/50 rounded-md text-xs text-slate-300">Tanggal: {formatTanggalDisplay(selectedTanggal)}</span>}
-                  {selectedBulan && <span className="px-2 py-0.5 bg-slate-700/50 rounded-md text-xs text-slate-300">{bulanOptions.find((b) => b.value === selectedBulan)?.label}</span>}
-                  {selectedTahun && <span className="px-2 py-0.5 bg-slate-700/50 rounded-md text-xs text-slate-300">{selectedTahun}</span>}
+                  {(selectedTanggal || selectedBulan || selectedTahun) && (
+                    <span className="px-2 py-0.5 bg-emerald-500/10 rounded-md text-xs text-emerald-400 border border-emerald-500/20">
+                      Filter periode aktif
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-slate-400 font-medium">Tampilkan:</span>
