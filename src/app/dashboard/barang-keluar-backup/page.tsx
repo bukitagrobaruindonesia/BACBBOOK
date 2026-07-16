@@ -14,6 +14,7 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
+import { getStorage, ref, uploadString, getDownloadURL } from "firebase/storage";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -43,10 +44,9 @@ interface BackupItem {
   unit: string;
   bobotPerUnit: number;
   botolPerDus: number;
-  pengambilanUnit: string;
+  pengambilanUnit: number;
   totalKG: number;
   nomorPI: string;
-  fotoUrls?: string[];
 }
 
 interface BackupDoc {
@@ -56,18 +56,7 @@ interface BackupDoc {
   driverUnit: string;
   nomorPolisi: string;
   nomorSIM: string;
-  items: Array<{
-    stockId: string;
-    kodeBarang: string;
-    namaBarang: string;
-    unit: string;
-    bobotPerUnit: number;
-    botolPerDus: number;
-    pengambilanUnit: number;
-    totalKG: number;
-    nomorPI: string;
-    fotoUrls?: string[];
-  }>;
+  items: BackupItem[];
   fotoUrls: string[];
   totalPengambilanKG: number;
   createdBy: string;
@@ -85,7 +74,10 @@ interface TTDData {
   ttdImage: string;
 }
 
-const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
+const MAX_PHOTO_SIZE_KB = 100;
+const MAX_PHOTO_SIZE_BYTES = MAX_PHOTO_SIZE_KB * 1024;
+
+const compressImageToMaxSize = (file: File): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -93,7 +85,7 @@ const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
       img.onload = () => {
         let width = img.width;
         let height = img.height;
-        const maxDimension = 1920;
+        const maxDimension = 1280;
         if (width > maxDimension || height > maxDimension) {
           if (width > height) {
             height = Math.round((height * maxDimension) / width);
@@ -109,12 +101,26 @@ const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
         const ctx = canvas.getContext("2d");
         if (!ctx) { reject(new Error("Canvas context failed")); return; }
         ctx.drawImage(img, 0, 0, width, height);
-        let quality = 0.9;
+        let quality = 0.85;
         let result = canvas.toDataURL("image/jpeg", quality);
-        const maxBytes = maxSizeMB * 1024 * 1024;
-        while (result.length > maxBytes && quality > 0.1) {
-          quality -= 0.1;
+        while (result.length > MAX_PHOTO_SIZE_BYTES && quality > 0.1) {
+          quality -= 0.05;
+          if (quality < 0.1) quality = 0.1;
           result = canvas.toDataURL("image/jpeg", quality);
+        }
+        if (result.length > MAX_PHOTO_SIZE_BYTES) {
+          width = Math.round(width * 0.8);
+          height = Math.round(height * 0.8);
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+          quality = 0.7;
+          result = canvas.toDataURL("image/jpeg", quality);
+          while (result.length > MAX_PHOTO_SIZE_BYTES && quality > 0.1) {
+            quality -= 0.05;
+            if (quality < 0.1) quality = 0.1;
+            result = canvas.toDataURL("image/jpeg", quality);
+          }
         }
         resolve(result);
       };
@@ -124,6 +130,14 @@ const compressImage = (file: File, maxSizeMB: number = 2): Promise<string> => {
     reader.onerror = () => reject(new Error("File read failed"));
     reader.readAsDataURL(file);
   });
+};
+
+const uploadFotoToStorage = async (base64Image: string, path: string): Promise<string> => {
+  const storage = getStorage();
+  const storageRef = ref(storage, path);
+  await uploadString(storageRef, base64Image, "data_url");
+  const url = await getDownloadURL(storageRef);
+  return url;
 };
 
 export default function BarangKeluarBackupPage() {
@@ -144,12 +158,12 @@ export default function BarangKeluarBackupPage() {
     driverUnit: "",
     nomorPolisi: "",
     nomorSIM: "",
-    items: [{ stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0, fotoUrls: [] }] as BackupItem[],
+    items: [{ stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0 }] as any[],
   });
 
-  const [itemFotoFiles, setItemFotoFiles] = useState<Record<number, string[]>>({});
-  const [itemFotoPreviews, setItemFotoPreviews] = useState<Record<number, string[]>>({});
-  const [itemExistingFotoUrls, setItemExistingFotoUrls] = useState<Record<number, string[]>>({});
+  const [pageFotoFiles, setPageFotoFiles] = useState<string[]>([]);
+  const [pageFotoPreviews, setPageFotoPreviews] = useState<string[]>([]);
+  const [pageExistingFotoUrls, setPageExistingFotoUrls] = useState<string[]>([]);
 
   const [ttdList, setTtdList] = useState<TTDData[]>([]);
   const [selectedTtdId, setSelectedTtdId] = useState("");
@@ -306,16 +320,13 @@ export default function BarangKeluarBackupPage() {
   };
 
   const addItem = () => {
-    const newIdx = formData.items.length;
     setFormData((prev) => ({
       ...prev,
       items: [
         ...prev.items,
-        { stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0, fotoUrls: [] },
+        { stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0 },
       ],
     }));
-    setItemFotoFiles((prev) => ({ ...prev, [newIdx]: [] }));
-    setItemFotoPreviews((prev) => ({ ...prev, [newIdx]: [] }));
   };
 
   const removeItem = (idx: number) => {
@@ -323,62 +334,35 @@ export default function BarangKeluarBackupPage() {
       ...prev,
       items: prev.items.filter((_, i) => i !== idx),
     }));
-    setItemFotoFiles((prev) => {
-      const n: Record<number, string[]> = {};
-      Object.keys(prev).forEach((k) => {
-        const ki = parseInt(k);
-        if (ki < idx) n[ki] = prev[ki];
-        else if (ki > idx) n[ki - 1] = prev[ki];
-      });
-      return n;
-    });
-    setItemFotoPreviews((prev) => {
-      const n: Record<number, string[]> = {};
-      Object.keys(prev).forEach((k) => {
-        const ki = parseInt(k);
-        if (ki < idx) n[ki] = prev[ki];
-        else if (ki > idx) n[ki - 1] = prev[ki];
-      });
-      return n;
-    });
-    setItemExistingFotoUrls((prev) => {
-      const n: Record<number, string[]> = {};
-      Object.keys(prev).forEach((k) => {
-        const ki = parseInt(k);
-        if (ki < idx) n[ki] = prev[ki];
-        else if (ki > idx) n[ki - 1] = prev[ki];
-      });
-      return n;
-    });
   };
 
-  const handleItemFotoChange = async (itemIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePageFotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
-    const compressed = await Promise.all(files.map((f) => compressImage(f)));
-    setItemFotoFiles((prev) => ({ ...prev, [itemIdx]: [...(prev[itemIdx] || []), ...compressed] }));
-    setItemFotoPreviews((prev) => ({ ...prev, [itemIdx]: [...(prev[itemIdx] || []), ...compressed] }));
+    const compressed = await Promise.all(files.map((f) => compressImageToMaxSize(f)));
+    setPageFotoFiles((prev) => [...prev, ...compressed]);
+    setPageFotoPreviews((prev) => [...prev, ...compressed]);
   };
 
-  const removeItemFoto = (itemIdx: number, fotoIdx: number) => {
-    setItemFotoFiles((prev) => {
-      const arr = [...(prev[itemIdx] || [])];
-      arr.splice(fotoIdx, 1);
-      return { ...prev, [itemIdx]: arr };
-    });
-    setItemFotoPreviews((prev) => {
-      const arr = [...(prev[itemIdx] || [])];
-      arr.splice(fotoIdx, 1);
-      return { ...prev, [itemIdx]: arr };
-    });
+  const removePageFoto = (fotoIdx: number) => {
+    setPageFotoFiles((prev) => prev.filter((_, i) => i !== fotoIdx));
+    setPageFotoPreviews((prev) => prev.filter((_, i) => i !== fotoIdx));
   };
 
-  const removeItemExistingFoto = (itemIdx: number, fotoIdx: number) => {
-    setItemExistingFotoUrls((prev) => {
-      const arr = [...(prev[itemIdx] || [])];
-      arr.splice(fotoIdx, 1);
-      return { ...prev, [itemIdx]: arr };
-    });
+  const removePageExistingFoto = (fotoIdx: number) => {
+    setPageExistingFotoUrls((prev) => prev.filter((_, i) => i !== fotoIdx));
+  };
+
+  const uploadPageFotos = async (): Promise<string[]> => {
+    const allFotos: string[] = [...pageExistingFotoUrls];
+    const newUrls = await Promise.all(
+      pageFotoFiles.map(async (base64, idx) => {
+        const path = `barang-keluar-backup/${Date.now()}_${idx}.jpg`;
+        return uploadFotoToStorage(base64, path);
+      })
+    );
+    allFotos.push(...newUrls);
+    return allFotos;
   };
 
   const updateStockFromItems = async (
@@ -439,13 +423,11 @@ export default function BarangKeluarBackupPage() {
       if (!item.nomorPI.trim()) newErrors[`item_${idx}_pi`] = `Nomor PI wajib diisi`;
     });
 
-    formData.items.forEach((item, idx) => {
-      const hasNew = (itemFotoFiles[idx] || []).length > 0;
-      const hasExisting = (itemExistingFotoUrls[idx] || []).length > 0;
-      if (!isEditing && !hasNew && !hasExisting) {
-        newErrors[`item_${idx}_foto`] = `Produk ${idx + 1}: foto wajib diunggah minimal 1`;
-      }
-    });
+    const hasNew = pageFotoFiles.length > 0;
+    const hasExisting = pageExistingFotoUrls.length > 0;
+    if (!isEditing && !hasNew && !hasExisting) {
+      newErrors.page_foto = "Foto dokumentasi wajib diunggah minimal 1";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -461,9 +443,9 @@ export default function BarangKeluarBackupPage() {
       items: [{ stockId: "", kodeBarang: "", namaBarang: "", unit: "", bobotPerUnit: 0, botolPerDus: 0, pengambilanUnit: "", nomorPI: "", totalKG: 0 }],
     });
 
-    setItemFotoFiles({});
-    setItemFotoPreviews({});
-    setItemExistingFotoUrls({});
+    setPageFotoFiles([]);
+    setPageFotoPreviews([]);
+    setPageExistingFotoUrls([]);
     setIsEditing(false);
     setEditId(null);
     setErrors({});
@@ -479,7 +461,9 @@ export default function BarangKeluarBackupPage() {
     setIsSubmitting(true);
 
     try {
-      const itemsData = formData.items.map((item, idx) => ({
+      const fotoUrls = await uploadPageFotos();
+
+      const itemsData = formData.items.map((item) => ({
         stockId: item.stockId,
         kodeBarang: item.kodeBarang,
         namaBarang: item.namaBarang,
@@ -489,7 +473,6 @@ export default function BarangKeluarBackupPage() {
         pengambilanUnit: parseFloat(item.pengambilanUnit) || 0,
         totalKG: item.totalKG,
         nomorPI: item.nomorPI.trim(),
-        fotoUrls: itemFotoFiles[idx] || [],
       }));
 
       const totalPengambilanKG = itemsData.reduce((sum, it) => sum + it.totalKG, 0);
@@ -503,6 +486,7 @@ export default function BarangKeluarBackupPage() {
         nomorPolisi: formData.nomorPolisi.trim().toUpperCase(),
         nomorSIM: formData.nomorSIM.trim() || null,
         items: itemsData,
+        fotoUrls: fotoUrls,
         totalPengambilanKG: totalPengambilanKG,
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
@@ -516,7 +500,7 @@ export default function BarangKeluarBackupPage() {
         docData.ttdImage = selectedTtd.ttdImage;
       }
 
-      const docRef = await addDoc(collection(db, "transaksiBarangKeluar"), docData);
+      await addDoc(collection(db, "transaksiBarangKeluar"), docData);
 
       await updateStockFromItems(itemsData, false);
 
@@ -552,13 +536,9 @@ export default function BarangKeluarBackupPage() {
         totalKG: it.totalKG,
       })),
     });
-    const existing: Record<number, string[]> = {};
-    item.items.forEach((it, idx) => {
-      existing[idx] = it.fotoUrls || [];
-    });
-    setItemExistingFotoUrls(existing);
-    setItemFotoFiles({});
-    setItemFotoPreviews({});
+    setPageExistingFotoUrls(item.fotoUrls || []);
+    setPageFotoFiles([]);
+    setPageFotoPreviews([]);
     setSelectedTtdId(item.ttdId || "");
     setNomorSeriError("");
     setErrors({});
@@ -577,7 +557,9 @@ export default function BarangKeluarBackupPage() {
       const oldData = oldSnap.data();
       const oldItems = oldData?.items || [];
 
-      const newItemsData = formData.items.map((item, idx) => ({
+      const fotoUrls = await uploadPageFotos();
+
+      const newItemsData = formData.items.map((item) => ({
         stockId: item.stockId,
         kodeBarang: item.kodeBarang,
         namaBarang: item.namaBarang,
@@ -587,7 +569,6 @@ export default function BarangKeluarBackupPage() {
         pengambilanUnit: parseFloat(item.pengambilanUnit) || 0,
         totalKG: item.totalKG,
         nomorPI: item.nomorPI.trim(),
-        fotoUrls: [...(itemExistingFotoUrls[idx] || []), ...(itemFotoFiles[idx] || [])],
       }));
 
       const totalPengambilanKG = newItemsData.reduce((sum, it) => sum + it.totalKG, 0);
@@ -599,6 +580,7 @@ export default function BarangKeluarBackupPage() {
         nomorPolisi: formData.nomorPolisi.trim().toUpperCase(),
         nomorSIM: formData.nomorSIM.trim() || null,
         items: newItemsData,
+        fotoUrls: fotoUrls,
         totalPengambilanKG: totalPengambilanKG,
         updatedAt: serverTimestamp(),
       };
@@ -748,7 +730,7 @@ export default function BarangKeluarBackupPage() {
         <p style="font-weight:700;">Keterangan:</p>
         <p>Dokumen ini merupakan backup barang keluar untuk stok gudang induk.</p>
         <p>Total pengambilan: ${item.totalPengambilanKG > 0 ? item.totalPengambilanKG.toLocaleString("id-ID") + " KG" : "-"}</p>
-        <p>Halaman berikutnya merupakan bukti foto dokumentasi per produk.</p>
+        <p>Halaman berikutnya merupakan bukti foto dokumentasi.</p>
       </div>
       <div class="signature-row">
         <div class="signature-box">
@@ -765,31 +747,20 @@ export default function BarangKeluarBackupPage() {
       <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
     </div>`;
 
-    const fotoPages = item.items.map((it, idx) => {
-      const fotos = it.fotoUrls || [];
-      const fotoHtml = fotos.length > 0
-        ? `<div class="foto-grid">${fotos.map((f, i) => `<div><div class="foto-label">Foto ${i + 1}</div><img src="${f}" alt="Foto ${i + 1}" /></div>`).join("")}</div>`
-        : `<p style="font-size:10px;color:#666;margin-top:12px;">Tidak ada foto dokumentasi.</p>`;
-      let qtyDisplay = it.pengambilanUnit.toLocaleString("id-ID");
-      if (it.unit === "DUS") {
-        const dusQty = it.pengambilanUnit / (it.botolPerDus || 20);
-        qtyDisplay = `${dusQty.toLocaleString("id-ID", { maximumFractionDigits: 2 })} DUS (${it.pengambilanUnit.toLocaleString("id-ID")} botol)`;
-      } else if (it.unit === "BOTOL") {
-        qtyDisplay = `${it.pengambilanUnit.toLocaleString("id-ID")} botol`;
-      }
+    const fotoPages = item.fotoUrls.map((fotoUrl, idx) => {
       return `<div class="page">
         <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
         <div class="title-bar">BUKTI FOTO DOKUMENTASI</div>
         <div class="product-info">
           <p><span class="label">Nomor Seri:</span> ${item.nomorSeri || "-"}</p>
-          <p><span class="label">Produk ${idx + 1}:</span> ${it.namaBarang || "-"} (${it.kodeBarang || "-"})</p>
-          <p><span class="label">Unit:</span> ${it.unit}</p>
-          <p><span class="label">Jumlah:</span> ${qtyDisplay}</p>
-          <p><span class="label">Nomor PI:</span> ${it.nomorPI || "-"}</p>
           <p><span class="label">Tanggal:</span> ${new Date(item.tanggal).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })}</p>
+          <p><span class="label">Driver:</span> ${item.driverUnit || "-"}</p>
+          <p><span class="label">Nomor Polisi:</span> ${item.nomorPolisi || "-"}</p>
         </div>
-        <div class="table-title">FOTO DOKUMENTASI PRODUK ${idx + 1}</div>
-        ${fotoHtml}
+        <div class="table-title">FOTO DOKUMENTASI ${idx + 1}</div>
+        <div style="text-align:center;margin-top:12px;">
+          <img src="${fotoUrl}" style="max-width:100%;max-height:400px;object-fit:contain;border:1px solid #ccc;border-radius:4px;" alt="Foto ${idx + 1}" />
+        </div>
         <div class="signature-row">
           <div class="signature-box">
             <p class="signature-title">Diverifikasi oleh,<br>PT. BUKIT AGROCHEMICAL BARU</p>
@@ -885,7 +856,7 @@ export default function BarangKeluarBackupPage() {
       header: "Foto",
       width: "80px",
       render: (row: BackupDoc) => {
-        const totalFoto = row.items.reduce((sum, it) => sum + (it.fotoUrls?.length || 0), 0);
+        const totalFoto = row.fotoUrls?.length || 0;
         return (
           <span className="px-2 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-700">
             {totalFoto} Foto
@@ -1123,50 +1094,52 @@ export default function BarangKeluarBackupPage() {
                 {errors[`item_${idx}_pi`] && (
                   <p className="mt-1 text-sm text-red-600">{errors[`item_${idx}_pi`]}</p>
                 )}
-
-                <div className="mt-4 border-t border-gray-200 pt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Foto Dokumentasi Produk {idx + 1}</label>
-                  <div className="flex flex-wrap gap-3 mb-3">
-                    {(itemExistingFotoUrls[idx] || []).map((url, fidx) => (
-                      <div key={`existing_${idx}_${fidx}`} className="relative group">
-                        <img src={url} alt={`Foto ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
-                        <button
-                          type="button"
-                          onClick={() => removeItemExistingFoto(idx, fidx)}
-                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
-                    {(itemFotoPreviews[idx] || []).map((url, fidx) => (
-                      <div key={`preview_${idx}_${fidx}`} className="relative group">
-                        <img src={url} alt={`Preview ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
-                        <button
-                          type="button"
-                          onClick={() => removeItemFoto(idx, fidx)}
-                          className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                        >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    ))}
-                    <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors">
-                      <svg className="w-6 h-6 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                      </svg>
-                      <span className="text-[10px] text-gray-500">Tambah Foto</span>
-                      <input type="file" accept="image/*" multiple onChange={(e) => handleItemFotoChange(idx, e)} className="hidden" />
-                    </label>
-                  </div>
-                  {errors[`item_${idx}_foto`] && <p className="text-sm text-red-600">{errors[`item_${idx}_foto`]}</p>}
-                </div>
               </div>
             ))}
+          </div>
+
+          <div className="mt-8 border-t border-gray-200 pt-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Foto Dokumentasi (Max {MAX_PHOTO_SIZE_KB}KB per foto, auto kompres)
+            </label>
+            <div className="flex flex-wrap gap-3 mb-3">
+              {pageExistingFotoUrls.map((url, fidx) => (
+                <div key={`existing_${fidx}`} className="relative group">
+                  <img src={url} alt={`Foto ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+                  <button
+                    type="button"
+                    onClick={() => removePageExistingFoto(fidx)}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              {pageFotoPreviews.map((url, fidx) => (
+                <div key={`preview_${fidx}`} className="relative group">
+                  <img src={url} alt={`Preview ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+                  <button
+                    type="button"
+                    onClick={() => removePageFoto(fidx)}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              <label className="w-24 h-24 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-green-500 hover:bg-green-50 transition-colors">
+                <svg className="w-6 h-6 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
+                <span className="text-[10px] text-gray-500">Tambah Foto</span>
+                <input type="file" accept="image/*" multiple onChange={handlePageFotoChange} className="hidden" />
+              </label>
+            </div>
+            {errors.page_foto && <p className="text-sm text-red-600">{errors.page_foto}</p>}
           </div>
 
           <div className="mt-8 flex items-center justify-end gap-4">
