@@ -14,7 +14,6 @@ import {
   serverTimestamp,
   where,
 } from "firebase/firestore";
-import { getStorage, ref, uploadString, getDownloadURL } from "firebase/storage";
 import { db } from "@/app/lib/firebase";
 import { useAuth } from "@/app/context/AuthContext";
 import Header from "@/app/components/ui/Header";
@@ -57,7 +56,6 @@ interface BackupDoc {
   nomorPolisi: string;
   nomorSIM: string;
   items: BackupItem[];
-  fotoUrls: string[];
   totalPengambilanKG: number;
   createdBy: string;
   createdAt?: Date;
@@ -65,6 +63,12 @@ interface BackupDoc {
   ttdNama?: string;
   ttdJabatan?: string;
   ttdImage?: string;
+}
+
+interface FotoDoc {
+  id: string;
+  imageData: string;
+  createdAt: Date;
 }
 
 interface TTDData {
@@ -132,14 +136,6 @@ const compressImageToMaxSize = (file: File): Promise<string> => {
   });
 };
 
-const uploadFotoToStorage = async (base64Image: string, path: string): Promise<string> => {
-  const storage = getStorage();
-  const storageRef = ref(storage, path);
-  await uploadString(storageRef, base64Image, "data_url");
-  const url = await getDownloadURL(storageRef);
-  return url;
-};
-
 export default function BarangKeluarBackupPage() {
   const { user } = useAuth();
   const [stockList, setStockList] = useState<StockItem[]>([]);
@@ -163,7 +159,7 @@ export default function BarangKeluarBackupPage() {
 
   const [pageFotoFiles, setPageFotoFiles] = useState<string[]>([]);
   const [pageFotoPreviews, setPageFotoPreviews] = useState<string[]>([]);
-  const [pageExistingFotoUrls, setPageExistingFotoUrls] = useState<string[]>([]);
+  const [pageExistingFotoIds, setPageExistingFotoIds] = useState<string[]>([]);
 
   const [ttdList, setTtdList] = useState<TTDData[]>([]);
   const [selectedTtdId, setSelectedTtdId] = useState("");
@@ -228,7 +224,6 @@ export default function BarangKeluarBackupPage() {
             nomorPolisi: d.nomorPolisi || "",
             nomorSIM: d.nomorSIM || "",
             items: d.items || [],
-            fotoUrls: d.fotoUrls || [],
             totalPengambilanKG: d.totalPengambilanKG || 0,
             createdBy: d.createdBy || "",
             createdAt: d.createdAt?.toDate(),
@@ -350,19 +345,50 @@ export default function BarangKeluarBackupPage() {
   };
 
   const removePageExistingFoto = (fotoIdx: number) => {
-    setPageExistingFotoUrls((prev) => prev.filter((_, i) => i !== fotoIdx));
+    setPageExistingFotoIds((prev) => prev.filter((_, i) => i !== fotoIdx));
   };
 
-  const uploadPageFotos = async (): Promise<string[]> => {
-    const allFotos: string[] = [...pageExistingFotoUrls];
-    const newUrls = await Promise.all(
-      pageFotoFiles.map(async (base64, idx) => {
-        const path = `barang-keluar-backup/${Date.now()}_${idx}.jpg`;
-        return uploadFotoToStorage(base64, path);
-      })
-    );
-    allFotos.push(...newUrls);
-    return allFotos;
+  const savePageFotos = async (parentDocId: string): Promise<void> => {
+    const fotoColRef = collection(db, "transaksiBarangKeluar", parentDocId, "fotoDokumentasi");
+    for (const base64 of pageFotoFiles) {
+      await addDoc(fotoColRef, {
+        imageData: base64,
+        createdAt: serverTimestamp(),
+      });
+    }
+  };
+
+  const updatePageFotos = async (parentDocId: string): Promise<void> => {
+    const fotoColRef = collection(db, "transaksiBarangKeluar", parentDocId, "fotoDokumentasi");
+    const existingSnap = await getDocs(fotoColRef);
+    const existingIds = existingSnap.docs.map((d) => d.id);
+    const keptIds = pageExistingFotoIds;
+    const deletedIds = existingIds.filter((id) => !keptIds.includes(id));
+    for (const delId of deletedIds) {
+      await deleteDoc(doc(db, "transaksiBarangKeluar", parentDocId, "fotoDokumentasi", delId));
+    }
+    for (const base64 of pageFotoFiles) {
+      await addDoc(fotoColRef, {
+        imageData: base64,
+        createdAt: serverTimestamp(),
+      });
+    }
+  };
+
+  const fetchFotoUrls = async (parentDocId: string): Promise<string[]> => {
+    const fotoColRef = collection(db, "transaksiBarangKeluar", parentDocId, "fotoDokumentasi");
+    const snapshot = await getDocs(query(fotoColRef, orderBy("createdAt", "asc")));
+    return snapshot.docs.map((d) => d.data().imageData as string);
+  };
+
+  const fetchFotoDocs = async (parentDocId: string): Promise<FotoDoc[]> => {
+    const fotoColRef = collection(db, "transaksiBarangKeluar", parentDocId, "fotoDokumentasi");
+    const snapshot = await getDocs(query(fotoColRef, orderBy("createdAt", "asc")));
+    return snapshot.docs.map((d) => ({
+      id: d.id,
+      imageData: d.data().imageData || "",
+      createdAt: d.data().createdAt?.toDate(),
+    }));
   };
 
   const updateStockFromItems = async (
@@ -424,7 +450,7 @@ export default function BarangKeluarBackupPage() {
     });
 
     const hasNew = pageFotoFiles.length > 0;
-    const hasExisting = pageExistingFotoUrls.length > 0;
+    const hasExisting = pageExistingFotoIds.length > 0;
     if (!isEditing && !hasNew && !hasExisting) {
       newErrors.page_foto = "Foto dokumentasi wajib diunggah minimal 1";
     }
@@ -445,7 +471,7 @@ export default function BarangKeluarBackupPage() {
 
     setPageFotoFiles([]);
     setPageFotoPreviews([]);
-    setPageExistingFotoUrls([]);
+    setPageExistingFotoIds([]);
     setIsEditing(false);
     setEditId(null);
     setErrors({});
@@ -461,8 +487,6 @@ export default function BarangKeluarBackupPage() {
     setIsSubmitting(true);
 
     try {
-      const fotoUrls = await uploadPageFotos();
-
       const itemsData = formData.items.map((item) => ({
         stockId: item.stockId,
         kodeBarang: item.kodeBarang,
@@ -486,7 +510,6 @@ export default function BarangKeluarBackupPage() {
         nomorPolisi: formData.nomorPolisi.trim().toUpperCase(),
         nomorSIM: formData.nomorSIM.trim() || null,
         items: itemsData,
-        fotoUrls: fotoUrls,
         totalPengambilanKG: totalPengambilanKG,
         createdBy: user?.nama || "",
         createdAt: serverTimestamp(),
@@ -500,7 +523,9 @@ export default function BarangKeluarBackupPage() {
         docData.ttdImage = selectedTtd.ttdImage;
       }
 
-      await addDoc(collection(db, "transaksiBarangKeluar"), docData);
+      const docRef = await addDoc(collection(db, "transaksiBarangKeluar"), docData);
+
+      await savePageFotos(docRef.id);
 
       await updateStockFromItems(itemsData, false);
 
@@ -515,7 +540,7 @@ export default function BarangKeluarBackupPage() {
     }
   };
 
-  const handleEditClick = (item: BackupDoc) => {
+  const handleEditClick = async (item: BackupDoc) => {
     setIsEditing(true);
     setEditId(item.id);
     setFormData({
@@ -536,9 +561,13 @@ export default function BarangKeluarBackupPage() {
         totalKG: it.totalKG,
       })),
     });
-    setPageExistingFotoUrls(item.fotoUrls || []);
+
+    const fotoDocs = await fetchFotoDocs(item.id);
+    const existingIds = fotoDocs.map((f) => f.id);
+    const existingData = fotoDocs.map((f) => f.imageData);
+    setPageExistingFotoIds(existingIds);
+    setPageFotoPreviews(existingData);
     setPageFotoFiles([]);
-    setPageFotoPreviews([]);
     setSelectedTtdId(item.ttdId || "");
     setNomorSeriError("");
     setErrors({});
@@ -556,8 +585,6 @@ export default function BarangKeluarBackupPage() {
       const oldSnap = await getDoc(oldDocRef);
       const oldData = oldSnap.data();
       const oldItems = oldData?.items || [];
-
-      const fotoUrls = await uploadPageFotos();
 
       const newItemsData = formData.items.map((item) => ({
         stockId: item.stockId,
@@ -580,7 +607,6 @@ export default function BarangKeluarBackupPage() {
         nomorPolisi: formData.nomorPolisi.trim().toUpperCase(),
         nomorSIM: formData.nomorSIM.trim() || null,
         items: newItemsData,
-        fotoUrls: fotoUrls,
         totalPengambilanKG: totalPengambilanKG,
         updatedAt: serverTimestamp(),
       };
@@ -598,6 +624,8 @@ export default function BarangKeluarBackupPage() {
       }
 
       await updateDoc(oldDocRef, updateData);
+
+      await updatePageFotos(editId);
 
       await updateStockFromItems(oldItems, true);
       await updateStockFromItems(newItemsData, false);
@@ -617,6 +645,10 @@ export default function BarangKeluarBackupPage() {
     if (!confirm("Apakah Anda yakin ingin menghapus data barang keluar backup ini?")) return;
     try {
       await updateStockFromItems(item.items, true);
+      const fotoColRef = collection(db, "transaksiBarangKeluar", item.id, "fotoDokumentasi");
+      const fotoSnap = await getDocs(fotoColRef);
+      const deletePromises = fotoSnap.docs.map((d) => deleteDoc(doc(db, "transaksiBarangKeluar", item.id, "fotoDokumentasi", d.id)));
+      await Promise.all(deletePromises);
       await deleteDoc(doc(db, "transaksiBarangKeluar", item.id));
       fetchBackupList();
       setSuccessMessage("Data berhasil dihapus!");
@@ -626,7 +658,8 @@ export default function BarangKeluarBackupPage() {
     }
   };
 
-  const handlePrint = (item: BackupDoc) => {
+  const handlePrint = async (item: BackupDoc) => {
+    const fotoUrls = await fetchFotoUrls(item.id);
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
@@ -747,7 +780,7 @@ export default function BarangKeluarBackupPage() {
       <img src="/Picture1.png" alt="Footer" class="footer-img" onerror="this.style.display='none'" />
     </div>`;
 
-    const fotoPages = item.fotoUrls.map((fotoUrl, idx) => {
+    const fotoPages = fotoUrls.map((fotoUrl, idx) => {
       return `<div class="page">
         <img src="/Picture3.png" alt="Header" class="header-img" onerror="this.style.display='none'" />
         <div class="title-bar">BUKTI FOTO DOKUMENTASI</div>
@@ -856,10 +889,9 @@ export default function BarangKeluarBackupPage() {
       header: "Foto",
       width: "80px",
       render: (row: BackupDoc) => {
-        const totalFoto = row.fotoUrls?.length || 0;
         return (
           <span className="px-2 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-700">
-            {totalFoto} Foto
+            Lihat
           </span>
         );
       },
@@ -1103,9 +1135,9 @@ export default function BarangKeluarBackupPage() {
               Foto Dokumentasi (Max {MAX_PHOTO_SIZE_KB}KB per foto, auto kompres)
             </label>
             <div className="flex flex-wrap gap-3 mb-3">
-              {pageExistingFotoUrls.map((url, fidx) => (
-                <div key={`existing_${fidx}`} className="relative group">
-                  <img src={url} alt={`Foto ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
+              {pageExistingFotoIds.map((fid, fidx) => (
+                <div key={`existing_${fid}`} className="relative group">
+                  <img src={pageFotoPreviews[fidx]} alt={`Foto ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
                   <button
                     type="button"
                     onClick={() => removePageExistingFoto(fidx)}
@@ -1117,7 +1149,7 @@ export default function BarangKeluarBackupPage() {
                   </button>
                 </div>
               ))}
-              {pageFotoPreviews.map((url, fidx) => (
+              {pageFotoPreviews.slice(pageExistingFotoIds.length).map((url, fidx) => (
                 <div key={`preview_${fidx}`} className="relative group">
                   <img src={url} alt={`Preview ${fidx + 1}`} className="w-24 h-24 object-cover rounded-lg border border-gray-200" />
                   <button
