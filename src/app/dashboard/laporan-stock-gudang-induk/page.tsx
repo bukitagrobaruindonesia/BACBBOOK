@@ -426,18 +426,18 @@ export default function LaporanInputStockGudangPage() {
         const realStokAkhirUnit = stock.stokAkhirUnit || 0;
         const realStokAkhirKG = stock.stokAkhirKG || 0;
 
-        const stokAkhirUnit = Math.max(0, realStokAkhirUnit - mAfter.unit - pAfter.unit + kAfter.unit + rAfter.unit);
-        const stokAwalUnit = Math.max(0, stokAkhirUnit + mIn.unit + pIn.unit - kIn.unit - rIn.unit);
+        const stokAwalUnit = Math.max(0, realStokAkhirUnit + kIn.unit + rIn.unit - mIn.unit - pIn.unit);
+        const stokAkhirUnit = Math.max(0, stokAwalUnit - kIn.unit - rIn.unit + mIn.unit + pIn.unit);
 
         let stokAkhirKG = 0;
         let stokAwalKG = 0;
 
         if (stock.unit === "ZAK") {
-          stokAkhirKG = stokAkhirUnit * (stock.bobotPerUnit || 50);
           stokAwalKG = stokAwalUnit * (stock.bobotPerUnit || 50);
+          stokAkhirKG = stokAkhirUnit * (stock.bobotPerUnit || 50);
         } else if (stock.unit === "KG") {
-          stokAkhirKG = Math.max(0, realStokAkhirKG - mAfter.kg - pAfter.kg + kAfter.kg + rAfter.kg);
-          stokAwalKG = Math.max(0, stokAkhirKG + mIn.kg + pIn.kg - kIn.kg - rIn.kg);
+          stokAwalKG = Math.max(0, realStokAkhirKG + kIn.kg + rIn.kg - mIn.kg - pIn.kg);
+          stokAkhirKG = Math.max(0, stokAwalKG - kIn.kg - rIn.kg + mIn.kg + pIn.kg);
         }
 
         periodCalc[key] = {
