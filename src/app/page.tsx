@@ -722,7 +722,7 @@ export default function PublicPage() {
                                   {(row.fotoUrls as string[])?.length > 0 && (
                                     <button
                                       onClick={(e) => { e.stopPropagation(); setSelectedPhoto((row.fotoUrls as string[])[0]); }}
-                                      className="relative w-12 h-12 rounded-lg overflow-hidden border border-slate-600 hover:border-emerald-400 transition-colors mt-2"
+                                      className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 mt-3 shadow-xl hover:shadow-emerald-500/20 hover:scale-105"
                                     >
                                       <img
                                         src={(row.fotoUrls as string[])[0]}
@@ -787,7 +787,7 @@ export default function PublicPage() {
                                 {(row.fotoUrls as string[])?.length > 0 ? (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setSelectedPhoto((row.fotoUrls as string[])[0]); }}
-                                    className="relative w-10 h-10 rounded-lg overflow-hidden border border-slate-600 hover:border-emerald-400 transition-colors inline-block"
+                                    className="relative w-24 h-24 rounded-xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 inline-block shadow-xl hover:shadow-emerald-500/20 hover:scale-105"
                                   >
                                     <img
                                       src={(row.fotoUrls as string[])[0]}
@@ -877,8 +877,8 @@ export default function PublicPage() {
           </section>
 
           {selectedPhoto && (
-            <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4" onClick={() => setSelectedPhoto(null)}>
-              <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
+            <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-6" onClick={() => setSelectedPhoto(null)}>
+              <div className="relative max-w-5xl max-h-[95vh] w-full flex flex-col items-center">
                 <button
                   onClick={() => setSelectedPhoto(null)}
                   className="absolute -top-12 right-0 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
@@ -890,7 +890,7 @@ export default function PublicPage() {
                 <img
                   src={selectedPhoto}
                   alt="Foto Produk"
-                  className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+                  className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
