@@ -86,6 +86,8 @@ export default function LaporanInputStockGudangPage() {
   const [transaksiPenggantianMap, setTransaksiPenggantianMap] = useState<Record<string, { unit: number; kg: number }>>({});
   const [periodCalcMap, setPeriodCalcMap] = useState<Record<string, PeriodCalc>>({});
   const [isFilterLoading, setIsFilterLoading] = useState(false);
+  const [productPhotos, setProductPhotos] = useState<string[]>([]);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     fot: "",
@@ -179,6 +181,90 @@ export default function LaporanInputStockGudangPage() {
       });
     };
   }, [formData]);
+
+  const compressImage = (file: File, maxSizeKB: number = 350): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+          const maxDimension = 1000;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            reject(new Error("Canvas context not available"));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          let quality = 0.85;
+          const maxBytes = maxSizeKB * 1024;
+          const tryCompress = () => {
+            const dataUrl = canvas.toDataURL("image/jpeg", quality);
+            const base64 = dataUrl.split(",")[1];
+            const sizeBytes = Math.round((base64.length * 3) / 4);
+            if (sizeBytes > maxBytes && quality > 0.05) {
+              quality -= 0.08;
+              tryCompress();
+            } else {
+              resolve(dataUrl);
+            }
+          };
+          tryCompress();
+        };
+        img.onerror = () => reject(new Error("Failed to load image"));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    if (productPhotos.length >= 2) {
+      setErrors((prev) => ({ ...prev, foto: "Maksimal 2 foto per produk" }));
+      return;
+    }
+    const remainingSlots = 2 - productPhotos.length;
+    const filesToProcess = Array.from(files).slice(0, remainingSlots);
+    setErrors((prev) => {
+      const newErrors = { ...prev };
+      delete newErrors.foto;
+      return newErrors;
+    });
+    try {
+      const compressedPhotos = await Promise.all(
+        filesToProcess.map((file) => compressImage(file, 350))
+      );
+      setProductPhotos((prev) => [...prev, ...compressedPhotos].slice(0, 2));
+    } catch {
+      setErrors((prev) => ({ ...prev, foto: "Gagal memproses foto. Coba lagi." }));
+    }
+    e.target.value = "";
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setProductPhotos((prev) => prev.filter((_, i) => i !== index));
+    setErrors((prev) => {
+      const newErrors = { ...prev };
+      delete newErrors.foto;
+      return newErrors;
+    });
+  };
 
   const fetchTransaksiFiltered = async () => {
     setIsFilterLoading(true);
@@ -714,6 +800,7 @@ export default function LaporanInputStockGudangPage() {
           namaProdusen: formData.namaProdusen.trim(),
           unit: formData.unit,
           bobotPerUnit: bobotPerUnit,
+          fotoUrls: productPhotos,
           updatedAt: serverTimestamp(),
         };
 
@@ -748,6 +835,7 @@ export default function LaporanInputStockGudangPage() {
           barangKeluarKG: 0,
           stokAkhirUnit: stokAkhirUnit,
           stokAkhirKG: stokAkhirKG,
+          fotoUrls: productPhotos,
           createdBy: user?.nama || "",
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -789,6 +877,7 @@ export default function LaporanInputStockGudangPage() {
       botolPerDus: stock.botolPerDus?.toString() || "20",
       volumeMl: stock.volumeMl?.toString() || "500",
     });
+    setProductPhotos((stock.fotoUrls as string[]) || []);
     setIsNewFot(!fotList.includes(stock.fot));
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -819,6 +908,7 @@ export default function LaporanInputStockGudangPage() {
       botolPerDus: "20",
       volumeMl: "500",
     });
+    setProductPhotos([]);
     setIsNewFot(false);
     setIsEditing(false);
     setEditId(null);
@@ -1432,6 +1522,34 @@ export default function LaporanInputStockGudangPage() {
       },
     },
     {
+      key: "fotoProduk",
+      header: "Foto",
+      width: "80px",
+      render: (row: StockGudang) => {
+        const fotos = (row.fotoUrls as string[]) || [];
+        if (fotos.length === 0) {
+          return <span className="text-xs text-gray-400">-</span>;
+        }
+        return (
+          <button
+            onClick={() => setSelectedPhoto(fotos[0])}
+            className="relative w-10 h-10 rounded-lg overflow-hidden border border-gray-200 hover:border-blue-400 transition-colors"
+          >
+            <img
+              src={fotos[0]}
+              alt={row.namaBarang}
+              className="w-full h-full object-cover"
+            />
+            {fotos.length > 1 && (
+              <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                {fotos.length}
+              </span>
+            )}
+          </button>
+        );
+      },
+    },
+    {
       key: "stokAwal",
       header: "Stok Awal",
       width: "120px",
@@ -1908,6 +2026,69 @@ export default function LaporanInputStockGudangPage() {
                   required
                 />
 
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Foto Produk (Opsional, maksimal 2 foto)
+                  </label>
+                  <div className="space-y-3">
+                    {productPhotos.length > 0 && (
+                      <div className="flex flex-wrap gap-3">
+                        {productPhotos.map((photo, index) => (
+                          <div key={index} className="relative group">
+                            <div
+                              className="w-20 h-20 rounded-lg border border-gray-200 overflow-hidden cursor-pointer hover:border-blue-400 transition-colors"
+                              onClick={() => setSelectedPhoto(photo)}
+                            >
+                              <img
+                                src={photo}
+                                alt={`Foto produk ${index + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePhoto(index)}
+                              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors shadow-sm"
+                              title="Hapus foto"
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                            <span className="absolute bottom-0 left-0 right-0 bg-black/50 text-white text-[9px] text-center py-0.5">
+                              {index + 1}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {productPhotos.length < 2 && (
+                      <label className="flex items-center justify-center w-full h-14 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                          <span className="text-sm font-medium">
+                            {productPhotos.length === 0 ? "Tambah Foto" : "Tambah Foto Lagi"}
+                          </span>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handlePhotoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    )}
+                    {productPhotos.length === 2 && (
+                      <p className="text-xs text-amber-600 font-medium">Maksimal 2 foto telah tercapai</p>
+                    )}
+                    {errors.foto && (
+                      <p className="text-sm text-red-600">{errors.foto}</p>
+                    )}
+                  </div>
+                </div>
+
                 {formData.stokTersediaUnit && (
                   <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
                     <p className="text-xs text-amber-600 uppercase tracking-wide font-semibold mb-1">
@@ -2024,7 +2205,7 @@ export default function LaporanInputStockGudangPage() {
                   ]}
                 />
               </div>
-              
+
             </div>
 
             {(filterTanggal || filterBulan || filterTahun) && (
@@ -2264,6 +2445,27 @@ export default function LaporanInputStockGudangPage() {
                 Mengerti
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {selectedPhoto && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex items-center justify-center p-4" onClick={() => setSelectedPhoto(null)}>
+          <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
+            <button
+              onClick={() => setSelectedPhoto(null)}
+              className="absolute -top-12 right-0 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+            >
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+            <img
+              src={selectedPhoto}
+              alt="Foto Produk"
+              className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
           </div>
         </div>
       )}

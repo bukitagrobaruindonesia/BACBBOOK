@@ -50,6 +50,7 @@ export interface StockGudang {
   createdBy?: string;
   createdAt?: Date;
   updatedAt?: Date;
+  fotoUrls?: string[];
 }
 
 export interface ProformaInvoice {
