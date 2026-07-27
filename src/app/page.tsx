@@ -54,6 +54,7 @@ export default function PublicPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [activeGlowCard, setActiveGlowCard] = useState<number | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [periodCalcMap, setPeriodCalcMap] = useState<Record<string, PeriodCalc>>({});
   const [isFilterLoading, setIsFilterLoading] = useState(false);
 
@@ -694,10 +695,11 @@ export default function PublicPage() {
                   <div className="space-y-3">
                     <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
                       <div className="col-span-1">FOT</div>
+                      <div className="col-span-1 text-center">Foto</div>
                       <div className="col-span-2">Kode / Nama</div>
                       <div className="col-span-1 text-center">Unit</div>
                       <div className="col-span-1 text-right">Konversi</div>
-                      <div className="col-span-2 text-right">Stok Awal</div>
+                      <div className="col-span-1 text-right">Stok Awal</div>
                       <div className="col-span-1 text-right">Masuk</div>
                       <div className="col-span-1 text-right">Keluar</div>
                       <div className="col-span-2 text-right">Stok Akhir</div>
@@ -717,6 +719,23 @@ export default function PublicPage() {
                                     <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg text-sm border border-emerald-500/20">{row.fot || "-"}</span>
                                     <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${getUnitBadgeClass(row.unit)}`}>{row.unit}</span>
                                   </div>
+                                  {(row.fotoUrls as string[])?.length > 0 && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setSelectedPhoto((row.fotoUrls as string[])[0]); }}
+                                      className="relative w-12 h-12 rounded-lg overflow-hidden border border-slate-600 hover:border-emerald-400 transition-colors mt-2"
+                                    >
+                                      <img
+                                        src={(row.fotoUrls as string[])[0]}
+                                        alt={row.namaBarang}
+                                        className="w-full h-full object-cover"
+                                      />
+                                      {(row.fotoUrls as string[]).length > 1 && (
+                                        <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                                          {(row.fotoUrls as string[]).length}
+                                        </span>
+                                      )}
+                                    </button>
+                                  )}
                                   <p className="font-mono text-sm font-semibold text-emerald-300">{row.kodeBarang}</p>
                                   <p className="text-sm font-medium text-slate-200">{row.namaBarang}</p>
                                   {row.namaProdusen && <p className="text-xs text-slate-500">{row.namaProdusen}</p>}
@@ -764,6 +783,27 @@ export default function PublicPage() {
 
                             <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-4 items-center group-hover:bg-emerald-500/5 transition-colors duration-500">
                               <div className="col-span-1"><span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg text-sm inline-block border border-emerald-500/20">{row.fot || "-"}</span></div>
+                              <div className="col-span-1 text-center">
+                                {(row.fotoUrls as string[])?.length > 0 ? (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setSelectedPhoto((row.fotoUrls as string[])[0]); }}
+                                    className="relative w-10 h-10 rounded-lg overflow-hidden border border-slate-600 hover:border-emerald-400 transition-colors inline-block"
+                                  >
+                                    <img
+                                      src={(row.fotoUrls as string[])[0]}
+                                      alt={row.namaBarang}
+                                      className="w-full h-full object-cover"
+                                    />
+                                    {(row.fotoUrls as string[]).length > 1 && (
+                                      <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                                        {(row.fotoUrls as string[]).length}
+                                      </span>
+                                    )}
+                                  </button>
+                                ) : (
+                                  <span className="text-xs text-slate-600">-</span>
+                                )}
+                              </div>
                               <div className="col-span-2">
                                 <p className="font-mono text-sm font-semibold text-emerald-300">{row.kodeBarang}</p>
                                 <p className="text-sm text-slate-300 mt-0.5 line-clamp-1">{row.namaBarang}</p>
@@ -835,6 +875,27 @@ export default function PublicPage() {
               )}
             </Card>
           </section>
+
+          {selectedPhoto && (
+            <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4" onClick={() => setSelectedPhoto(null)}>
+              <div className="relative max-w-4xl max-h-[90vh] w-full flex flex-col items-center">
+                <button
+                  onClick={() => setSelectedPhoto(null)}
+                  className="absolute -top-12 right-0 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+                <img
+                  src={selectedPhoto}
+                  alt="Foto Produk"
+                  className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            </div>
+          )}
 
           <footer className="text-center py-8 border-t border-slate-700/30 animate-fade-in-up animate-delay-300">
             <p className="text-sm text-slate-400 font-medium">PT Bukit Agrochemical Baru | Sistem Administrasi Distributor Pupuk</p>
