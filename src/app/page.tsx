@@ -695,14 +695,14 @@ export default function PublicPage() {
                   <div className="space-y-3">
                     <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
                       <div className="col-span-1">FOT</div>
-                      <div className="col-span-1 text-center">Foto</div>
+                      <div className="col-span-2 text-center">Foto</div>
                       <div className="col-span-2">Kode / Nama</div>
                       <div className="col-span-1 text-center">Unit</div>
                       <div className="col-span-1 text-right">Konversi</div>
                       <div className="col-span-1 text-right">Stok Awal</div>
                       <div className="col-span-1 text-right">Masuk</div>
                       <div className="col-span-1 text-right">Keluar</div>
-                      <div className="col-span-2 text-right">Stok Akhir</div>
+                      <div className="col-span-1 text-right">Stok Akhir</div>
                       <div className="col-span-1 text-center">Status</div>
                     </div>
 
@@ -783,11 +783,11 @@ export default function PublicPage() {
 
                             <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-4 items-center group-hover:bg-emerald-500/5 transition-colors duration-500">
                               <div className="col-span-1"><span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg text-sm inline-block border border-emerald-500/20">{row.fot || "-"}</span></div>
-                              <div className="col-span-1 text-center">
+                              <div className="col-span-2 text-center">
                                 {(row.fotoUrls as string[])?.length > 0 ? (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setSelectedPhoto((row.fotoUrls as string[])[0]); }}
-                                    className="relative w-24 h-24 rounded-xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 inline-block shadow-xl hover:shadow-emerald-500/20 hover:scale-105"
+                                    className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 inline-block shadow-xl hover:shadow-emerald-500/20 hover:scale-105"
                                   >
                                     <img
                                       src={(row.fotoUrls as string[])[0]}
@@ -819,7 +819,7 @@ export default function PublicPage() {
                                 const vals = getRowValues(row);
                                 return (
                                   <>
-                                    <div className="col-span-2 text-right">
+                                    <div className="col-span-1 text-right">
                                       {row.unit !== "KG" && <p className="font-mono text-sm font-medium text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>}
                                       {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
                                     </div>
@@ -833,7 +833,7 @@ export default function PublicPage() {
                                       {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.keluarKG > 0 && <p className="text-red-500 text-xs">-{vals.keluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
                                       {vals.keluarUnit === 0 && vals.keluarKG === 0 && <p className="text-slate-600 text-xs">-</p>}
                                     </div>
-                                    <div className="col-span-2 text-right">
+                                    <div className="col-span-1 text-right">
                                       {row.unit !== "KG" && <p className="font-mono font-bold text-emerald-400 text-sm">{formatDusDisplay(row, vals.stokAkhirUnit)}</p>}
                                       {row.unit === "KG" && <p className="font-mono font-bold text-emerald-400 text-sm">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
                                       {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
