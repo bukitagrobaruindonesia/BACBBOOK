@@ -23,6 +23,15 @@ const ParticleBackground = () => {
     size: Math.random() * 3 + 1, duration: Math.random() * 20 + 15,
     delay: Math.random() * 10, opacity: Math.random() * 0.4 + 0.1,
   })), []);
+  const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+    const link = document.createElement("a");
+    link.href = photoUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
       <div className="absolute inset-0 bg-gradient-to-br from-slate-900 via-emerald-950 to-slate-900" />
@@ -418,7 +427,16 @@ export default function PublicPage() {
         const botolCount = d.unit === "DUS" ? (d.stokAkhirUnit || 0) * (d.botolPerDus || 20) : (d.stokAkhirUnit || 0);
         return botolCount < 50;
       }
-      return (d.unit === "ZAK" ? (d.stokAkhirUnit || 0) * (d.bobotPerUnit || 50) : d.stokAkhirKG) < 1000;
+      const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+    const link = document.createElement("a");
+    link.href = photoUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (d.unit === "ZAK" ? (d.stokAkhirUnit || 0) * (d.bobotPerUnit || 50) : d.stokAkhirKG) < 1000;
     }).length, color: "red", icon: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" },
   ];
 
@@ -428,6 +446,15 @@ export default function PublicPage() {
     purple: { border: "border-purple-500/20", text: "text-purple-400", glow: "shadow-purple-500/10", accent: "bg-purple-500" },
     pink: { border: "border-pink-500/20", text: "text-pink-400", glow: "shadow-pink-500/10", accent: "bg-pink-500" },
     red: { border: "border-red-500/20", text: "text-red-400", glow: "shadow-red-500/10", accent: "bg-red-500" },
+  };
+
+  const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+    const link = document.createElement("a");
+    link.href = photoUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
@@ -641,7 +668,16 @@ export default function PublicPage() {
                 {statCards.map((card, idx) => {
                   const c = colorMap[card.color];
                   const isActive = activeGlowCard === idx;
-                  return (
+                  const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+    const link = document.createElement("a");
+    link.href = photoUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
                     <div key={card.label} className={`p-5 rounded-2xl border ${c.border} bg-slate-800/50 hover:bg-slate-800/80 transition-all duration-500 animate-count-up animate-delay-${(idx + 1) * 100} stat-card-glow ${isActive ? "active" : ""} cursor-pointer`} onClick={() => setActiveGlowCard(isActive ? null : idx)} onMouseEnter={() => setActiveGlowCard(idx)} onMouseLeave={() => setActiveGlowCard(null)}>
                       <div className="flex items-center justify-between mb-3">
                         <p className={`text-xs uppercase tracking-wider font-bold ${c.text}`}>{card.label}</p>
@@ -710,7 +746,16 @@ export default function PublicPage() {
                       {paginatedData.map((row: StockGudang, index: number) => {
                         const status = getStockStatus(row);
                         const isRowActive = hoveredRow === row.id;
-                        return (
+                        const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+    const link = document.createElement("a");
+    link.href = photoUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
                           <div key={row.id} className={`group bg-slate-800/40 rounded-2xl border border-slate-700/50 hover:border-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/5 transition-all duration-500 animate-fade-in-up overflow-hidden row-interactive ${isRowActive ? "active" : ""} cursor-pointer`} style={{ animationDelay: `${index * 0.05}s` }} onClick={() => setHoveredRow(isRowActive ? null : row.id)} onMouseEnter={() => setHoveredRow(row.id)} onMouseLeave={() => setHoveredRow(null)}>
                             <div className="lg:hidden p-5 space-y-4">
                               <div className="flex items-start justify-between">
@@ -745,7 +790,16 @@ export default function PublicPage() {
 
                               {(() => {
                                 const vals = getRowValues(row);
-                                return (
+                                const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+    const link = document.createElement("a");
+    link.href = photoUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
                                   <div className="grid grid-cols-2 gap-3 text-sm">
                                     <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
                                       <p className="text-xs text-slate-500 mb-1">Stok Awal</p>
@@ -817,7 +871,16 @@ export default function PublicPage() {
                               </div>
                               {(() => {
                                 const vals = getRowValues(row);
-                                return (
+                                const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+    const link = document.createElement("a");
+    link.href = photoUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  return (
                                   <>
                                     <div className="col-span-1 text-right">
                                       {row.unit !== "KG" && <p className="font-mono text-sm font-medium text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>}
@@ -879,14 +942,27 @@ export default function PublicPage() {
           {selectedPhoto && (
             <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-6" onClick={() => setSelectedPhoto(null)}>
               <div className="relative max-w-5xl max-h-[95vh] w-full flex flex-col items-center">
-                <button
-                  onClick={() => setSelectedPhoto(null)}
-                  className="absolute -top-12 right-0 p-2 text-white hover:bg-white/10 rounded-full transition-colors"
-                >
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
+                <div className="absolute -top-14 right-0 flex items-center gap-3">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDownloadPhoto(selectedPhoto, `Foto_Produk_${new Date().toISOString().slice(0,10)}.jpg`); }}
+                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-emerald-500/30"
+                    title="Unduh Foto"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Unduh
+                  </button>
+                  <button
+                    onClick={() => setSelectedPhoto(null)}
+                    className="p-2 text-white hover:bg-white/10 rounded-full transition-colors"
+                    title="Tutup"
+                  >
+                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
                 <img
                   src={selectedPhoto}
                   alt="Foto Produk"
