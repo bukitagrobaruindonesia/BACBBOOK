@@ -23,7 +23,9 @@ const ParticleBackground = () => {
     size: Math.random() * 3 + 1, duration: Math.random() * 20 + 15,
     delay: Math.random() * 10, opacity: Math.random() * 0.4 + 0.1,
   })), []);
-  const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+  const handleDownloadPhoto = (photoUrl: string, productName: string) => {
+    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
+    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
     const link = document.createElement("a");
     link.href = photoUrl;
     link.download = fileName;
@@ -63,7 +65,7 @@ export default function PublicPage() {
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [activeGlowCard, setActiveGlowCard] = useState<number | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
-  const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
+  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; productName: string } | null>(null);
   const [periodCalcMap, setPeriodCalcMap] = useState<Record<string, PeriodCalc>>({});
   const [isFilterLoading, setIsFilterLoading] = useState(false);
 
@@ -427,7 +429,9 @@ export default function PublicPage() {
         const botolCount = d.unit === "DUS" ? (d.stokAkhirUnit || 0) * (d.botolPerDus || 20) : (d.stokAkhirUnit || 0);
         return botolCount < 50;
       }
-      const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+      const handleDownloadPhoto = (photoUrl: string, productName: string) => {
+    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
+    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
     const link = document.createElement("a");
     link.href = photoUrl;
     link.download = fileName;
@@ -448,7 +452,9 @@ export default function PublicPage() {
     red: { border: "border-red-500/20", text: "text-red-400", glow: "shadow-red-500/10", accent: "bg-red-500" },
   };
 
-  const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+  const handleDownloadPhoto = (photoUrl: string, productName: string) => {
+    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
+    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
     const link = document.createElement("a");
     link.href = photoUrl;
     link.download = fileName;
@@ -668,7 +674,9 @@ export default function PublicPage() {
                 {statCards.map((card, idx) => {
                   const c = colorMap[card.color];
                   const isActive = activeGlowCard === idx;
-                  const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+                  const handleDownloadPhoto = (photoUrl: string, productName: string) => {
+    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
+    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
     const link = document.createElement("a");
     link.href = photoUrl;
     link.download = fileName;
@@ -746,7 +754,9 @@ export default function PublicPage() {
                       {paginatedData.map((row: StockGudang, index: number) => {
                         const status = getStockStatus(row);
                         const isRowActive = hoveredRow === row.id;
-                        const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+                        const handleDownloadPhoto = (photoUrl: string, productName: string) => {
+    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
+    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
     const link = document.createElement("a");
     link.href = photoUrl;
     link.download = fileName;
@@ -766,7 +776,7 @@ export default function PublicPage() {
                                   </div>
                                   {(row.fotoUrls as string[])?.length > 0 && (
                                     <button
-                                      onClick={(e) => { e.stopPropagation(); setSelectedPhoto((row.fotoUrls as string[])[0]); }}
+                                      onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: (row.fotoUrls as string[])[0], productName: row.namaBarang }); }}
                                       className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 mt-3 shadow-xl hover:shadow-emerald-500/20 hover:scale-105"
                                     >
                                       <img
@@ -790,7 +800,9 @@ export default function PublicPage() {
 
                               {(() => {
                                 const vals = getRowValues(row);
-                                const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+                                const handleDownloadPhoto = (photoUrl: string, productName: string) => {
+    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
+    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
     const link = document.createElement("a");
     link.href = photoUrl;
     link.download = fileName;
@@ -840,7 +852,7 @@ export default function PublicPage() {
                               <div className="col-span-2 text-center">
                                 {(row.fotoUrls as string[])?.length > 0 ? (
                                   <button
-                                    onClick={(e) => { e.stopPropagation(); setSelectedPhoto((row.fotoUrls as string[])[0]); }}
+                                    onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: (row.fotoUrls as string[])[0], productName: row.namaBarang }); }}
                                     className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 inline-block shadow-xl hover:shadow-emerald-500/20 hover:scale-105"
                                   >
                                     <img
@@ -871,7 +883,9 @@ export default function PublicPage() {
                               </div>
                               {(() => {
                                 const vals = getRowValues(row);
-                                const handleDownloadPhoto = (photoUrl: string, fileName: string) => {
+                                const handleDownloadPhoto = (photoUrl: string, productName: string) => {
+    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
+    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
     const link = document.createElement("a");
     link.href = photoUrl;
     link.download = fileName;
@@ -944,7 +958,7 @@ export default function PublicPage() {
               <div className="relative max-w-5xl max-h-[95vh] w-full flex flex-col items-center">
                 <div className="absolute -top-14 right-0 flex items-center gap-3">
                   <button
-                    onClick={(e) => { e.stopPropagation(); handleDownloadPhoto(selectedPhoto, `Foto_Produk_${new Date().toISOString().slice(0,10)}.jpg`); }}
+                    onClick={(e) => { e.stopPropagation(); if (selectedPhoto) handleDownloadPhoto(selectedPhoto.url, selectedPhoto.productName); }}
                     className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-emerald-500/30"
                     title="Unduh Foto"
                   >
@@ -964,8 +978,8 @@ export default function PublicPage() {
                   </button>
                 </div>
                 <img
-                  src={selectedPhoto}
-                  alt="Foto Produk"
+                  src={selectedPhoto.url}
+                  alt={selectedPhoto.productName}
                   className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
                   onClick={(e) => e.stopPropagation()}
                 />
