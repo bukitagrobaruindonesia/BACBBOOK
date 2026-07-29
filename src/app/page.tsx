@@ -66,10 +66,24 @@ export default function PublicPage() {
   const [activeGlowCard, setActiveGlowCard] = useState<number | null>(null);
   const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; productName: string } | null>(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [isSliderPaused, setIsSliderPaused] = useState(false);
   const [periodCalcMap, setPeriodCalcMap] = useState<Record<string, PeriodCalc>>({});
   const [isFilterLoading, setIsFilterLoading] = useState(false);
 
   useEffect(() => { fetchStockData(); }, []);
+
+  const productsWithPhotos = useMemo(() => {
+    return stockData.filter((item) => (item.fotoUrls as string[])?.length > 0);
+  }, [stockData]);
+
+  useEffect(() => {
+    if (productsWithPhotos.length === 0 || isSliderPaused) return;
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % productsWithPhotos.length);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [productsWithPhotos.length, isSliderPaused]);
   useEffect(() => { setCurrentPage(1); }, [selectedFot, selectedBulan, selectedTahun, selectedTanggal, searchTerm, itemsPerPage]);
   useEffect(() => { if (stockData.length > 0) fetchTransaksiFiltered(); }, [selectedTanggal, selectedBulan, selectedTahun, stockData]);
 
@@ -605,15 +619,95 @@ export default function PublicPage() {
         </nav>
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-          <section className="text-center py-12 animate-fade-in-up animate-delay-100">
-            <div className="relative mb-8">
-              <div className="relative w-52 h-52 mx-auto">
+          <section className="text-center py-10 animate-fade-in-up animate-delay-100 relative overflow-hidden">
+            <div className="relative mb-6">
+              <div className="relative w-40 h-40 sm:w-52 sm:h-52 mx-auto">
                 <img src="/LogoAGRO.png" alt="Logo PT Bukit Agrochemical Baru" className="w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 40px rgba(16,185,129,0.35))" }} />
               </div>
             </div>
             <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 tracking-tight">PT Bukit Agrochemical Baru</h2>
             <p className="text-lg text-emerald-400 mb-2 font-medium">Sistem Administrasi Distributor Pupuk</p>
-            <p className="text-sm text-slate-400 max-w-2xl mx-auto leading-relaxed">Platform digital untuk monitoring stock gudang secara real-time.</p>
+            <p className="text-sm text-slate-400 max-w-2xl mx-auto leading-relaxed mb-8">Platform digital untuk monitoring stock gudang secara real-time.</p>
+
+            {productsWithPhotos.length > 0 && (
+              <div
+                className="relative max-w-5xl mx-auto px-4"
+                onMouseEnter={() => setIsSliderPaused(true)}
+                onMouseLeave={() => setIsSliderPaused(false)}
+              >
+                <div className="relative h-56 sm:h-72 md:h-80 rounded-3xl overflow-hidden border border-emerald-500/20 shadow-2xl shadow-emerald-500/10">
+                  {productsWithPhotos.map((product, idx) => {
+                    const isActive = idx === currentSlide;
+                    const isPrev = idx === (currentSlide - 1 + productsWithPhotos.length) % productsWithPhotos.length;
+                    const isNext = idx === (currentSlide + 1) % productsWithPhotos.length;
+                    return (
+                      <div
+                        key={product.id}
+                        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
+                          isActive
+                            ? "opacity-100 scale-100 z-10"
+                            : isPrev || isNext
+                            ? "opacity-40 scale-90 z-0"
+                            : "opacity-0 scale-75 z-0"
+                        }`}
+                      >
+                        <img
+                          src={(product.fotoUrls as string[])[0]}
+                          alt={product.namaBarang}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
+                        <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg text-sm border border-emerald-500/20 backdrop-blur-sm">
+                              {product.kodeBarang}
+                            </span>
+                            <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border backdrop-blur-sm ${getUnitBadgeClass(product.unit)}`}>
+                              {product.unit}
+                            </span>
+                          </div>
+                          <h3 className="text-xl sm:text-2xl font-bold text-white mt-2 tracking-tight">{product.namaBarang}</h3>
+                          {product.namaProdusen && (
+                            <p className="text-sm text-slate-300 mt-1">{product.namaProdusen}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    onClick={() => setCurrentSlide((prev) => (prev - 1 + productsWithPhotos.length) % productsWithPhotos.length)}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-slate-900/60 hover:bg-emerald-600/80 text-white backdrop-blur-sm border border-white/10 transition-all duration-300 hover:scale-110"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => setCurrentSlide((prev) => (prev + 1) % productsWithPhotos.length)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-slate-900/60 hover:bg-emerald-600/80 text-white backdrop-blur-sm border border-white/10 transition-all duration-300 hover:scale-110"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-center gap-2 mt-4">
+                  {productsWithPhotos.map((_, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => setCurrentSlide(idx)}
+                      className={`transition-all duration-500 rounded-full ${
+                        idx === currentSlide
+                          ? "w-8 h-2.5 bg-emerald-500 shadow-lg shadow-emerald-500/30"
+                          : "w-2.5 h-2.5 bg-slate-600 hover:bg-slate-500"
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="animate-fade-in-up animate-delay-200">
