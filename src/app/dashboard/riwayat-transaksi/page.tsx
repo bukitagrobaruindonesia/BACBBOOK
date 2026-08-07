@@ -1643,7 +1643,19 @@ export default function RiwayatTransaksiPage() {
         item.nomorKontainer || "-",
         item.nomorDO || "-",
         item.namaCustomer || (item.kepadaNama || item.kepadaPerusahaan || "-"),
-        item.nomorPI || (item.nomorPIList ? item.nomorPIList.join("; ") : "-"),
+        (() => {
+              if (item.nomorPI && typeof item.nomorPI === "string") return item.nomorPI;
+              if (item.nomorPIList && item.nomorPIList.length > 0) return item.nomorPIList.join("; ");
+              if (item.backupItems && item.backupItems.length > 0) {
+                const pis = item.backupItems.map((it) => it.nomorPI).filter((v, i, a) => v && a.indexOf(v) === i);
+                if (pis.length > 0) return pis.join("; ");
+              }
+              if (item.items && item.items.length > 0) {
+                const pis = item.items.map((it) => it.nomorPI).filter((v, i, a) => v && a.indexOf(v) === i);
+                if (pis.length > 0) return pis.join("; ");
+              }
+              return "-";
+            })(),
         item.nomorInvoice || "-",
         item.driverUnit || "-",
         item.nomorPolisi || "-",
