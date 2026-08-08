@@ -91,18 +91,23 @@ export default function AsetPerusahaanPage() {
   const [barangList, setBarangList] = useState<{ kodeBarang: string; namaBarang: string; kategori: "peralatan" | "perlengkapan" }[]>([]);
   const [isBarangBaru, setIsBarangBaru] = useState(false);
 
+  const now = new Date();
+  const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+  const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
+  const today = now.toISOString().split("T")[0];
+
   const [form, setForm] = useState({
     kodeBarang: "",
     namaBarang: "",
     kategori: "peralatan" as "peralatan" | "perlengkapan",
     jenis: "masuk" as "masuk" | "keluar",
-    tanggal: new Date().toISOString().split("T")[0],
+    tanggal: today,
     jumlah: "",
     hargaSatuan: "",
   });
 
-  const [filterStart, setFilterStart] = useState("");
-  const [filterEnd, setFilterEnd] = useState("");
+  const [filterStart, setFilterStart] = useState(firstDayOfMonth);
+  const [filterEnd, setFilterEnd] = useState(lastDayOfMonth);
 
   const [editingItem, setEditingItem] = useState<AsetItem | null>(null);
   const [editForm, setEditForm] = useState({
@@ -164,9 +169,20 @@ export default function AsetPerusahaanPage() {
     }
   };
 
+  const filteredData = useMemo(() => {
+    let filtered = [...data];
+    if (filterStart) {
+      filtered = filtered.filter((d) => d.tanggal >= filterStart);
+    }
+    if (filterEnd) {
+      filtered = filtered.filter((d) => d.tanggal <= filterEnd);
+    }
+    return filtered;
+  }, [data, filterStart, filterEnd]);
+
   const aggregated = useMemo(() => {
     const map = new Map<string, AggregatedAset>();
-    data.forEach((item) => {
+    filteredData.forEach((item) => {
       const key = item.kodeBarang + "_" + item.namaBarang;
       if (!map.has(key)) {
         map.set(key, {
@@ -190,21 +206,10 @@ export default function AsetPerusahaanPage() {
       }
     });
     return Array.from(map.values());
-  }, [data]);
+  }, [filteredData]);
 
   const peralatanData = aggregated.filter((a) => a.kategori === "peralatan");
   const perlengkapanData = aggregated.filter((a) => a.kategori === "perlengkapan");
-
-  const filteredRiwayat = useMemo(() => {
-    let filtered = [...data];
-    if (filterStart) {
-      filtered = filtered.filter((d) => d.tanggal >= filterStart);
-    }
-    if (filterEnd) {
-      filtered = filtered.filter((d) => d.tanggal <= filterEnd);
-    }
-    return filtered;
-  }, [data, filterStart, filterEnd]);
 
   const formatRupiah = (num: number) => {
     return new Intl.NumberFormat("id-ID", {
@@ -280,7 +285,7 @@ export default function AsetPerusahaanPage() {
         namaBarang: "",
         kategori: "peralatan",
         jenis: "masuk",
-        tanggal: new Date().toISOString().split("T")[0],
+        tanggal: today,
         jumlah: "",
         hargaSatuan: "",
       });
@@ -518,7 +523,7 @@ export default function AsetPerusahaanPage() {
     }
     wsData.push(["No", "Tanggal", "Kode Barang", "Nama Barang", "Kategori", "Jenis", "Jumlah", "Harga Satuan", "Total Harga"]);
 
-    filteredRiwayat.forEach((item, i) => {
+    filteredData.forEach((item, i) => {
       wsData.push([
         i + 1,
         item.tanggal,
@@ -578,7 +583,7 @@ export default function AsetPerusahaanPage() {
       };
     }
 
-    filteredRiwayat.forEach((item, i) => {
+    filteredData.forEach((item, i) => {
       const r = headerRow + 1 + i;
       ws[cellRef(r, 0)] = { v: i + 1, s: centerStyle };
       ws[cellRef(r, 1)] = { v: item.tanggal, s: cellStyle };
@@ -900,7 +905,7 @@ export default function AsetPerusahaanPage() {
                         {(activeTab === "peralatan" ? peralatanData : perlengkapanData).length === 0 ? (
                           <tr>
                             <td colSpan={7} className="px-4 py-10 text-center text-gray-400">
-                              Belum ada data {activeTab === "peralatan" ? "peralatan" : "perlengkapan"}
+                              Belum ada data {activeTab === "peralatan" ? "peralatan" : "perlengkapan"} pada periode ini
                             </td>
                           </tr>
                         ) : (
@@ -989,14 +994,14 @@ export default function AsetPerusahaanPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100">
-                        {filteredRiwayat.length === 0 ? (
+                        {filteredData.length === 0 ? (
                           <tr>
                             <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
-                              Belum ada riwayat transaksi
+                              Belum ada riwayat transaksi pada periode ini
                             </td>
                           </tr>
                         ) : (
-                          filteredRiwayat.map((item, i) => (
+                          filteredData.map((item, i) => (
                             <tr key={item.id} className="hover:bg-gray-50 transition">
                               <td className="px-4 py-3 text-gray-600">{i + 1}</td>
                               <td className="px-4 py-3 text-gray-700">{item.tanggal}</td>
