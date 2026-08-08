@@ -57,6 +57,7 @@ const menuOptions = [
   { key: "/dashboard/riwayat-transaksi", label: "Riwayat Transaksi" },
   { key: "/dashboard/add-customer", label: "Add Customer" },
   { key: "/dashboard/riwayat-customer", label: "Riwayat Customer" },
+  { key: "/dashboard/aset-perusahaan", label: "Aset Perusahaan" },
   { key: "/dashboard/fot", label: "Pengaturan FOT" },
   { key: "/dashboard/bapisp-final", label: "BAPISP Final" },
   { key: "/dashboard/berita-acara", label: "Berita Acara" },
