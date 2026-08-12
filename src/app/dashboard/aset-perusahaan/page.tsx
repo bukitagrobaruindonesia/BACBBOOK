@@ -26,6 +26,7 @@ type AsetItem = {
   jenis: "masuk" | "keluar";
   tanggal: string;
   jumlah: number;
+  satuan: string;
   hargaSatuan: number;
   totalHarga: number;
   createdAt: Timestamp;
@@ -91,6 +92,9 @@ export default function AsetPerusahaanPage() {
   const [barangList, setBarangList] = useState<{ kodeBarang: string; namaBarang: string; kategori: "peralatan" | "perlengkapan" }[]>([]);
   const [isBarangBaru, setIsBarangBaru] = useState(false);
 
+  const [satuanList, setSatuanList] = useState<string[]>([]);
+  const [isSatuanBaru, setIsSatuanBaru] = useState(false);
+
   const now = new Date();
   const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
   const lastDayOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split("T")[0];
@@ -103,6 +107,7 @@ export default function AsetPerusahaanPage() {
     jenis: "masuk" as "masuk" | "keluar",
     tanggal: today,
     jumlah: "",
+    satuan: "",
     hargaSatuan: "",
   });
 
@@ -117,6 +122,7 @@ export default function AsetPerusahaanPage() {
     jenis: "masuk" as "masuk" | "keluar",
     tanggal: "",
     jumlah: "",
+    satuan: "",
     hargaSatuan: "",
   });
   const [showEditModal, setShowEditModal] = useState(false);
@@ -141,6 +147,7 @@ export default function AsetPerusahaanPage() {
           jenis: d.jenis || "masuk",
           tanggal: d.tanggal || "",
           jumlah: Number(d.jumlah) || 0,
+          satuan: d.satuan || "PCS",
           hargaSatuan: Number(d.hargaSatuan) || 0,
           totalHarga: Number(d.totalHarga) || 0,
           createdAt: d.createdAt,
@@ -150,6 +157,7 @@ export default function AsetPerusahaanPage() {
       setData(items);
 
       const map = new Map<string, { kodeBarang: string; namaBarang: string; kategori: "peralatan" | "perlengkapan" }>();
+      const satuanSet = new Set<string>();
       items.forEach((item) => {
         const key = item.kodeBarang + "_" + item.namaBarang;
         if (!map.has(key)) {
@@ -159,8 +167,12 @@ export default function AsetPerusahaanPage() {
             kategori: item.kategori,
           });
         }
+        if (item.satuan) {
+          satuanSet.add(item.satuan);
+        }
       });
       setBarangList(Array.from(map.values()));
+      setSatuanList(Array.from(satuanSet).sort());
     } catch (e) {
       console.error(e);
       alert("Gagal memuat data");
@@ -237,6 +249,16 @@ export default function AsetPerusahaanPage() {
     }
   };
 
+  const handleSatuanSelect = (value: string) => {
+    if (value === "__BARU__") {
+      setIsSatuanBaru(true);
+      setForm((p) => ({ ...p, satuan: "" }));
+      return;
+    }
+    setIsSatuanBaru(false);
+    setForm((p) => ({ ...p, satuan: value }));
+  };
+
   const handleChange = (field: string, value: string) => {
     setForm((prev) => {
       const next = { ...prev, [field]: value };
@@ -254,6 +276,10 @@ export default function AsetPerusahaanPage() {
     }
     if (!form.namaBarang.trim()) {
       alert("Nama barang wajib diisi");
+      return;
+    }
+    if (!form.satuan.trim()) {
+      alert("Satuan wajib diisi");
       return;
     }
     if (!form.jumlah || Number(form.jumlah) <= 0) {
@@ -274,6 +300,7 @@ export default function AsetPerusahaanPage() {
         jenis: form.jenis,
         tanggal: form.tanggal,
         jumlah: Number(form.jumlah),
+        satuan: form.satuan.trim().toUpperCase(),
         hargaSatuan: Number(form.hargaSatuan),
         totalHarga: totalHarga,
         createdAt: Timestamp.now(),
@@ -287,9 +314,11 @@ export default function AsetPerusahaanPage() {
         jenis: "masuk",
         tanggal: today,
         jumlah: "",
+        satuan: "",
         hargaSatuan: "",
       });
       setIsBarangBaru(false);
+      setIsSatuanBaru(false);
       fetchData();
       setActiveTab(form.kategori);
     } catch (e) {
@@ -321,6 +350,7 @@ export default function AsetPerusahaanPage() {
       jenis: item.jenis,
       tanggal: item.tanggal,
       jumlah: String(item.jumlah),
+      satuan: item.satuan,
       hargaSatuan: String(item.hargaSatuan),
     });
     setShowEditModal(true);
@@ -343,6 +373,10 @@ export default function AsetPerusahaanPage() {
       alert("Nama barang wajib diisi");
       return;
     }
+    if (!editForm.satuan.trim()) {
+      alert("Satuan wajib diisi");
+      return;
+    }
     if (!editForm.jumlah || Number(editForm.jumlah) <= 0) {
       alert("Jumlah barang harus lebih dari 0");
       return;
@@ -361,6 +395,7 @@ export default function AsetPerusahaanPage() {
         jenis: editForm.jenis,
         tanggal: editForm.tanggal,
         jumlah: Number(editForm.jumlah),
+        satuan: editForm.satuan.trim().toUpperCase(),
         hargaSatuan: Number(editForm.hargaSatuan),
         totalHarga: editTotalHarga,
       });
@@ -508,7 +543,7 @@ export default function AsetPerusahaanPage() {
     const wb = XLSX.utils.book_new();
 
     const wsData: (string | number)[][] = [];
-    wsData.push(["RIWAYAT ASSET MASUK DAN KELUAR", "", "", "", "", "", "", "", ""]);
+    wsData.push(["RIWAYAT ASSET MASUK DAN KELUAR", "", "", "", "", "", "", "", "", ""]);
 
     let filterText = "";
     if (filterStart && filterEnd) {
@@ -519,9 +554,9 @@ export default function AsetPerusahaanPage() {
       filterText = `Sampai tanggal: ${filterEnd}`;
     }
     if (filterText) {
-      wsData.push([filterText, "", "", "", "", "", "", "", ""]);
+      wsData.push([filterText, "", "", "", "", "", "", "", "", ""]);
     }
-    wsData.push(["No", "Tanggal", "Kode Barang", "Nama Barang", "Kategori", "Jenis", "Jumlah", "Harga Satuan", "Total Harga"]);
+    wsData.push(["No", "Tanggal", "Kode Barang", "Nama Barang", "Kategori", "Jenis", "Jumlah", "Satuan", "Harga Satuan", "Total Harga"]);
 
     filteredData.forEach((item, i) => {
       wsData.push([
@@ -532,6 +567,7 @@ export default function AsetPerusahaanPage() {
         item.kategori === "peralatan" ? "Peralatan Kantor" : "Perlengkapan Kantor",
         item.jenis === "masuk" ? "Masuk" : "Keluar",
         item.jumlah,
+        item.satuan,
         item.hargaSatuan,
         item.totalHarga,
       ]);
@@ -544,10 +580,10 @@ export default function AsetPerusahaanPage() {
     const headerRow = filterText ? 2 : 1;
 
     ws["!merges"] = [
-      { s: { r: titleRow, c: 0 }, e: { r: titleRow, c: 8 } },
+      { s: { r: titleRow, c: 0 }, e: { r: titleRow, c: 9 } },
     ];
     if (filterText) {
-      ws["!merges"].push({ s: { r: filterRow, c: 0 }, e: { r: filterRow, c: 8 } });
+      ws["!merges"].push({ s: { r: filterRow, c: 0 }, e: { r: filterRow, c: 9 } });
     }
 
     ws["!cols"] = [
@@ -556,6 +592,7 @@ export default function AsetPerusahaanPage() {
       { wch: 16 },
       { wch: 30 },
       { wch: 20 },
+      { wch: 12 },
       { wch: 12 },
       { wch: 12 },
       { wch: 18 },
@@ -576,7 +613,7 @@ export default function AsetPerusahaanPage() {
       };
     }
 
-    for (let c = 0; c < 9; c++) {
+    for (let c = 0; c < 10; c++) {
       ws[cellRef(headerRow, c)] = {
         v: wsData[headerRow][c],
         s: headerStyle,
@@ -592,8 +629,9 @@ export default function AsetPerusahaanPage() {
       ws[cellRef(r, 4)] = { v: item.kategori === "peralatan" ? "Peralatan Kantor" : "Perlengkapan Kantor", s: cellStyle };
       ws[cellRef(r, 5)] = { v: item.jenis === "masuk" ? "Masuk" : "Keluar", s: centerStyle };
       ws[cellRef(r, 6)] = { v: item.jumlah, s: centerStyle };
-      ws[cellRef(r, 7)] = { v: item.hargaSatuan, s: rightAlignStyle };
-      ws[cellRef(r, 8)] = { v: item.totalHarga, s: rightAlignStyle };
+      ws[cellRef(r, 7)] = { v: item.satuan, s: centerStyle };
+      ws[cellRef(r, 8)] = { v: item.hargaSatuan, s: rightAlignStyle };
+      ws[cellRef(r, 9)] = { v: item.totalHarga, s: rightAlignStyle };
     });
 
     if (logoBase64) {
@@ -818,6 +856,32 @@ export default function AsetPerusahaanPage() {
                     />
                   </div>
                   <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Satuan</label>
+                    <select
+                      value={isSatuanBaru ? "__BARU__" : form.satuan}
+                      onChange={(e) => handleSatuanSelect(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition bg-white"
+                    >
+                      <option value="">-- Pilih Satuan --</option>
+                      {satuanList.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                      <option value="__BARU__">+ Tambah Satuan Baru</option>
+                    </select>
+                    {isSatuanBaru && (
+                      <input
+                        type="text"
+                        value={form.satuan}
+                        onChange={(e) => handleChange("satuan", e.target.value)}
+                        placeholder="Contoh: PCS, PAK, BOX, RIM, dll"
+                        className="w-full mt-2 px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                        required
+                      />
+                    )}
+                  </div>
+                  <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">Harga Satuan</label>
                     <input
                       type="number"
@@ -829,11 +893,12 @@ export default function AsetPerusahaanPage() {
                       required
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">Total Harga</label>
-                    <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 font-semibold">
-                      {formatRupiah(totalHarga)}
-                    </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Total Harga</label>
+                  <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 font-semibold">
+                    {formatRupiah(totalHarga)}
                   </div>
                 </div>
 
@@ -988,6 +1053,7 @@ export default function AsetPerusahaanPage() {
                           <th className="px-4 py-3 text-left font-semibold">Kategori</th>
                           <th className="px-4 py-3 text-center font-semibold">Jenis</th>
                           <th className="px-4 py-3 text-center font-semibold">Jumlah</th>
+                          <th className="px-4 py-3 text-center font-semibold">Satuan</th>
                           <th className="px-4 py-3 text-right font-semibold">Harga Satuan</th>
                           <th className="px-4 py-3 text-right font-semibold">Total Harga</th>
                           <th className="px-4 py-3 text-center font-semibold">Aksi</th>
@@ -996,7 +1062,7 @@ export default function AsetPerusahaanPage() {
                       <tbody className="divide-y divide-gray-100">
                         {filteredData.length === 0 ? (
                           <tr>
-                            <td colSpan={10} className="px-4 py-10 text-center text-gray-400">
+                            <td colSpan={11} className="px-4 py-10 text-center text-gray-400">
                               Belum ada riwayat transaksi pada periode ini
                             </td>
                           </tr>
@@ -1020,6 +1086,7 @@ export default function AsetPerusahaanPage() {
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-center text-gray-700">{item.jumlah}</td>
+                              <td className="px-4 py-3 text-center text-gray-600 font-medium">{item.satuan}</td>
                               <td className="px-4 py-3 text-right text-gray-700">{formatRupiah(item.hargaSatuan)}</td>
                               <td className="px-4 py-3 text-right font-semibold text-gray-800">{formatRupiah(item.totalHarga)}</td>
                               <td className="px-4 py-3 text-center">
@@ -1178,6 +1245,17 @@ export default function AsetPerusahaanPage() {
                   />
                 </div>
                 <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Satuan</label>
+                  <input
+                    type="text"
+                    value={editForm.satuan}
+                    onChange={(e) => handleEditChange("satuan", e.target.value)}
+                    placeholder="Contoh: PCS, PAK, BOX"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition"
+                    required
+                  />
+                </div>
+                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">Harga Satuan</label>
                   <input
                     type="number"
@@ -1188,11 +1266,12 @@ export default function AsetPerusahaanPage() {
                     required
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">Total Harga</label>
-                  <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 font-semibold">
-                    {formatRupiah(editTotalHarga)}
-                  </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Total Harga</label>
+                <div className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 text-gray-800 font-semibold">
+                  {formatRupiah(editTotalHarga)}
                 </div>
               </div>
 
