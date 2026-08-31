@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { collection, getDocs, query, orderBy } from "firebase/firestore";
 import { db } from "@/app/lib/firebase";
 import Button from "@/app/components/ui/Button";
 import Card from "@/app/components/ui/Card";
 import { StockGudang } from "@/app/types";
+import { motion, AnimatePresence, useScroll, useTransform, useInView } from "framer-motion";
 
 interface PeriodCalc {
   stokAwalUnit: number; stokAwalKG: number;
@@ -17,22 +18,73 @@ interface PeriodCalc {
   stokAkhirUnit: number; stokAkhirKG: number;
 }
 
+const staggerContainer = {
+  animate: {
+    transition: {
+      staggerChildren: 0.08,
+      delayChildren: 0.1
+    }
+  }
+};
+
+const staggerItem = {
+  initial: { opacity: 0, y: 30, scale: 0.95 },
+  animate: { opacity: 1, y: 0, scale: 1 },
+  transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] as const }
+};
+
+const slideVariants = {
+  enter: (direction: number) => ({
+    x: direction > 0 ? 400 : -400,
+    opacity: 0,
+    scale: 0.85,
+    zIndex: 0
+  }),
+  center: {
+    x: 0,
+    opacity: 1,
+    scale: 1,
+    zIndex: 10,
+    transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] as const }
+  },
+  exit: (direction: number) => ({
+    x: direction < 0 ? 400 : -400,
+    opacity: 0,
+    scale: 0.85,
+    zIndex: 0,
+    transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] as const }
+  })
+};
+
+const AnimatedCounter = ({ value, duration = 1.5 }: { value: number; duration?: number }) => {
+  const ref = useRef<HTMLSpanElement>(null);
+  const isInView = useInView(ref, { once: true });
+  const [displayValue, setDisplayValue] = useState(0);
+
+  useEffect(() => {
+    if (!isInView) return;
+    let startTime: number;
+    let animationFrame: number;
+    const animate = (timestamp: number) => {
+      if (!startTime) startTime = timestamp;
+      const progress = Math.min((timestamp - startTime) / (duration * 1000), 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplayValue(Math.floor(eased * value));
+      if (progress < 1) animationFrame = requestAnimationFrame(animate);
+    };
+    animationFrame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [isInView, value, duration]);
+
+  return <span ref={ref}>{displayValue.toLocaleString("id-ID")}</span>;
+};
+
 const ParticleBackground = () => {
   const particles = useMemo(() => Array.from({ length: 30 }, (_, i) => ({
     id: i, left: `${Math.random() * 100}%`, top: `${Math.random() * 100}%`,
     size: Math.random() * 3 + 1, duration: Math.random() * 20 + 15,
     delay: Math.random() * 10, opacity: Math.random() * 0.4 + 0.1,
   })), []);
-  const handleDownloadPhoto = (photoUrl: string, productName: string) => {
-    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
-    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
-    const link = document.createElement("a");
-    link.href = photoUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
 
   return (
     <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
@@ -40,10 +92,22 @@ const ParticleBackground = () => {
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(16,185,129,0.08)_0%,_transparent_50%)]" />
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_rgba(5,150,105,0.06)_0%,_transparent_50%)]" />
       {particles.map((p) => (
-        <div key={p.id} className="absolute rounded-full bg-emerald-400/20"
-          style={{ left: p.left, top: p.top, width: `${p.size}px`, height: `${p.size}px`,
-            opacity: p.opacity, animation: `particleFloat ${p.duration}s ease-in-out infinite`,
-            animationDelay: `${p.delay}s` }} />
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full bg-emerald-400/20"
+          style={{ left: p.left, top: p.top, width: `${p.size}px`, height: `${p.size}px` }}
+          animate={{
+            y: [0, -30, -10, -40, 0],
+            x: [0, 10, -5, 5, 0],
+            opacity: [0.3, 0.6, 0.4, 0.5, 0.3]
+          }}
+          transition={{
+            duration: p.duration,
+            delay: p.delay,
+            repeat: Infinity,
+            ease: "easeInOut"
+          }}
+        />
       ))}
       <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
       <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/20 to-transparent" />
@@ -70,6 +134,12 @@ export default function PublicPage() {
   const [isSliderPaused, setIsSliderPaused] = useState(false);
   const [periodCalcMap, setPeriodCalcMap] = useState<Record<string, PeriodCalc>>({});
   const [isFilterLoading, setIsFilterLoading] = useState(false);
+  const [[page, direction], setPage] = useState([0, 0]);
+
+  const tableRef = useRef(null);
+  const { scrollYProgress } = useScroll();
+  const headerOpacity = useTransform(scrollYProgress, [0, 0.05], [1, 0.95]);
+  const headerY = useTransform(scrollYProgress, [0, 0.05], [0, -2]);
 
   useEffect(() => { fetchStockData(); }, []);
 
@@ -80,12 +150,34 @@ export default function PublicPage() {
   useEffect(() => {
     if (productsWithPhotos.length === 0 || isSliderPaused) return;
     const interval = setInterval(() => {
-      setCurrentSlide((prev) => (prev + 1) % productsWithPhotos.length);
+      setPage(([prev]) => {
+        const next = (prev + 1) % productsWithPhotos.length;
+        setCurrentSlide(next);
+        return [next, 1];
+      });
     }, 4000);
     return () => clearInterval(interval);
   }, [productsWithPhotos.length, isSliderPaused]);
+
   useEffect(() => { setCurrentPage(1); }, [selectedFot, selectedBulan, selectedTahun, selectedTanggal, searchTerm, itemsPerPage]);
   useEffect(() => { if (stockData.length > 0) fetchTransaksiFiltered(); }, [selectedTanggal, selectedBulan, selectedTahun, stockData]);
+
+  const paginate = (newDirection: number) => {
+    const newSlide = (currentSlide + newDirection + productsWithPhotos.length) % productsWithPhotos.length;
+    setPage([newSlide, newDirection]);
+    setCurrentSlide(newSlide);
+  };
+
+  const handleDownloadPhoto = (photoUrl: string, productName: string) => {
+    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
+    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
+    const link = document.createElement("a");
+    link.href = photoUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const fetchStockData = async () => {
     try {
@@ -443,18 +535,7 @@ export default function PublicPage() {
         const botolCount = d.unit === "DUS" ? (d.stokAkhirUnit || 0) * (d.botolPerDus || 20) : (d.stokAkhirUnit || 0);
         return botolCount < 50;
       }
-      const handleDownloadPhoto = (photoUrl: string, productName: string) => {
-    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
-    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
-    const link = document.createElement("a");
-    link.href = photoUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  return (d.unit === "ZAK" ? (d.stokAkhirUnit || 0) * (d.bobotPerUnit || 50) : d.stokAkhirKG) < 1000;
+      return (d.unit === "ZAK" ? (d.stokAkhirUnit || 0) * (d.bobotPerUnit || 50) : d.stokAkhirKG) < 1000;
     }).length, color: "red", icon: "M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" },
   ];
 
@@ -466,110 +547,9 @@ export default function PublicPage() {
     red: { border: "border-red-500/20", text: "text-red-400", glow: "shadow-red-500/10", accent: "bg-red-500" },
   };
 
-  const handleDownloadPhoto = (photoUrl: string, productName: string) => {
-    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
-    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
-    const link = document.createElement("a");
-    link.href = photoUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
   return (
     <>
       <style jsx global>{`
-        @keyframes particleFloat {
-          0%, 100% { transform: translateY(0) translateX(0); opacity: 0.3; }
-          25% { transform: translateY(-20px) translateX(10px); opacity: 0.6; }
-          50% { transform: translateY(-10px) translateX(-5px); opacity: 0.4; }
-          75% { transform: translateY(-30px) translateX(5px); opacity: 0.5; }
-        }
-        @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(30px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes slideInLeft {
-          from { opacity: 0; transform: translateX(-30px); }
-          to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes countUp {
-          from { opacity: 0; transform: scale(0.8); }
-          to { opacity: 1; transform: scale(1); }
-        }
-        @keyframes shimmer {
-          0% { background-position: -200% 0; }
-          100% { background-position: 200% 0; }
-        }
-        @keyframes glowPulse {
-          0%, 100% { box-shadow: 0 0 20px rgba(16,185,129,0.1); }
-          50% { box-shadow: 0 0 40px rgba(16,185,129,0.25), 0 0 80px rgba(16,185,129,0.1); }
-        }
-        @keyframes borderGlow {
-          0%, 100% { border-color: rgba(16,185,129,0.1); }
-          50% { border-color: rgba(16,185,129,0.4); }
-        }
-        .animate-fade-in-up {
-          animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        .animate-slide-in-left {
-          animation: slideInLeft 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        .animate-count-up {
-          animation: countUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        .animate-delay-100 { animation-delay: 0.1s; opacity: 0; }
-        .animate-delay-200 { animation-delay: 0.2s; opacity: 0; }
-        .animate-delay-300 { animation-delay: 0.3s; opacity: 0; }
-        .animate-delay-400 { animation-delay: 0.4s; opacity: 0; }
-        .animate-delay-500 { animation-delay: 0.5s; opacity: 0; }
-        .animate-delay-600 { animation-delay: 0.6s; opacity: 0; }
-        .stat-card-glow {
-          transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-          backdrop-filter: blur(12px);
-        }
-        .stat-card-glow:hover {
-          transform: translateY(-6px) scale(1.02);
-          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.4), 0 0 0 1px rgba(16,185,129,0.2);
-        }
-        .stat-card-glow.active {
-          animation: glowPulse 3s ease-in-out infinite;
-          transform: translateY(-4px) scale(1.01);
-        }
-        .row-interactive {
-          transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .row-interactive:hover {
-          transform: translateX(6px);
-          border-color: rgba(16,185,129,0.3) !important;
-          box-shadow: 0 8px 30px rgba(0,0,0,0.3), 0 0 0 1px rgba(16,185,129,0.15);
-        }
-        .row-interactive.active {
-          animation: borderGlow 2s ease-in-out infinite;
-          transform: translateX(6px);
-        }
-        .btn-glow {
-          transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .btn-glow:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 10px 30px -5px rgba(16,185,129,0.3);
-        }
-        .btn-glow:active {
-          transform: translateY(0) scale(0.98);
-        }
-        .shimmer-bg {
-          background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%);
-          background-size: 200% 100%;
-          animation: shimmer 4s ease-in-out infinite;
-        }
-        .text-gradient {
-          background: linear-gradient(135deg, #34d399 0%, #10b981 50%, #059669 100%);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          background-clip: text;
-        }
         .glass-card {
           background: rgba(15, 23, 42, 0.6);
           backdrop-filter: blur(20px);
@@ -588,221 +568,222 @@ export default function PublicPage() {
         .glass-input::placeholder {
           color: rgba(148,163,184,0.6);
         }
+        .text-gradient {
+          background: linear-gradient(135deg, #34d399 0%, #10b981 50%, #059669 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
       `}</style>
 
       <ParticleBackground />
 
       <div className="min-h-screen relative z-10">
-        <nav className="sticky top-0 z-50 animate-fade-in-up">
+        <motion.nav
+          className="sticky top-0 z-50"
+          style={{ opacity: headerOpacity, y: headerY }}
+          initial={{ y: -80, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+        >
           <div className="absolute inset-0 bg-slate-900/80 backdrop-blur-xl border-b border-white/10" />
           <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex items-center justify-between h-16">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16">
+              <motion.div className="flex items-center gap-4" initial={{ x: -30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.2, duration: 0.6 }}>
+                <motion.div className="w-16 h-16" whileHover={{ scale: 1.1, rotate: 5 }} transition={{ type: "spring", stiffness: 300 }}>
                   <img src="/LogoAGRO.png" alt="Logo" className="w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 16px rgba(16,185,129,0.5))" }} />
-                </div>
+                </motion.div>
                 <div>
                   <h1 className="text-lg font-bold text-white tracking-tight">REKAP DATA</h1>
                   <p className="text-xs text-emerald-400 font-medium">PT Bukit Agrochemical Baru</p>
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <Button variant="primary" size="sm" onClick={() => router.push("/login")} className="btn-glow bg-emerald-600 hover:bg-emerald-500 border-0">
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
-                  </svg>
-                  Login Admin
-                </Button>
-              </div>
+              </motion.div>
+              <motion.div className="flex items-center gap-3" initial={{ x: 30, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.3, duration: 0.6 }}>
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                  <Button variant="primary" size="sm" onClick={() => router.push("/login")} className="bg-emerald-600 hover:bg-emerald-500 border-0">
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1" />
+                    </svg>
+                    Login Admin
+                  </Button>
+                </motion.div>
+              </motion.div>
             </div>
           </div>
-        </nav>
+        </motion.nav>
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
-          <section className="text-center py-10 animate-fade-in-up animate-delay-100 relative overflow-hidden">
-            <div className="relative mb-6">
+          <motion.section
+            className="text-center py-10 relative overflow-hidden"
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <motion.div className="relative mb-6" initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.2, duration: 0.8, type: "spring", stiffness: 100 }}>
               <div className="relative w-40 h-40 sm:w-52 sm:h-52 mx-auto">
-                <img src="/LogoAGRO.png" alt="Logo PT Bukit Agrochemical Baru" className="w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 40px rgba(16,185,129,0.35))" }} />
+                <motion.img src="/LogoAGRO.png" alt="Logo PT Bukit Agrochemical Baru" className="w-full h-full object-contain" style={{ filter: "drop-shadow(0 0 40px rgba(16,185,129,0.35))" }} whileHover={{ scale: 1.08, rotate: [0, -3, 3, 0] }} transition={{ duration: 0.6 }} />
               </div>
-            </div>
-            <h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 tracking-tight">PT Bukit Agrochemical Baru</h2>
-            <p className="text-lg text-emerald-400 mb-2 font-medium">Sistem Administrasi Distributor Pupuk</p>
-            <p className="text-sm text-slate-400 max-w-2xl mx-auto leading-relaxed mb-8">Platform digital untuk monitoring stock gudang secara real-time.</p>
+            </motion.div>
+            <motion.h2 className="text-3xl sm:text-5xl font-bold text-white mb-3 tracking-tight" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4, duration: 0.6 }}>
+              PT Bukit Agrochemical Baru
+            </motion.h2>
+            <motion.p className="text-lg text-emerald-400 mb-2 font-medium" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5, duration: 0.6 }}>
+              Sistem Administrasi Distributor Pupuk
+            </motion.p>
+            <motion.p className="text-sm text-slate-400 max-w-2xl mx-auto leading-relaxed mb-8" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6, duration: 0.6 }}>
+              Platform digital untuk monitoring stock gudang secara real-time.
+            </motion.p>
 
-            {productsWithPhotos.length > 0 && (
-              <div
-                className="relative max-w-5xl mx-auto px-4"
-                onMouseEnter={() => setIsSliderPaused(true)}
-                onMouseLeave={() => setIsSliderPaused(false)}
-              >
-                <div className="relative h-56 sm:h-72 md:h-80 rounded-3xl overflow-hidden border border-emerald-500/20 shadow-2xl shadow-emerald-500/10">
-                  {productsWithPhotos.map((product, idx) => {
-                    const isActive = idx === currentSlide;
-                    const isPrev = idx === (currentSlide - 1 + productsWithPhotos.length) % productsWithPhotos.length;
-                    const isNext = idx === (currentSlide + 1) % productsWithPhotos.length;
-                    return (
-                      <div
-                        key={product.id}
-                        className={`absolute inset-0 transition-all duration-1000 ease-in-out ${
-                          isActive
-                            ? "opacity-100 scale-100 z-10"
-                            : isPrev || isNext
-                            ? "opacity-40 scale-90 z-0"
-                            : "opacity-0 scale-75 z-0"
-                        }`}
-                      >
-                        <img
-                          src={(product.fotoUrls as string[])[0]}
-                          alt={product.namaBarang}
-                          className="w-full h-full object-cover"
-                        />
+            <AnimatePresence mode="wait">
+              {productsWithPhotos.length > 0 && (
+                <motion.div className="relative max-w-5xl mx-auto px-4" initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 40 }} transition={{ delay: 0.7, duration: 0.8 }} onMouseEnter={() => setIsSliderPaused(true)} onMouseLeave={() => setIsSliderPaused(false)}>
+                  <div className="relative h-56 sm:h-72 md:h-80 rounded-3xl overflow-hidden border border-emerald-500/20 shadow-2xl shadow-emerald-500/10">
+                    <AnimatePresence initial={false} custom={direction} mode="popLayout">
+                      <motion.div key={page} custom={direction} variants={slideVariants} initial="enter" animate="center" exit="exit" className="absolute inset-0">
+                        <img src={(productsWithPhotos[page].fotoUrls as string[])[0]} alt={productsWithPhotos[page].namaBarang} className="w-full h-full object-cover" />
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-slate-900/40 to-transparent" />
-                        <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6">
+                        <motion.div className="absolute bottom-0 left-0 right-0 p-4 sm:p-6" initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.3, duration: 0.5 }}>
                           <div className="flex items-center gap-3">
-                            <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg text-sm border border-emerald-500/20 backdrop-blur-sm">
-                              {product.kodeBarang}
-                            </span>
-                            <span className={`px-3 py-1.5 rounded-lg text-xs font-bold border backdrop-blur-sm ${getUnitBadgeClass(product.unit)}`}>
-                              {product.unit}
-                            </span>
+                            <motion.span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-lg text-sm border border-emerald-500/20 backdrop-blur-sm" initial={{ x: -20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.4 }}>
+                              {productsWithPhotos[page].kodeBarang}
+                            </motion.span>
+                            <motion.span className={`px-3 py-1.5 rounded-lg text-xs font-bold border backdrop-blur-sm ${getUnitBadgeClass(productsWithPhotos[page].unit)}`} initial={{ x: 20, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ delay: 0.5 }}>
+                              {productsWithPhotos[page].unit}
+                            </motion.span>
                           </div>
-                          <h3 className="text-xl sm:text-2xl font-bold text-white mt-2 tracking-tight">{product.namaBarang}</h3>
-                          {product.namaProdusen && (
-                            <p className="text-sm text-slate-300 mt-1">{product.namaProdusen}</p>
+                          <motion.h3 className="text-xl sm:text-2xl font-bold text-white mt-2 tracking-tight" initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.5 }}>
+                            {productsWithPhotos[page].namaBarang}
+                          </motion.h3>
+                          {productsWithPhotos[page].namaProdusen && (
+                            <motion.p className="text-sm text-slate-300 mt-1" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }}>
+                              {productsWithPhotos[page].namaProdusen}
+                            </motion.p>
                           )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                        </motion.div>
+                      </motion.div>
+                    </AnimatePresence>
 
-                  <button
-                    onClick={() => setCurrentSlide((prev) => (prev - 1 + productsWithPhotos.length) % productsWithPhotos.length)}
-                    className="absolute left-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-slate-900/60 hover:bg-emerald-600/80 text-white backdrop-blur-sm border border-white/10 transition-all duration-300 hover:scale-110"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                    </svg>
-                  </button>
-                  <button
-                    onClick={() => setCurrentSlide((prev) => (prev + 1) % productsWithPhotos.length)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-slate-900/60 hover:bg-emerald-600/80 text-white backdrop-blur-sm border border-white/10 transition-all duration-300 hover:scale-110"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </button>
-                </div>
+                    <motion.button onClick={() => paginate(-1)} className="absolute left-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-slate-900/60 hover:bg-emerald-600/80 text-white backdrop-blur-sm border border-white/10" whileHover={{ scale: 1.15, x: -3 }} whileTap={{ scale: 0.9 }}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                      </svg>
+                    </motion.button>
+                    <motion.button onClick={() => paginate(1)} className="absolute right-3 top-1/2 -translate-y-1/2 z-20 p-2.5 rounded-full bg-slate-900/60 hover:bg-emerald-600/80 text-white backdrop-blur-sm border border-white/10" whileHover={{ scale: 1.15, x: 3 }} whileTap={{ scale: 0.9 }}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </motion.button>
+                  </div>
 
-                <div className="flex items-center justify-center gap-2 mt-4">
-                  {productsWithPhotos.map((_, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => setCurrentSlide(idx)}
-                      className={`transition-all duration-500 rounded-full ${
-                        idx === currentSlide
-                          ? "w-8 h-2.5 bg-emerald-500 shadow-lg shadow-emerald-500/30"
-                          : "w-2.5 h-2.5 bg-slate-600 hover:bg-slate-500"
-                      }`}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </section>
+                  <div className="flex items-center justify-center gap-2 mt-4">
+                    {productsWithPhotos.map((_, idx) => (
+                      <motion.button key={idx} onClick={() => { const dir = idx > currentSlide ? 1 : -1; setPage([idx, dir]); setCurrentSlide(idx); }} className={`rounded-full transition-all duration-500 ${idx === currentSlide ? "bg-emerald-500 shadow-lg shadow-emerald-500/30" : "bg-slate-600 hover:bg-slate-500"}`} animate={{ width: idx === currentSlide ? 32 : 10, height: idx === currentSlide ? 10 : 10 }} transition={{ type: "spring", stiffness: 300, damping: 25 }} />
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </motion.section>
 
-          <section className="animate-fade-in-up animate-delay-200">
+          <motion.section ref={tableRef} initial={{ opacity: 0, y: 60 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, margin: "-100px" }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}>
             <Card className="glass-card shadow-2xl rounded-3xl border-0">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8">
+              <motion.div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-8" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }}>
                 <div>
                   <h3 className="text-xl font-bold text-white tracking-tight">Laporan Stock Gudang</h3>
                   <p className="text-sm text-slate-400 mt-1">Data persediaan barang per lokasi FOT</p>
                 </div>
-                <div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-full text-sm font-semibold border border-emerald-500/20">
+                <motion.div className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 text-emerald-400 rounded-full text-sm font-semibold border border-emerald-500/20" whileHover={{ scale: 1.05, borderColor: "rgba(16,185,129,0.4)" }}>
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                   </svg>
                   Mode Lihat Saja
-                </div>
-              </div>
+                </motion.div>
+              </motion.div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-                <div className="space-y-1.5">
+              <motion.div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6" variants={staggerContainer} initial="initial" whileInView="animate" viewport={{ once: true }}>
+                <motion.div className="space-y-1.5" variants={staggerItem}>
                   <label className="text-sm font-semibold text-slate-300">Filter FOT</label>
                   <select id="filter-fot" name="filterFot" aria-label="Filter FOT" value={selectedFot} onChange={(e) => setSelectedFot(e.target.value)} className="w-full px-4 py-3 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm">
                     {fotOptions.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-800">{opt.label}</option>)}
                   </select>
-                </div>
-                <div className="space-y-1.5">
+                </motion.div>
+                <motion.div className="space-y-1.5" variants={staggerItem}>
                   <label className="text-sm font-semibold text-slate-300">Tanggal</label>
                   <select id="filter-tanggal" name="filterTanggal" aria-label="Filter Tanggal" value={selectedTanggal} onChange={(e) => setSelectedTanggal(e.target.value)} className="w-full px-4 py-3 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm">
                     <option value="" className="bg-slate-800">Tanggal</option>
                     {Array.from({ length: 31 }, (_, i) => { const d = (i + 1).toString().padStart(2, "0"); return <option key={d} value={d} className="bg-slate-800">{d}</option>; })}
                   </select>
-                </div>
-                <div className="space-y-1.5">
+                </motion.div>
+                <motion.div className="space-y-1.5" variants={staggerItem}>
                   <label className="text-sm font-semibold text-slate-300">Bulan</label>
                   <select id="filter-bulan" name="filterBulan" aria-label="Filter Bulan" value={selectedBulan} onChange={(e) => setSelectedBulan(e.target.value)} className="w-full px-4 py-3 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm">
                     {bulanOptions.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-800">{opt.label}</option>)}
                   </select>
-                </div>
-                <div className="space-y-1.5">
+                </motion.div>
+                <motion.div className="space-y-1.5" variants={staggerItem}>
                   <label className="text-sm font-semibold text-slate-300">Tahun</label>
                   <select id="filter-tahun" name="filterTahun" aria-label="Filter Tahun" value={selectedTahun} onChange={(e) => setSelectedTahun(e.target.value)} className="w-full px-4 py-3 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm">
                     {tahunOptions.map((opt) => <option key={opt.value} value={opt.value} className="bg-slate-800">{opt.label}</option>)}
                   </select>
-                </div>
-                <div className="space-y-1.5 flex items-end">
-                  <button onClick={() => { setSelectedTanggal(""); setSelectedBulan(""); setSelectedTahun(""); }} className="w-full px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium border border-red-500/20">Reset Tanggal</button>
-                </div>
-              </div>
+                </motion.div>
+                <motion.div className="space-y-1.5 flex items-end" variants={staggerItem}>
+                  <motion.button onClick={() => { setSelectedTanggal(""); setSelectedBulan(""); setSelectedTahun(""); }} className="w-full px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 rounded-xl transition-colors font-medium border border-red-500/20" whileHover={{ scale: 1.02, borderColor: "rgba(248,113,113,0.4)" }} whileTap={{ scale: 0.98 }}>
+                    Reset Tanggal
+                  </motion.button>
+                </motion.div>
+              </motion.div>
 
-              <div className="relative w-full sm:w-96 mb-8">
+              <motion.div className="relative w-full sm:w-96 mb-8" initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: 0.3 }}>
                 <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
                 <input type="text" placeholder="Cari kode, nama barang, atau unit..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3.5 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm" />
-              </div>
+              </motion.div>
 
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+              <motion.div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8" variants={staggerContainer} initial="initial" whileInView="animate" viewport={{ once: true }}>
                 {statCards.map((card, idx) => {
                   const c = colorMap[card.color];
                   const isActive = activeGlowCard === idx;
-                  const handleDownloadPhoto = (photoUrl: string, productName: string) => {
-    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
-    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
-    const link = document.createElement("a");
-    link.href = photoUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  return (
-                    <div key={card.label} className={`p-5 rounded-2xl border ${c.border} bg-slate-800/50 hover:bg-slate-800/80 transition-all duration-500 animate-count-up animate-delay-${(idx + 1) * 100} stat-card-glow ${isActive ? "active" : ""} cursor-pointer`} onClick={() => setActiveGlowCard(isActive ? null : idx)} onMouseEnter={() => setActiveGlowCard(idx)} onMouseLeave={() => setActiveGlowCard(null)}>
-                      <div className="flex items-center justify-between mb-3">
+                  return (
+                    <motion.div key={card.label} className={`p-5 rounded-2xl border ${c.border} bg-slate-800/50 cursor-pointer relative overflow-hidden`} variants={staggerItem} initial="rest" whileHover="hover" animate={isActive ? "hover" : "rest"} onClick={() => setActiveGlowCard(isActive ? null : idx)} onMouseEnter={() => setActiveGlowCard(idx)} onMouseLeave={() => setActiveGlowCard(null)}>
+                      <motion.div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-white/5" initial={{ opacity: 0 }} animate={{ opacity: isActive ? 1 : 0 }} transition={{ duration: 0.3 }} />
+                      <div className="flex items-center justify-between mb-3 relative z-10">
                         <p className={`text-xs uppercase tracking-wider font-bold ${c.text}`}>{card.label}</p>
                         <svg className={`w-4 h-4 ${c.text} opacity-50`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={card.icon} />
                         </svg>
                       </div>
-                      <p className={`text-3xl font-bold ${c.text} tracking-tight transition-all duration-300 ${isActive ? "scale-110" : ""}`}>{typeof card.value === "number" ? card.value.toLocaleString() : card.value}</p>
-                      {isActive && <div className="mt-3 h-0.5 w-full rounded-full shimmer-bg" />}
-                    </div>
+                      <motion.p className={`text-3xl font-bold ${c.text} tracking-tight relative z-10`} animate={{ scale: isActive ? 1.1 : 1 }} transition={{ type: "spring", stiffness: 300 }}>
+                        <AnimatedCounter value={typeof card.value === "number" ? card.value : 0} />
+                      </motion.p>
+                      <AnimatePresence>
+                        {isActive && (
+                          <motion.div className="mt-3 h-0.5 w-full rounded-full" style={{ background: "linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.15) 50%, transparent 100%)", backgroundSize: "200% 100%" }} initial={{ opacity: 0, scaleX: 0 }} animate={{ opacity: 1, scaleX: 1 }} exit={{ opacity: 0, scaleX: 0 }} transition={{ duration: 0.4 }} />
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
                   );
                 })}
-              </div>
+              </motion.div>
 
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+              <motion.div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6" initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
                 <div className="text-sm text-slate-400 font-medium flex flex-wrap items-center gap-2">
                   <span>Menampilkan {filteredStockData.length} dari {stockData.length} data</span>
-                  {selectedFot && <span className="px-2 py-0.5 bg-slate-700/50 rounded-md text-xs text-slate-300">FOT: {selectedFot}</span>}
-                  {(selectedTanggal || selectedBulan || selectedTahun) && (
-                    <span className="px-2 py-0.5 bg-emerald-500/10 rounded-md text-xs text-emerald-400 border border-emerald-500/20">
-                      {selectedTanggal && `${selectedTanggal} `}{selectedBulan && `${bulanOptions.find((b) => b.value === selectedBulan)?.label} `}{selectedTahun && selectedTahun}
-                    </span>
-                  )}
+                  <AnimatePresence>
+                    {selectedFot && (
+                      <motion.span className="px-2 py-0.5 bg-slate-700/50 rounded-md text-xs text-slate-300" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}>
+                        FOT: {selectedFot}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                  <AnimatePresence>
+                    {(selectedTanggal || selectedBulan || selectedTahun) && (
+                      <motion.span className="px-2 py-0.5 bg-emerald-500/10 rounded-md text-xs text-emerald-400 border border-emerald-500/20" initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}>
+                        {selectedTanggal && `${selectedTanggal} `}{selectedBulan && `${bulanOptions.find((b) => b.value === selectedBulan)?.label} `}{selectedTahun && selectedTahun}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className="text-sm text-slate-400 font-medium">Tampilkan:</span>
@@ -811,280 +792,215 @@ export default function PublicPage() {
                   </select>
                   <span className="text-sm text-slate-500">per halaman</span>
                 </div>
-              </div>
+              </motion.div>
 
               <div className="overflow-x-auto">
-                {isLoadingStock ? (
-                  <div className="flex flex-col items-center justify-center py-16 gap-4">
-                    <div className="animate-spin rounded-full h-12 w-12 border-[3px] border-emerald-500/20 border-t-emerald-500"></div>
-                    <p className="text-sm text-slate-500 font-medium">Memuat data stock...</p>
-                  </div>
-                ) : paginatedData.length === 0 ? (
-                  <div className="flex flex-col items-center py-16 text-slate-500">
-                    <div className="w-20 h-20 bg-slate-800/50 rounded-2xl flex items-center justify-center mb-4 border border-slate-700/50">
-                      <svg className="w-10 h-10 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
-                      </svg>
-                    </div>
-                    <p className="font-semibold text-lg text-slate-400">Belum ada data stock gudang</p>
-                    <p className="text-sm mt-1 text-slate-500">Data akan muncul setelah admin menginput stock</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                      <div className="col-span-1">FOT</div>
-                      <div className="col-span-2 text-center">Foto</div>
-                      <div className="col-span-2">Kode / Nama</div>
-                      <div className="col-span-1 text-center">Unit</div>
-                      <div className="col-span-1 text-right">Konversi</div>
-                      <div className="col-span-1 text-right">Stok Awal</div>
-                      <div className="col-span-1 text-right">Masuk</div>
-                      <div className="col-span-1 text-right">Keluar</div>
-                      <div className="col-span-1 text-right">Stok Akhir</div>
-                      <div className="col-span-1 text-center">Status</div>
-                    </div>
+                <AnimatePresence mode="wait">
+                  {isLoadingStock ? (
+                    <motion.div key="loading" className="flex flex-col items-center justify-center py-16 gap-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                      <motion.div className="rounded-full h-12 w-12 border-[3px] border-emerald-500/20 border-t-emerald-500" animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} />
+                      <motion.p className="text-sm text-slate-500 font-medium" animate={{ opacity: [0.5, 1, 0.5] }} transition={{ duration: 1.5, repeat: Infinity }}>
+                        Memuat data stock...
+                      </motion.p>
+                    </motion.div>
+                  ) : paginatedData.length === 0 ? (
+                    <motion.div key="empty" className="flex flex-col items-center py-16 text-slate-500" initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}>
+                      <motion.div className="w-20 h-20 bg-slate-800/50 rounded-2xl flex items-center justify-center mb-4 border border-slate-700/50" animate={{ y: [0, -8, 0] }} transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}>
+                        <svg className="w-10 h-10 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+                        </svg>
+                      </motion.div>
+                      <p className="font-semibold text-lg text-slate-400">Belum ada data stock gudang</p>
+                      <p className="text-sm mt-1 text-slate-500">Data akan muncul setelah admin menginput stock</p>
+                    </motion.div>
+                  ) : (
+                    <motion.div key="table" className="space-y-3" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                      <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">
+                        <div className="col-span-1">FOT</div>
+                        <div className="col-span-2 text-center">Foto</div>
+                        <div className="col-span-2">Kode / Nama</div>
+                        <div className="col-span-1 text-center">Unit</div>
+                        <div className="col-span-1 text-right">Konversi</div>
+                        <div className="col-span-1 text-right">Stok Awal</div>
+                        <div className="col-span-1 text-right">Masuk</div>
+                        <div className="col-span-1 text-right">Keluar</div>
+                        <div className="col-span-1 text-right">Stok Akhir</div>
+                        <div className="col-span-1 text-center">Status</div>
+                      </div>
 
-                    <div className="space-y-2">
-                      {paginatedData.map((row: StockGudang, index: number) => {
-                        const status = getStockStatus(row);
-                        const isRowActive = hoveredRow === row.id;
-                        const handleDownloadPhoto = (photoUrl: string, productName: string) => {
-    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
-    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
-    const link = document.createElement("a");
-    link.href = photoUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  return (
-                          <div key={row.id} className={`group bg-slate-800/40 rounded-2xl border border-slate-700/50 hover:border-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/5 transition-all duration-500 animate-fade-in-up overflow-hidden row-interactive ${isRowActive ? "active" : ""} cursor-pointer`} style={{ animationDelay: `${index * 0.05}s` }} onClick={() => setHoveredRow(isRowActive ? null : row.id)} onMouseEnter={() => setHoveredRow(row.id)} onMouseLeave={() => setHoveredRow(null)}>
-                            <div className="lg:hidden p-5 space-y-4">
-                              <div className="flex items-start justify-between">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg text-sm border border-emerald-500/20">{row.fot || "-"}</span>
-                                    <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${getUnitBadgeClass(row.unit)}`}>{row.unit}</span>
+                      <div className="space-y-2">
+                        {paginatedData.map((row: StockGudang, index: number) => {
+                          const status = getStockStatus(row);
+                          const isRowActive = hoveredRow === row.id;
+                          const vals = getRowValues(row);
+                          return (
+                            <motion.div key={row.id} className={`group bg-slate-800/40 rounded-2xl border border-slate-700/50 overflow-hidden cursor-pointer`} initial={{ opacity: 0, y: 20, x: -10 }} animate={{ opacity: 1, y: 0, x: 0 }} transition={{ delay: index * 0.04, duration: 0.4, ease: [0.16, 1, 0.3, 1] }} whileHover={{ x: 6, borderColor: "rgba(16,185,129,0.3)", boxShadow: "0 8px 30px rgba(0,0,0,0.3), 0 0 0 1px rgba(16,185,129,0.15)" }} onClick={() => setHoveredRow(isRowActive ? null : row.id)} onMouseEnter={() => setHoveredRow(row.id)} onMouseLeave={() => setHoveredRow(null)}>
+                              <div className="lg:hidden p-5 space-y-4">
+                                <div className="flex items-start justify-between">
+                                  <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg text-sm border border-emerald-500/20">{row.fot || "-"}</span>
+                                      <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${getUnitBadgeClass(row.unit)}`}>{row.unit}</span>
+                                    </div>
+                                    {(row.fotoUrls as string[])?.length > 0 && (
+                                      <motion.button onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: (row.fotoUrls as string[])[0], productName: row.namaBarang }); }} className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 mt-3 shadow-xl" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                                        <img src={(row.fotoUrls as string[])[0]} alt={row.namaBarang} className="w-full h-full object-cover" />
+                                        {(row.fotoUrls as string[]).length > 1 && (
+                                          <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                                            {(row.fotoUrls as string[]).length}
+                                          </span>
+                                        )}
+                                      </motion.button>
+                                    )}
+                                    <p className="font-mono text-sm font-semibold text-emerald-300">{row.kodeBarang}</p>
+                                    <p className="text-sm font-medium text-slate-200">{row.namaBarang}</p>
+                                    {row.namaProdusen && <p className="text-xs text-slate-500">{row.namaProdusen}</p>}
                                   </div>
-                                  {(row.fotoUrls as string[])?.length > 0 && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: (row.fotoUrls as string[])[0], productName: row.namaBarang }); }}
-                                      className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 mt-3 shadow-xl hover:shadow-emerald-500/20 hover:scale-105"
-                                    >
-                                      <img
-                                        src={(row.fotoUrls as string[])[0]}
-                                        alt={row.namaBarang}
-                                        className="w-full h-full object-cover"
-                                      />
+                                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}><span className={`w-2 h-2 rounded-full ${status.dot}`}></span>{status.label}</div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3 text-sm">
+                                  <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
+                                    <p className="text-xs text-slate-500 mb-1">Stok Awal</p>
+                                    {row.unit !== "KG" && <p className="font-mono font-semibold text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>}
+                                    {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                  </div>
+                                  <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
+                                    <p className="text-xs text-slate-500 mb-1">Stok Akhir</p>
+                                    {row.unit !== "KG" && <p className="font-mono font-bold text-emerald-400">{formatDusDisplay(row, vals.stokAkhirUnit)}</p>}
+                                    {row.unit === "KG" && <p className="font-mono font-bold text-emerald-400">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                    {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                  </div>
+                                  <div className="bg-emerald-500/5 rounded-xl p-3 border border-emerald-500/10">
+                                    <p className="text-xs text-emerald-400 mb-1">Masuk</p>
+                                    {row.unit !== "KG" && vals.masukUnit > 0 && <p className="font-mono text-emerald-300 font-semibold">+{formatDusDisplay(row, vals.masukUnit)}</p>}
+                                    {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.masukKG > 0 && <p className="text-emerald-500 text-xs">+{vals.masukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                    {vals.masukUnit === 0 && vals.masukKG === 0 && <p className="text-slate-600 text-xs">-</p>}
+                                  </div>
+                                  <div className="bg-red-500/5 rounded-xl p-3 border border-red-500/10">
+                                    <p className="text-xs text-red-400 mb-1">Keluar</p>
+                                    {row.unit !== "KG" && vals.keluarUnit > 0 && <p className="font-mono text-red-300 font-semibold">-{formatDusDisplay(row, vals.keluarUnit)}</p>}
+                                    {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.keluarKG > 0 && <p className="text-red-500 text-xs">-{vals.keluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                    {vals.keluarUnit === 0 && vals.keluarKG === 0 && <p className="text-slate-600 text-xs">-</p>}
+                                  </div>
+                                </div>
+
+                                {row.unit !== "KG" && (
+                                  <div className="text-xs text-slate-500">
+                                    {row.unit === "BOTOL" || row.unit === "DUS" ? <span>{row.botolPerDus || 20} botol/DUS | {row.volumeMl || 500}ml/botol</span> : <span>Bobot: {row.bobotPerUnit?.toLocaleString()} KG / {row.unit}</span>}
+                                  </div>
+                                )}
+                              </div>
+
+                              <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-4 items-center group-hover:bg-emerald-500/5 transition-colors duration-500">
+                                <div className="col-span-1"><span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg text-sm inline-block border border-emerald-500/20">{row.fot || "-"}</span></div>
+                                <div className="col-span-2 text-center">
+                                  {(row.fotoUrls as string[])?.length > 0 ? (
+                                    <motion.button onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: (row.fotoUrls as string[])[0], productName: row.namaBarang }); }} className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 inline-block shadow-xl" whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }}>
+                                      <img src={(row.fotoUrls as string[])[0]} alt={row.namaBarang} className="w-full h-full object-cover" />
                                       {(row.fotoUrls as string[]).length > 1 && (
                                         <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                                           {(row.fotoUrls as string[]).length}
                                         </span>
                                       )}
-                                    </button>
+                                    </motion.button>
+                                  ) : (
+                                    <span className="text-xs text-slate-600">-</span>
                                   )}
+                                </div>
+                                <div className="col-span-2">
                                   <p className="font-mono text-sm font-semibold text-emerald-300">{row.kodeBarang}</p>
-                                  <p className="text-sm font-medium text-slate-200">{row.namaBarang}</p>
-                                  {row.namaProdusen && <p className="text-xs text-slate-500">{row.namaProdusen}</p>}
+                                  <p className="text-sm text-slate-300 mt-0.5 line-clamp-1">{row.namaBarang}</p>
+                                  {row.namaProdusen && <p className="text-xs text-slate-500 mt-0.5">{row.namaProdusen}</p>}
                                 </div>
-                                <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}><span className={`w-2 h-2 rounded-full ${status.dot}`}></span>{status.label}</div>
-                              </div>
-
-                              {(() => {
-                                const vals = getRowValues(row);
-                                const handleDownloadPhoto = (photoUrl: string, productName: string) => {
-    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
-    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
-    const link = document.createElement("a");
-    link.href = photoUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  return (
-                                  <div className="grid grid-cols-2 gap-3 text-sm">
-                                    <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
-                                      <p className="text-xs text-slate-500 mb-1">Stok Awal</p>
-                                      {row.unit !== "KG" && <p className="font-mono font-semibold text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>}
-                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                    </div>
-                                    <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
-                                      <p className="text-xs text-slate-500 mb-1">Stok Akhir</p>
-                                      {row.unit !== "KG" && <p className="font-mono font-bold text-emerald-400">{formatDusDisplay(row, vals.stokAkhirUnit)}</p>}
-                                      {row.unit === "KG" && <p className="font-mono font-bold text-emerald-400">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                    </div>
-                                    <div className="bg-emerald-500/5 rounded-xl p-3 border border-emerald-500/10">
-                                      <p className="text-xs text-emerald-400 mb-1">Masuk</p>
-                                      {row.unit !== "KG" && vals.masukUnit > 0 && <p className="font-mono text-emerald-300 font-semibold">+{formatDusDisplay(row, vals.masukUnit)}</p>}
-                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.masukKG > 0 && <p className="text-emerald-500 text-xs">+{vals.masukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                      {vals.masukUnit === 0 && vals.masukKG === 0 && <p className="text-slate-600 text-xs">-</p>}
-                                    </div>
-                                    <div className="bg-red-500/5 rounded-xl p-3 border border-red-500/10">
-                                      <p className="text-xs text-red-400 mb-1">Keluar</p>
-                                      {row.unit !== "KG" && vals.keluarUnit > 0 && <p className="font-mono text-red-300 font-semibold">-{formatDusDisplay(row, vals.keluarUnit)}</p>}
-                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.keluarKG > 0 && <p className="text-red-500 text-xs">-{vals.keluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                      {vals.keluarUnit === 0 && vals.keluarKG === 0 && <p className="text-slate-600 text-xs">-</p>}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-
-                              {row.unit !== "KG" && (
-                                <div className="text-xs text-slate-500">
-                                  {row.unit === "BOTOL" || row.unit === "DUS" ? <span>{row.botolPerDus || 20} botol/DUS | {row.volumeMl || 500}ml/botol</span> : <span>Bobot: {row.bobotPerUnit?.toLocaleString()} KG / {row.unit}</span>}
+                                <div className="col-span-1 text-center"><span className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${getUnitBadgeClass(row.unit)}`}>{row.unit}</span></div>
+                                <div className="col-span-1 text-right">
+                                  <span className="font-mono text-sm text-slate-400">
+                                    {row.unit === "KG" ? "-" : row.unit === "BOTOL" || row.unit === "DUS" ? <div className="text-xs"><p className="text-pink-400">{row.botolPerDus || 20} botol/DUS</p><p className="text-pink-300">{row.volumeMl || 500}ml/botol</p></div> : `${row.bobotPerUnit?.toLocaleString()} KG`}
+                                  </span>
                                 </div>
-                              )}
-                            </div>
-
-                            <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-4 items-center group-hover:bg-emerald-500/5 transition-colors duration-500">
-                              <div className="col-span-1"><span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg text-sm inline-block border border-emerald-500/20">{row.fot || "-"}</span></div>
-                              <div className="col-span-2 text-center">
-                                {(row.fotoUrls as string[])?.length > 0 ? (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: (row.fotoUrls as string[])[0], productName: row.namaBarang }); }}
-                                    className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 inline-block shadow-xl hover:shadow-emerald-500/20 hover:scale-105"
-                                  >
-                                    <img
-                                      src={(row.fotoUrls as string[])[0]}
-                                      alt={row.namaBarang}
-                                      className="w-full h-full object-cover"
-                                    />
-                                    {(row.fotoUrls as string[]).length > 1 && (
-                                      <span className="absolute -top-1 -right-1 bg-emerald-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                                        {(row.fotoUrls as string[]).length}
-                                      </span>
-                                    )}
-                                  </button>
-                                ) : (
-                                  <span className="text-xs text-slate-600">-</span>
-                                )}
+                                <div className="col-span-1 text-right">
+                                  {row.unit !== "KG" && <p className="font-mono text-sm font-medium text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>}
+                                  {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                </div>
+                                <div className="col-span-1 text-right">
+                                  {row.unit !== "KG" && vals.masukUnit > 0 && <p className="text-emerald-400 font-mono text-sm font-medium">+{formatDusDisplay(row, vals.masukUnit)}</p>}
+                                  {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.masukKG > 0 && <p className="text-emerald-500 text-xs">+{vals.masukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                  {vals.masukUnit === 0 && vals.masukKG === 0 && <p className="text-slate-600 text-xs">-</p>}
+                                </div>
+                                <div className="col-span-1 text-right">
+                                  {row.unit !== "KG" && vals.keluarUnit > 0 && <p className="text-red-400 font-mono text-sm font-medium">-{formatDusDisplay(row, vals.keluarUnit)}</p>}
+                                  {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.keluarKG > 0 && <p className="text-red-500 text-xs">-{vals.keluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                  {vals.keluarUnit === 0 && vals.keluarKG === 0 && <p className="text-slate-600 text-xs">-</p>}
+                                </div>
+                                <div className="col-span-1 text-right">
+                                  {row.unit !== "KG" && <p className="font-mono font-bold text-emerald-400 text-sm">{formatDusDisplay(row, vals.stokAkhirUnit)}</p>}
+                                  {row.unit === "KG" && <p className="font-mono font-bold text-emerald-400 text-sm">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                  {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
+                                </div>
+                                <div className="col-span-1 text-center">
+                                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}><span className={`w-2 h-2 rounded-full ${status.dot}`}></span>{status.label}</div>
+                                </div>
                               </div>
-                              <div className="col-span-2">
-                                <p className="font-mono text-sm font-semibold text-emerald-300">{row.kodeBarang}</p>
-                                <p className="text-sm text-slate-300 mt-0.5 line-clamp-1">{row.namaBarang}</p>
-                                {row.namaProdusen && <p className="text-xs text-slate-500 mt-0.5">{row.namaProdusen}</p>}
-                              </div>
-                              <div className="col-span-1 text-center"><span className={`px-3 py-1.5 rounded-lg text-xs font-bold border ${getUnitBadgeClass(row.unit)}`}>{row.unit}</span></div>
-                              <div className="col-span-1 text-right">
-                                <span className="font-mono text-sm text-slate-400">
-                                  {row.unit === "KG" ? "-" : row.unit === "BOTOL" || row.unit === "DUS" ? <div className="text-xs"><p className="text-pink-400">{row.botolPerDus || 20} botol/DUS</p><p className="text-pink-300">{row.volumeMl || 500}ml/botol</p></div> : `${row.bobotPerUnit?.toLocaleString()} KG`}
-                                </span>
-                              </div>
-                              {(() => {
-                                const vals = getRowValues(row);
-                                const handleDownloadPhoto = (photoUrl: string, productName: string) => {
-    const sanitized = productName.replace(/[^a-zA-Z0-9\s]/g, "").replace(/\s+/g, "_");
-    const fileName = `${sanitized}_${new Date().toISOString().slice(0,10)}.jpg`;
-    const link = document.createElement("a");
-    link.href = photoUrl;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  return (
-                                  <>
-                                    <div className="col-span-1 text-right">
-                                      {row.unit !== "KG" && <p className="font-mono text-sm font-medium text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>}
-                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                    </div>
-                                    <div className="col-span-1 text-right">
-                                      {row.unit !== "KG" && vals.masukUnit > 0 && <p className="text-emerald-400 font-mono text-sm font-medium">+{formatDusDisplay(row, vals.masukUnit)}</p>}
-                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.masukKG > 0 && <p className="text-emerald-500 text-xs">+{vals.masukKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                      {vals.masukUnit === 0 && vals.masukKG === 0 && <p className="text-slate-600 text-xs">-</p>}
-                                    </div>
-                                    <div className="col-span-1 text-right">
-                                      {row.unit !== "KG" && vals.keluarUnit > 0 && <p className="text-red-400 font-mono text-sm font-medium">-{formatDusDisplay(row, vals.keluarUnit)}</p>}
-                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && vals.keluarKG > 0 && <p className="text-red-500 text-xs">-{vals.keluarKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                      {vals.keluarUnit === 0 && vals.keluarKG === 0 && <p className="text-slate-600 text-xs">-</p>}
-                                    </div>
-                                    <div className="col-span-1 text-right">
-                                      {row.unit !== "KG" && <p className="font-mono font-bold text-emerald-400 text-sm">{formatDusDisplay(row, vals.stokAkhirUnit)}</p>}
-                                      {row.unit === "KG" && <p className="font-mono font-bold text-emerald-400 text-sm">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                      {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
-                                    </div>
-                                  </>
-                                );
-                              })()}
-                              <div className="col-span-1 text-center">
-                                <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}><span className={`w-2 h-2 rounded-full ${status.dot}`}></span>{status.label}</div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                            </motion.div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {totalPages > 1 && (
-                <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-700/50 pt-6 animate-fade-in-up">
+                <motion.div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-slate-700/50 pt-6" initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
                   <div className="text-sm text-slate-400 font-medium">Menampilkan {startIndex + 1} - {Math.min(endIndex, filteredStockData.length)} dari {filteredStockData.length} item</div>
                   <div className="flex items-center gap-2">
-                    <button onClick={() => goToPage(1)} disabled={currentPage === 1} className="px-3.5 py-2 rounded-xl border border-slate-700/50 text-sm font-semibold text-slate-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300 btn-glow">Awal</button>
-                    <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1} className="px-3.5 py-2 rounded-xl border border-slate-700/50 text-sm font-semibold text-slate-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300 btn-glow">
+                    <motion.button onClick={() => goToPage(1)} disabled={currentPage === 1} className="px-3.5 py-2 rounded-xl border border-slate-700/50 text-sm font-semibold text-slate-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300" whileHover={currentPage !== 1 ? { scale: 1.05 } : {}} whileTap={currentPage !== 1 ? { scale: 0.95 } : {}}>Awal</motion.button>
+                    <motion.button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1} className="px-3.5 py-2 rounded-xl border border-slate-700/50 text-sm font-semibold text-slate-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300" whileHover={currentPage !== 1 ? { scale: 1.05 } : {}} whileTap={currentPage !== 1 ? { scale: 0.95 } : {}}>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                    </button>
+                    </motion.button>
                     <div className="flex items-center gap-1">
                       {pageNumbers.map((page: number) => (
-                        <button key={page} onClick={() => goToPage(page)} className={`min-w-[36px] px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 btn-glow ${currentPage === page ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/30 scale-110" : "text-slate-300 hover:bg-slate-700/50"}`}>{page}</button>
+                        <motion.button key={page} onClick={() => goToPage(page)} className={`min-w-[36px] px-3 py-2 rounded-lg text-sm font-medium transition-all duration-300 ${currentPage === page ? "bg-emerald-600 text-white shadow-lg shadow-emerald-500/30" : "text-slate-300 hover:bg-slate-700/50"}`} whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.9 }} animate={currentPage === page ? { scale: [1, 1.1, 1] } : {}} transition={{ duration: 0.3 }}>{page}</motion.button>
                       ))}
                     </div>
-                    <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages} className="px-3.5 py-2 rounded-xl border border-slate-700/50 text-sm font-semibold text-slate-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300 btn-glow">
+                    <motion.button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages} className="px-3.5 py-2 rounded-xl border border-slate-700/50 text-sm font-semibold text-slate-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300" whileHover={currentPage !== totalPages ? { scale: 1.05 } : {}} whileTap={currentPage !== totalPages ? { scale: 0.95 } : {}}>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                    </button>
-                    <button onClick={() => goToPage(totalPages)} disabled={currentPage === totalPages} className="px-3.5 py-2 rounded-xl border border-slate-700/50 text-sm font-semibold text-slate-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300 btn-glow">Akhir</button>
+                    </motion.button>
+                    <motion.button onClick={() => goToPage(totalPages)} disabled={currentPage === totalPages} className="px-3.5 py-2 rounded-xl border border-slate-700/50 text-sm font-semibold text-slate-400 hover:bg-emerald-500/10 hover:border-emerald-500/30 hover:text-emerald-400 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-300" whileHover={currentPage !== totalPages ? { scale: 1.05 } : {}} whileTap={currentPage !== totalPages ? { scale: 0.95 } : {}}>Akhir</motion.button>
                   </div>
-                </div>
+                </motion.div>
               )}
             </Card>
-          </section>
+          </motion.section>
 
-          {selectedPhoto && (
-            <div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-6" onClick={() => setSelectedPhoto(null)}>
-              <div className="relative max-w-5xl max-h-[95vh] w-full flex flex-col items-center">
-                <div className="absolute -top-14 right-0 flex items-center gap-3">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); if (selectedPhoto) handleDownloadPhoto(selectedPhoto.url, selectedPhoto.productName); }}
-                    className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full text-sm font-semibold transition-all duration-300 shadow-lg hover:shadow-emerald-500/30"
-                    title="Unduh Foto"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Unduh
-                  </button>
-                  <button
-                    onClick={() => setSelectedPhoto(null)}
-                    className="p-2 text-white hover:bg-white/10 rounded-full transition-colors"
-                    title="Tutup"
-                  >
-                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-                <img
-                  src={selectedPhoto.url}
-                  alt={selectedPhoto.productName}
-                  className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-            </div>
-          )}
+          <AnimatePresence>
+            {selectedPhoto && (
+              <motion.div className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedPhoto(null)}>
+                <motion.div className="relative max-w-5xl max-h-[95vh] w-full flex flex-col items-center" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.8, opacity: 0 }} transition={{ type: "spring", stiffness: 200, damping: 25 }}>
+                  <div className="absolute -top-14 right-0 flex items-center gap-3">
+                    <motion.button onClick={(e) => { e.stopPropagation(); if (selectedPhoto) handleDownloadPhoto(selectedPhoto.url, selectedPhoto.productName); }} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-full text-sm font-semibold transition-all duration-300 shadow-lg" title="Unduh Foto" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Unduh
+                    </motion.button>
+                    <motion.button onClick={() => setSelectedPhoto(null)} className="p-2 text-white hover:bg-white/10 rounded-full transition-colors" title="Tutup" whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }}>
+                      <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </motion.button>
+                  </div>
+                  <motion.img src={selectedPhoto.url} alt={selectedPhoto.productName} className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()} initial={{ y: 20 }} animate={{ y: 0 }} transition={{ delay: 0.1 }} />
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          <footer className="text-center py-8 border-t border-slate-700/30 animate-fade-in-up animate-delay-300">
+          <motion.footer className="text-center py-8 border-t border-slate-700/30" initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }}>
             <p className="text-sm text-slate-400 font-medium">PT Bukit Agrochemical Baru | Sistem Administrasi Distributor Pupuk</p>
             <p className="text-xs text-slate-500 mt-1">Untuk mengelola data, silakan login sebagai admin</p>
-          </footer>
+          </motion.footer>
         </main>
       </div>
     </>
