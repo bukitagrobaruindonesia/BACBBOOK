@@ -863,6 +863,30 @@ export default function LaporanInputStockGudangPage() {
     }
   };
 
+  const handleToggleTampilkan = async (row: StockGudang) => {
+    const newValue = (row as any).tampilkanDiHalamanDepan === false ? true : false;
+    try {
+      await updateDoc(doc(db, "stockGudang", row.id), {
+        tampilkanDiHalamanDepan: newValue,
+        updatedAt: serverTimestamp(),
+      });
+      setStockList((prev) =>
+        prev.map((s) =>
+          s.id === row.id ? ({ ...s, tampilkanDiHalamanDepan: newValue } as StockGudang) : s
+        )
+      );
+      setSuccessMessage(
+        newValue
+          ? `${row.namaBarang} akan ditampilkan di halaman depan!`
+          : `${row.namaBarang} disembunyikan dari halaman depan!`
+      );
+      setTimeout(() => setSuccessMessage(""), 3000);
+    } catch (error) {
+      console.error(error);
+      setErrors({ submit: "Gagal mengubah pengaturan tampilan. Silakan coba lagi." });
+    }
+  };
+
   const handleEdit = (stock: StockGudang) => {
     setIsEditing(true);
     setEditId(stock.id);
@@ -1712,6 +1736,36 @@ export default function LaporanInputStockGudangPage() {
       ),
     },
     {
+      key: "tampilkanDiHalamanDepan",
+      header: "Tampil Depan",
+      width: "100px",
+      render: (row: StockGudang) => {
+        const isVisible = (row as any).tampilkanDiHalamanDepan !== false;
+        return (
+          <label
+            className="flex items-center gap-2 cursor-pointer select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              onClick={() => handleToggleTampilkan(row)}
+              className={`w-10 h-5 rounded-full transition-colors duration-300 flex items-center px-0.5 ${
+                isVisible ? "bg-emerald-500" : "bg-gray-300"
+              }`}
+            >
+              <div
+                className={`w-4 h-4 rounded-full bg-white shadow transform transition-transform duration-300 ${
+                  isVisible ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
+            </div>
+            <span className={`text-[10px] font-bold ${isVisible ? "text-emerald-700" : "text-gray-400"}`}>
+              {isVisible ? "TAMPIL" : "SEMBUNYI"}
+            </span>
+          </label>
+        );
+      },
+    },
+    {
       key: "aksi",
       header: "Aksi",
       width: "120px",
@@ -2224,6 +2278,10 @@ export default function LaporanInputStockGudangPage() {
                 </svg>
                 Unduh Excel
               </button>
+            </div>
+
+            <div className="mb-3 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700">
+              Gunakan toggle "Tampil Depan" untuk memilih stok yang akan ditampilkan di halaman depan (tanpa login). Stok yang tidak dicentang tidak akan terlihat oleh publik.
             </div>
 
             <Table

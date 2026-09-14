@@ -192,9 +192,12 @@ export default function PublicPage() {
         const numB = parseInt(b.kodeBarang.replace(/\D/g, "")) || 0;
         return numA - numB;
       });
-      setStockData(items);
+      const visibleItems = items.filter(
+        (item: StockGudang) => (item as any).tampilkanDiHalamanDepan !== false
+      );
+      setStockData(visibleItems);
       const fotSet = new Set<string>();
-      items.forEach((item: StockGudang) => {
+      visibleItems.forEach((item: StockGudang) => {
         if (item.fot && typeof item.fot === "string" && item.fot.trim()) fotSet.add(item.fot.trim().toUpperCase());
       });
       setFotList(Array.from(fotSet).sort());
