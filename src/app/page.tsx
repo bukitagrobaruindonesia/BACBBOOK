@@ -136,6 +136,11 @@ export default function PublicPage() {
   const [isFilterLoading, setIsFilterLoading] = useState(false);
   const [[page, direction], setPage] = useState([0, 0]);
 
+  const getMode = (item: any): string => {
+    if (item.tampilanHalamanDepan) return item.tampilanHalamanDepan;
+    return item.tampilkanDiHalamanDepan === false ? "sembunyi" : "stokDanPoster";
+  };
+
   const tableRef = useRef(null);
   const { scrollYProgress } = useScroll();
   const headerOpacity = useTransform(scrollYProgress, [0, 0.05], [1, 0.95]);
@@ -144,7 +149,10 @@ export default function PublicPage() {
   useEffect(() => { fetchStockData(); }, []);
 
   const productsWithPhotos = useMemo(() => {
-    return stockData.filter((item) => (item.fotoUrls as string[])?.length > 0);
+    return stockData.filter((item: any) => {
+      const m = getMode(item);
+      return ((item.fotoUrls as string[])?.length > 0) && (m === "poster" || m === "stokDanPoster");
+    });
   }, [stockData]);
 
   useEffect(() => {
@@ -192,9 +200,7 @@ export default function PublicPage() {
         const numB = parseInt(b.kodeBarang.replace(/\D/g, "")) || 0;
         return numA - numB;
       });
-      const visibleItems = items.filter(
-        (item: StockGudang) => (item as any).tampilkanDiHalamanDepan !== false
-      );
+      const visibleItems = items.filter((item: any) => getMode(item) !== "sembunyi");
       setStockData(visibleItems);
       const fotSet = new Set<string>();
       visibleItems.forEach((item: StockGudang) => {
@@ -390,7 +396,12 @@ export default function PublicPage() {
     finally { setIsFilterLoading(false); }
   };
 
-  const filteredStockData = stockData.filter((item: StockGudang) => {
+  const stokModeData = stockData.filter((item: any) => {
+    const m = getMode(item);
+    return m === "stok" || m === "stokDanPoster";
+  });
+
+  const filteredStockData = stokModeData.filter((item: StockGudang) => {
     const matchSearch = item.kodeBarang.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.namaBarang.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.unit.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -744,6 +755,7 @@ export default function PublicPage() {
                 <input type="text" placeholder="Cari kode, nama barang, atau unit..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-12 pr-4 py-3.5 glass-input rounded-xl focus:outline-none transition-all duration-300 text-sm" />
               </motion.div>
 
+              {filteredStockData.length > 0 && (
               <motion.div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8" variants={staggerContainer} initial="initial" whileInView="animate" viewport={{ once: true }}>
                 {statCards.map((card, idx) => {
                   const c = colorMap[card.color];
@@ -769,6 +781,7 @@ export default function PublicPage() {
                   );
                 })}
               </motion.div>
+              )}
 
               <motion.div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6" initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }}>
                 <div className="text-sm text-slate-400 font-medium flex flex-wrap items-center gap-2">
@@ -834,6 +847,9 @@ export default function PublicPage() {
                       <div className="space-y-2">
                         {paginatedData.map((row: StockGudang, index: number) => {
                           const status = getStockStatus(row);
+                          const rowMode = getMode(row);
+                          const canShowStok = rowMode === "stok" || rowMode === "stokDanPoster";
+                          const canShowPoster = rowMode === "poster" || rowMode === "stokDanPoster";
                           const isRowActive = hoveredRow === row.id;
                           const vals = getRowValues(row);
                           return (
@@ -845,7 +861,7 @@ export default function PublicPage() {
                                       <span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-lg text-sm border border-emerald-500/20">{row.fot || "-"}</span>
                                       <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${getUnitBadgeClass(row.unit)}`}>{row.unit}</span>
                                     </div>
-                                    {(row.fotoUrls as string[])?.length > 0 && (
+                                    {canShowPoster && (row.fotoUrls as string[])?.length > 0 && (
                                       <motion.button onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: (row.fotoUrls as string[])[0], productName: row.namaBarang }); }} className="relative w-32 h-32 rounded-2xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 mt-3 shadow-xl" whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                                         <img src={(row.fotoUrls as string[])[0]} alt={row.namaBarang} className="w-full h-full object-cover" />
                                         {(row.fotoUrls as string[]).length > 1 && (
@@ -862,6 +878,7 @@ export default function PublicPage() {
                                   <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}><span className={`w-2 h-2 rounded-full ${status.dot}`}></span>{status.label}</div>
                                 </div>
 
+                                {canShowStok ? (
                                 <div className="grid grid-cols-2 gap-3 text-sm">
                                   <div className="bg-slate-800/60 rounded-xl p-3 border border-slate-700/50">
                                     <p className="text-xs text-slate-500 mb-1">Stok Awal</p>
@@ -887,6 +904,9 @@ export default function PublicPage() {
                                     {vals.keluarUnit === 0 && vals.keluarKG === 0 && <p className="text-slate-600 text-xs">-</p>}
                                   </div>
                                 </div>
+                                ) : (
+                                <div className="text-xs text-slate-500 italic">Detail stok disembunyikan oleh admin.</div>
+                                )}
 
                                 {row.unit !== "KG" && (
                                   <div className="text-xs text-slate-500">
@@ -898,7 +918,7 @@ export default function PublicPage() {
                               <div className="hidden lg:grid grid-cols-12 gap-4 px-6 py-4 items-center group-hover:bg-emerald-500/5 transition-colors duration-500">
                                 <div className="col-span-1"><span className="font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1.5 rounded-lg text-sm inline-block border border-emerald-500/20">{row.fot || "-"}</span></div>
                                 <div className="col-span-2 text-center">
-                                  {(row.fotoUrls as string[])?.length > 0 ? (
+                                  {(canShowPoster && (row.fotoUrls as string[])?.length > 0) ? (
                                     <motion.button onClick={(e) => { e.stopPropagation(); setSelectedPhoto({ url: (row.fotoUrls as string[])[0], productName: row.namaBarang }); }} className="relative w-20 h-20 rounded-xl overflow-hidden border-2 border-slate-500 hover:border-emerald-400 transition-all duration-300 inline-block shadow-xl" whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }}>
                                       <img src={(row.fotoUrls as string[])[0]} alt={row.namaBarang} className="w-full h-full object-cover" />
                                       {(row.fotoUrls as string[]).length > 1 && (
@@ -922,6 +942,8 @@ export default function PublicPage() {
                                     {row.unit === "KG" ? "-" : row.unit === "BOTOL" || row.unit === "DUS" ? <div className="text-xs"><p className="text-pink-400">{row.botolPerDus || 20} botol/DUS</p><p className="text-pink-300">{row.volumeMl || 500}ml/botol</p></div> : `${row.bobotPerUnit?.toLocaleString()} KG`}
                                   </span>
                                 </div>
+                                {canShowStok ? (
+                                <>
                                 <div className="col-span-1 text-right">
                                   {row.unit !== "KG" && <p className="font-mono text-sm font-medium text-slate-200">{formatDusDisplay(row, vals.stokAwalUnit)}</p>}
                                   {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAwalKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
@@ -941,6 +963,12 @@ export default function PublicPage() {
                                   {row.unit === "KG" && <p className="font-mono font-bold text-emerald-400 text-sm">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
                                   {row.unit !== "DUS" && row.unit !== "BOTOL" && <p className="text-slate-500 text-xs">{vals.stokAkhirKG.toLocaleString("id-ID", { maximumFractionDigits: 10 })} KG</p>}
                                 </div>
+                                </>
+                                ) : (
+                                <div className="col-span-4 text-center">
+                                  <span className="text-xs text-slate-500 italic">Detail stok disembunyikan oleh admin.</span>
+                                </div>
+                                )}
                                 <div className="col-span-1 text-center">
                                   <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}><span className={`w-2 h-2 rounded-full ${status.dot}`}></span>{status.label}</div>
                                 </div>

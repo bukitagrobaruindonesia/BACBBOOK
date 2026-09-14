@@ -863,23 +863,33 @@ export default function LaporanInputStockGudangPage() {
     }
   };
 
-  const handleToggleTampilkan = async (row: StockGudang) => {
-    const newValue = (row as any).tampilkanDiHalamanDepan === false ? true : false;
+  const getDisplayMode = (row: any): string => {
+    if (row.tampilanHalamanDepan) return row.tampilanHalamanDepan;
+    return row.tampilkanDiHalamanDepan === false ? "sembunyi" : "stokDanPoster";
+  };
+
+  const modeLabels: Record<string, string> = {
+    sembunyi: "SEMBUNYI",
+    stok: "STOK",
+    poster: "POSTER",
+    stokDanPoster: "STOK & POSTER",
+  };
+
+  const handleChangeMode = async (row: StockGudang, mode: string) => {
     try {
       await updateDoc(doc(db, "stockGudang", row.id), {
-        tampilkanDiHalamanDepan: newValue,
+        tampilanHalamanDepan: mode,
+        tampilkanDiHalamanDepan: mode !== "sembunyi",
         updatedAt: serverTimestamp(),
       });
       setStockList((prev) =>
         prev.map((s) =>
-          s.id === row.id ? ({ ...s, tampilkanDiHalamanDepan: newValue } as StockGudang) : s
+          s.id === row.id
+            ? ({ ...s, tampilanHalamanDepan: mode, tampilkanDiHalamanDepan: mode !== "sembunyi" } as StockGudang)
+            : s
         )
       );
-      setSuccessMessage(
-        newValue
-          ? `${row.namaBarang} akan ditampilkan di halaman depan!`
-          : `${row.namaBarang} disembunyikan dari halaman depan!`
-      );
+      setSuccessMessage(`${row.namaBarang}: tampilan halaman depan menjadi ${modeLabels[mode]}!`);
       setTimeout(() => setSuccessMessage(""), 3000);
     } catch (error) {
       console.error(error);
@@ -1736,32 +1746,31 @@ export default function LaporanInputStockGudangPage() {
       ),
     },
     {
-      key: "tampilkanDiHalamanDepan",
-      header: "Tampil Depan",
-      width: "100px",
+      key: "tampilanHalamanDepan",
+      header: "Tampilan Depan",
+      width: "150px",
       render: (row: StockGudang) => {
-        const isVisible = (row as any).tampilkanDiHalamanDepan !== false;
+        const mode = getDisplayMode(row);
+        const colorClass =
+          mode === "stokDanPoster"
+            ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+            : mode === "stok"
+            ? "border-blue-300 bg-blue-50 text-blue-700"
+            : mode === "poster"
+            ? "border-purple-300 bg-purple-50 text-purple-700"
+            : "border-gray-300 bg-gray-50 text-gray-500";
         return (
-          <label
-            className="flex items-center gap-2 cursor-pointer select-none"
+          <select
+            value={mode}
             onClick={(e) => e.stopPropagation()}
+            onChange={(e) => handleChangeMode(row, e.target.value)}
+            className={`text-[11px] font-bold rounded-lg border px-2 py-1.5 cursor-pointer focus:outline-none ${colorClass}`}
           >
-            <div
-              onClick={() => handleToggleTampilkan(row)}
-              className={`w-10 h-5 rounded-full transition-colors duration-300 flex items-center px-0.5 ${
-                isVisible ? "bg-emerald-500" : "bg-gray-300"
-              }`}
-            >
-              <div
-                className={`w-4 h-4 rounded-full bg-white shadow transform transition-transform duration-300 ${
-                  isVisible ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </div>
-            <span className={`text-[10px] font-bold ${isVisible ? "text-emerald-700" : "text-gray-400"}`}>
-              {isVisible ? "TAMPIL" : "SEMBUNYI"}
-            </span>
-          </label>
+            <option value="sembunyi">SEMBUNYI</option>
+            <option value="stok">STOK</option>
+            <option value="poster">POSTER</option>
+            <option value="stokDanPoster">STOK & POSTER</option>
+          </select>
         );
       },
     },
@@ -2281,7 +2290,7 @@ export default function LaporanInputStockGudangPage() {
             </div>
 
             <div className="mb-3 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-xs text-emerald-700">
-              Gunakan toggle "Tampil Depan" untuk memilih stok yang akan ditampilkan di halaman depan (tanpa login). Stok yang tidak dicentang tidak akan terlihat oleh publik.
+              Pilih mode tampilan halaman depan (tanpa login): SEMBUNYI = tidak tampil, STOK = hanya jumlah stok, POSTER = hanya foto produk, STOK & POSTER = keduanya tampil.
             </div>
 
             <Table
