@@ -1,6 +1,9 @@
 import { pool } from '@/lib/db';
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export async function GET() {
   try {
     const r = await pool.query('SELECT 1 as ok');
